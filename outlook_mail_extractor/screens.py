@@ -7,10 +7,11 @@ from pathlib import Path
 
 import pycron
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
     Button,
     DataTable,
+    Input,
     Log,
     Markdown,
     MarkdownViewer,
@@ -19,7 +20,6 @@ from textual.widgets import (
     TabbedContent,
     TabPane,
     TextArea,
-    Input,
 )
 from textual.worker import Worker, WorkerState
 
@@ -46,68 +46,14 @@ class UsageScreen(Static):
 
     def compose(self) -> ComposeResult:
         content = self._get_usage_content()
-        yield MarkdownViewer(content, show_table_of_contents=False)
+        with VerticalScroll():
+            yield MarkdownViewer(content)
 
     def _get_usage_content(self) -> str:
         readme_path = Path(__file__).parent.parent / "README.md"
-        try:
-            if readme_path.exists():
-                content = readme_path.read_text(encoding="utf-8")
-                return self._extract_usage_section(content)
-        except Exception:
-            pass
-        return self._get_fallback_content()
-
-    def _extract_usage_section(self, content: str) -> str:
-        lines = content.split("\n")
-        result = []
-        in_section = False
-        target_headers = ["快速開始", "功能特色"]
-
-        for line in lines:
-            if line.startswith("## "):
-                header = line[3:].strip()
-                if header in target_headers:
-                    in_section = True
-                    result.append(line)
-                elif in_section and line.startswith("## "):
-                    break
-                else:
-                    in_section = False
-
-            if in_section:
-                result.append(line)
-
-        if result:
-            return "\n".join(result)
-        return self._get_fallback_content()
-
-    def _get_fallback_content(self) -> str:
-        return """# 📌 快速開始
-
-```bash
-uv pip install -e .
-uv run python app.py
-```
-
-# 📌 功能特色
-
-- 郵件提取：從 Outlook Classic 提取郵件內容
-- LLM 分析：整合 OpenAI 相容 API 分析郵件
-- 插件系統：可擴充的自動化處理插件
-- 排程執行：支援 cron 表達式定期執行
-- 圖形介面：直覺的 Textual TUI 介面
-
-# 📌 UI 分頁
-
-| 分頁 | 功能 |
-|------|------|
-| Home | Jobs 列表、執行按鈕、日誌輸出 |
-| schedule | 排程開關、Cron 表達式設定 |
-| Usage | 使用說明 |
-| About | 系統狀態檢查 |
-| Configuration | 設定檔檢視 |
-"""
+        if readme_path.exists():
+            return readme_path.read_text(encoding="utf-8")
+        return "# 使用說明\n\n請參考 README.md"
 
 
 class AboutScreen(Container):
