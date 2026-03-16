@@ -102,6 +102,17 @@ class OutlookClient:
                     raise FolderNotFoundError(f"Path not found: {part}")
         return current_folder
 
+    def get_calendar_folder(self, account: str):
+        """Get default calendar folder for specified account (uses localized name)"""
+        if not self._connected:
+            raise OutlookConnectionError("Not connected, call connect() first")
+
+        OL_FOLDER_CALENDAR = 9
+        try:
+            return self._mapi.GetDefaultFolder(OL_FOLDER_CALENDAR)
+        except Exception as e:
+            raise FolderNotFoundError(f"GetDefaultFolder failed: {e}") from e
+
 
 class EmailProcessor:
     """Email processing logic"""
@@ -267,6 +278,29 @@ class EmailProcessor:
         if success and not dry_run:
             for plugin in plugins:
                 if plugin.config.enabled:
+                    # Check if plugin should be skipped based on LLM response
+                    if plugin.name == "create_appointment":
+                        try:
+                            import json
+                            import re
+
+                            clean = re.sub(r"^```json\s*", "", llm_response.strip())
+                            clean = re.sub(r"\s*```$", "", clean)
+                            json_match = re.search(r"\{[^}]+\}", clean, re.DOTALL)
+                            if json_match:
+                                resp_data = json.loads(json_match.group())
+                                if resp_data.get(
+                                    "action"
+                                ) == "appointment" and not resp_data.get(
+                                    "create", False
+                                ):
+                                    logger.info(
+                                        f"跳過 Plugin {plugin.name}: create 為 false"
+                                    )
+                                    continue
+                        except Exception:
+                            pass
+
                     logger.info(f"執行 Plugin: {plugin.name}")
                     try:
                         plugin_success = await plugin.execute(

@@ -122,7 +122,7 @@ response_format: "json"
 |------|------|--------------|
 | `move_to_folder` | 移動郵件到指定資料夾 | `{"action": "move", "folder": "資料夾名稱"}` |
 | `add_category` | 新增郵件分類標籤 | `{"action": "category", "categories": ["標籤1"]}` |
-| `create_appointment` | 建立行事曆約會 | `{"action": "appointment", "create": true, ...}` |
+| `create_appointment` | 建立行事曆約會 | `{"action": "appointment", "create": true, "subject": "主題", "start": "2024-01-15T14:00:00", "end": "2024-01-15T15:00:00", "location": "地點", "body": "備註"}` |
 
 ## 開發指南
 
