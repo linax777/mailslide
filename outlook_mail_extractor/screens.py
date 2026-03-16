@@ -116,13 +116,15 @@ class MainConfigTab(Static):
             config = load_config(CONFIG_PATH)
             table.clear()
 
-            table.add_columns("名稱", "帳號", "來源資料夾", "目標資料夾", "Limit")
+            table.add_columns("名稱", "帳號", "來源", "目標", "Plugins", "Limit")
             for job in config.get("jobs", []):
+                plugins = ", ".join(job.get("plugins", [])) or "-"
                 table.add_row(
                     job.get("name", ""),
                     job.get("account", ""),
                     job.get("source", ""),
-                    job.get("destination", ""),
+                    job.get("destination", "") or "-",
+                    plugins,
                     str(job.get("limit", "")),
                 )
 

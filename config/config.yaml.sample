@@ -1,15 +1,34 @@
 # Main configuration - Jobs basic info
 # Rename to config.yaml to use
+#
+# Job fields:
+#   - name: Job name (display only)
+#   - account: Outlook account email
+#   - source: Source folder path (e.g., "收件匣/microsoft")
+#   - destination: Destination folder for auto-move (optional)
+#   - limit: Max emails to process per job
+#   - plugins: List of plugins to run (LLM analysis)
+#
+# IMPORTANT:
+#   - Use "destination" for simple auto-move (no LLM needed)
+#   - Use "plugins" for LLM analysis (add_category, create_appointment, etc.)
+#   - DO NOT use "move_to_folder" plugin together with "destination"
+#     (they both move emails and will conflict)
 
 jobs:
-  - name: "處理會議郵件"
+  - name: "處理microsoft郵件"
     account: "your@email.com"
-    filter: "meeting_filter"    # Reference to filters.yaml
-    plugins: ["move_to_folder", "add_category"]
+    source: "收件匣/microsoft"
+    destination: "收件匣/microsoft/processed"
     limit: 10
+    plugins:
+      - add_category
 
   - name: "處理帳單"
     account: "your@email.com"
-    filter: "bill_filter"
-    plugins: ["add_category"]
+    source: "收件匣/bills"
+    destination: "收件匣/bills/processed"
     limit: 5
+    plugins:
+      - add_category
+      - create_appointment
