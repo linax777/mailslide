@@ -1,5 +1,7 @@
 """Plugin base classes"""
 
+import json
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +29,19 @@ class BasePlugin(ABC):
 
     def __init__(self, config: dict | None = None):
         self.config = self._load_config(config or {})
+
+    def _parse_response(self, response: str) -> dict:
+        """Parse JSON from LLM response"""
+        clean = re.sub(r"^```json\s*", "", response.strip())
+        clean = re.sub(r"\s*```$", "", clean)
+        clean = clean.strip()
+        json_match = re.search(r"\{[^}]+\}", clean, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass
+        return {}
 
     def _load_config(self, config: dict) -> PluginConfig:
         return PluginConfig(
