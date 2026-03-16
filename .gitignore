@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# IDE
+.vscode/
+
 # config
 config/*.yaml
 config/plugins/*.yaml
