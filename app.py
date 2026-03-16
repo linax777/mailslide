@@ -30,7 +30,7 @@ class ConfirmScreen(ModalScreen[bool]):
 class OutlookMailExtractor(App):
     BINDINGS = [
         Binding("d", "toggle_dark", "Toggle dark mode"),
-        Binding(key="q", action="quit", description="Quit the app"),
+        Binding(key="q", action="confirm_quit", description="Quit the app"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -58,10 +58,12 @@ class OutlookMailExtractor(App):
             "textual-dark" if self.theme == "textual-light" else "textual-light"
         )
 
-    async def action_quit(self) -> None:
-        result = await self.push_screen(ConfirmScreen())
-        if result:
-            self.exit()
+    def action_confirm_quit(self) -> None:
+        def handle_result(result: bool | None) -> None:
+            if result:
+                self.exit()
+
+        self.push_screen(ConfirmScreen(), handle_result)
 
 
 if __name__ == "__main__":
