@@ -174,16 +174,22 @@ include_fields:                # 要包含的欄位
 
 ### 1. 下載 llama.cpp
 
-從 [llama.cpp Releases](https://github.com/ggerganov/llama.cpp/releases) 下載 `llama-server.exe`（Windows 版本）。
+從 [llama.cpp Releases](https://github.com/ggml-org/llama.cpp)，
+下載 `llama-server.exe`（ Windows 版本，CPU 版本只適合小模型。)
 
 ### 2. 啟動 Server
+
+推薦使用 qwen3.5 小模型，2B or 4B 對於郵件分類就有不錯的效果，
+而且小模型也能使用 CPU 執行，Q8 量化占用約 2-4G RAM。
+範例使用 Qwen3.5-2B-Q8_0.gguf (去 Hugginface 下載)
 
 ```powershell
 # 基本啟動指令
 .\llama-server.exe -m .\Qwen3.5-2B-Q8_0.gguf --port 8080
 
 # 關閉思考功能（推薦）
-.\llama-server.exe -m .\Qwen3.5-2B-Q8_0.gguf --port 8080 --chat_template_kwargs "{\"enable_thinking\":false}"
+.\llama-server.exe -m .\Qwen3.5-2B-Q8_0.gguf --port 8080 \
+--chat_template_kwargs '{\"enable_thinking\":false}'
 ```
 
 | 參數 | 說明 |

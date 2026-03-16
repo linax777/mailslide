@@ -1,6 +1,7 @@
 """UI 畫面 - TabbedContent 各標籤頁"""
 
 import asyncio
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -548,13 +549,10 @@ class LLMConfigTab(Static):
         content_widget = self.query_one("#llm-config-content", TextArea)
         table = self.query_one("#llm-table", DataTable)
 
-        if not LLM_CONFIG_PATH.exists():
-            content_widget.load_text("❌ 檔案不存在 (將使用預設值)")
-            return
-
         try:
             content = LLM_CONFIG_PATH.read_text(encoding="utf-8")
-            content_widget.load_text(content)
+            masked_content = re.sub(r"(api_key:\s*).+", r"\1***", content)
+            content_widget.load_text(masked_content)
 
             llm_config = load_llm_config()
             table.clear()
