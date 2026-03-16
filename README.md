@@ -26,6 +26,31 @@ uv sync
 
 > ⚠️ 請務必使用 `uv sync` 而非 `uv pip install`，以確保依賴版本一致性。
 
+## 初始化設定
+
+### 方法一：TUI 介面（推薦）
+
+1. 執行 `uv run app.py`
+2. 切換到 **About** 分頁（按 `A` 或點擊）
+3. 點擊 **初始化設定** 按鈕
+4. 程式會自動複製所有 `*.yaml.sample` 為 `*.yaml`
+
+### 方法二：手動複製
+
+```bash
+# 主設定檔
+copy config\config.yaml.sample config\config.yaml
+
+# LLM 設定
+copy config\llm-config.yaml.sample config\llm-config.yaml
+
+# 日誌設定
+copy config\logging.yaml.sample config\logging.yaml
+
+# 插件設定
+copy config\plugins\*.yaml.sample config\plugins\
+```
+
 ## 命令列模式（CLI）
 
 單次任務可直接使用 CLI 執行：
@@ -49,7 +74,7 @@ uv run outlook-extract --no-move
 
 ## 如何設定 config.yaml
 
-複製 `config/config.yaml.sample` 為 `config/config.yaml`，修改內容：
+開啟 `config/config.yaml`，修改內容：
 
 ```yaml
 jobs:
@@ -76,7 +101,7 @@ jobs:
 
 ## 設定 LLM（可選）
 
-若要使用 plugins，需設定 `config/llm-config.yaml`：
+若要使用 plugins，需編輯 `config/llm-config.yaml`：
 
 ```yaml
 provider: "openai"
@@ -98,7 +123,7 @@ model: "llama3"
 
 ### write_file 插件設定
 
-複製 `config/plugins/write_file.yaml.sample` 為 `config/plugins/write_file.yaml`：
+編輯 `config/plugins/write_file.yaml`：
 
 ```yaml
 enabled: true
@@ -118,6 +143,14 @@ include_fields:                # 要包含的欄位
 
 執行 `uv run app.py` 開啟 TUI 介面：
 
+| 按鍵 | 分頁 |
+|------|------|
+| `H` | Home：執行 Jobs、查看日誌 |
+| `S` | Schedule：設定自動排程 |
+| `G` | Guide：使用說明 |
+| `C` | Configuration：查看/編輯設定檔 |
+| `A` | About：系統狀態檢查、初始化設定 |
+
 - **Home**：執行 Jobs、查看日誌
 - **Schedule**：設定自動排程
 - **Guide**：使用說明
@@ -125,7 +158,7 @@ include_fields:                # 要包含的欄位
   - 一般設定：查看主設定檔與 Jobs 列表
   - LLM 設定：查看 LLM 設定值，可測試連線
   - Plugin 設定：查看各 Plugin 設定檔
-- **About**：系統狀態檢查
+- **About**：系統狀態檢查、初始化設定
 
 ## 需求
 

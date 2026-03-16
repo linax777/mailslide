@@ -70,13 +70,64 @@ class UsageScreen(Static):
 class AboutScreen(Container):
     """About 標籤頁 - 系統狀態檢查"""
 
+    CONFIG_DIR = Path("config")
+    SAMPLE_SUFFIX = ".yaml.sample"
+    VERSION = "0.1.0"
+    AUTHOR = "linax777"
+    REPO_URL = "https://github.com/linax777/outlook-mail-extractor"
+
     def compose(self) -> ComposeResult:
         yield Static("🔧 系統狀態", id="status-title")
         yield Static("", id="status-content")
-        yield Button("重新檢查", id="refresh-check", variant="primary")
+        with Horizontal():
+            yield Button("初始化設定", id="init-config", variant="primary")
+            yield Button("重新檢查", id="refresh-check", variant="default")
+        yield Static("", id="about-info")
 
     def on_mount(self) -> None:
+        self._update_init_button()
+        self._show_about_info()
         self.run_check()
+
+    def _show_about_info(self) -> None:
+        info = f"""📦 版本: {self.VERSION}
+👤 作者: {self.AUTHOR}
+🔗 GitHub: {self.REPO_URL}
+📜 授權: MIT License
+
+一款使用 Python + Textual 開發的 Outlook 郵件提取工具。"""
+        self.query_one("#about-info", Static).update(info)
+
+    def _update_init_button(self) -> None:
+        all_exist = self._check_all_configs_exist()
+        btn = self.query_one("#init-config", Button)
+        btn.disabled = all_exist
+
+    def _check_all_configs_exist(self) -> bool:
+        if not self.CONFIG_DIR.exists():
+            return False
+        sample_files = list(self.CONFIG_DIR.rglob(f"*{self.SAMPLE_SUFFIX}"))
+        for sample in sample_files:
+            yaml_path = sample.with_suffix("")
+            if not yaml_path.exists():
+                return False
+        return True
+
+    def _init_configs(self) -> tuple[int, int]:
+        copied = 0
+        skipped = 0
+        if not self.CONFIG_DIR.exists():
+            return (copied, skipped)
+        sample_files = list(self.CONFIG_DIR.rglob(f"*{self.SAMPLE_SUFFIX}"))
+        for sample in sample_files:
+            yaml_path = sample.with_suffix("")
+            if yaml_path.exists():
+                skipped += 1
+            else:
+                content = sample.read_text(encoding="utf-8")
+                yaml_path.write_text(content, encoding="utf-8")
+                copied += 1
+        return (copied, skipped)
 
     def run_check(self) -> None:
         status = self._perform_check()
@@ -129,7 +180,13 @@ class AboutScreen(Container):
         status_content.update("\n".join(lines))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "refresh-check":
+        if event.button.id == "init-config":
+            copied, skipped = self._init_configs()
+            self._update_init_button()
+            status_content = self.query_one("#status-content", Static)
+            status_content.update(f"已初始化設定檔 (新增: {copied}, 跳過: {skipped})")
+            self.run_check()
+        elif event.button.id == "refresh-check":
             self.run_check()
 
 
@@ -260,12 +317,14 @@ class ScheduleScreen(Static):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="schedule-container"):
-            yield Static("🔄 排程設定", id="schedule-title")
+            yield Static(
+                "🔄 排程設定，使用時須保持此程式(terminal)運行", id="schedule-title"
+            )
             with Vertical(id="schedule-toggle"):
                 yield Static("啟用排程:", id="schedule-enable-label")
                 yield Switch(id="schedule-switch")
             with Vertical(id="schedule-cron"):
-                yield Static("Cron 表達式:", id="cron-label")
+                yield Static("Cron 表達式，點擊下方區域可修改:", id="cron-label")
                 yield Input("0 * * * *", id="cron-input", placeholder="* * * * *")
             yield Static("常用範例:", id="examples-title")
             yield Static(
@@ -466,7 +525,7 @@ class LLMConfigTab(Static):
             yield DataTable(id="llm-table")
             yield Static("💡 說明", id="llm-help-title")
             yield Static(
-                "• Provider: LLM 供應商 (openai/ollama/anthropic 等)\n"
+                "• Provider: LLM 供應商 (openai/ollama/llama.cpp 等)\n"
                 "• API Base: API 伺服器位址 (如 Ollama 本機: http://localhost:11434/v1)\n"
                 "• API Key: API 密鑰 (OpenAI 需要，其他可能可留空)\n"
                 "• Model: 模型名稱 (如 llama3, gpt-4 等)\n"

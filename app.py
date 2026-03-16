@@ -30,6 +30,11 @@ class ConfirmScreen(ModalScreen[bool]):
 
 class OutlookMailExtractor(App):
     BINDINGS = [
+        Binding("h", "show_tab('home')", "Home"),
+        Binding("s", "show_tab('schedule')", "Schedule"),
+        Binding("g", "show_tab('usage')", "Guide"),
+        Binding("c", "show_tab('config')", "Config"),
+        Binding("a", "show_tab('about')", "About"),
         Binding("d", "toggle_dark", "Toggle dark mode"),
         Binding(key="q", action="confirm_quit", description="Quit the app"),
     ]
@@ -40,7 +45,7 @@ class OutlookMailExtractor(App):
         with TabbedContent(initial="home"):
             with TabPane("Home", id="home"):
                 yield HomeScreen()
-            with TabPane("schedule", id="schedule"):
+            with TabPane("Schedule", id="schedule"):
                 yield ScheduleScreen()
             with TabPane("Guide", id="usage"):
                 yield UsageScreen()
