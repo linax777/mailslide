@@ -167,3 +167,40 @@ include_fields:                # 要包含的欄位
 - Windows 作業系統
 - Outlook Classic（不是 New Outlook）
 - Outlook 必須在執行期間開啟
+
+## 本地 LLM（ llama.cpp）
+
+本專案支援使用本地 LLM（如 llama.cpp），無需連接外部 API。
+
+### 1. 下載 llama.cpp
+
+從 [llama.cpp Releases](https://github.com/ggerganov/llama.cpp/releases) 下載 `llama-server.exe`（Windows 版本）。
+
+### 2. 啟動 Server
+
+```powershell
+# 基本啟動指令
+.\llama-server.exe -m .\Qwen3.5-2B-Q8_0.gguf --port 8080
+
+# 關閉思考功能（推薦）
+.\llama-server.exe -m .\Qwen3.5-2B-Q8_0.gguf --port 8080 --chat_template_kwargs "{\"enable_thinking\":false}"
+```
+
+| 參數 | 說明 |
+|------|------|
+| `-m` | 模型檔案路徑 |
+| `--port` | 伺服器連接埠（預設 8080） |
+| `--chat_template_kwargs` | 額外參數，如關閉思考功能 |
+
+### 3. 設定 config/llm-config.yaml
+
+```yaml
+provider: "openai"
+api_base: "http://localhost:8080/v1"
+api_key: "any"
+model: "qwen3"
+```
+
+- `api_base`： llama.cpp server 的位址（須包含 `/v1`）
+- `api_key`：任意字串（llama.cpp 不需要驗證）
+- `model`：模型名稱（須與 GGUF 檔案對應）
