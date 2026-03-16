@@ -4,7 +4,7 @@ from datetime import datetime
 
 from loguru import logger
 
-from . import BasePlugin, register_plugin
+from . import BasePlugin, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -14,13 +14,29 @@ class CreateAppointmentPlugin(BasePlugin):
     name = "create_appointment"
     default_system_prompt = """你是一個日曆助手。分析以下郵件內容，判斷是否包含預約、會議或行程資訊。
 
-回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
+回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。"""
 
-需要建立約會時：
-{"action": "appointment", "create": true, "subject": "約會主題", "start": "2024-01-15T14:00:00", "end": "2024-01-15T15:00:00", "location": "會議室或線上連結", "body": "額外備註"}
+    default_response_json_format = {
+        "create_true": '{"action": "appointment", "create": true, "subject": "約會主題", "start": "2024-01-15T14:00:00", "end": "2024-01-15T15:00:00", "location": "會議室或線上連結", "body": "額外備註"}',
+        "create_false": '{"action": "appointment", "create": false}',
+    }
+    default_recipients: list[str] = []
 
-不需要建立約會時：
-{"action": "appointment", "create": false}"""
+    def __init__(self, config: dict | None = None):
+        config = config or {}
+        self.config = self._load_config(config)
+        self.recipients: list[str] = config.get("recipients", self.default_recipients)
+
+    def _load_config(self, config: dict) -> PluginConfig:
+        return PluginConfig(
+            enabled=config.get("enabled", True),
+            system_prompt=config.get("system_prompt", self.default_system_prompt),
+            response_format=config.get("response_format", "json"),
+            override_prompt=config.get("override_prompt"),
+            response_json_format=config.get(
+                "response_json_format", self.default_response_json_format
+            ),
+        )
 
     async def execute(
         self,
@@ -84,6 +100,15 @@ class CreateAppointmentPlugin(BasePlugin):
             appointment.End = end
             appointment.Location = response_data.get("location", "")
             appointment.Body = response_data.get("body", "")
+
+            # Add optional recipients from config (not from LLM response)
+            if self.recipients:
+                for recipient_email in self.recipients:
+                    if recipient_email:
+                        recipient = appointment.Recipients.Add(recipient_email)
+                        recipient.Type = 1  # 1 = olTo, 2 = olCC, 3 = olBCC
+                        recipient.Resolve()
+
             appointment.Save()
             return True
 

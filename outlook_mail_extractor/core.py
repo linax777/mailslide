@@ -245,7 +245,7 @@ class EmailProcessor:
         system_prompts = []
         for plugin in plugins:
             if plugin.config.enabled:
-                system_prompts.append(plugin.effective_prompt)
+                system_prompts.append(plugin.build_effective_prompt())
 
         if not system_prompts:
             return EmailAnalysisResult(

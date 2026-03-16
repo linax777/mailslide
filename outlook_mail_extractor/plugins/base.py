@@ -19,6 +19,7 @@ class PluginConfig:
     system_prompt: str = ""
     response_format: str = "json"
     override_prompt: str | None = None
+    response_json_format: dict[str, str] | None = None
 
 
 class BasePlugin(ABC):
@@ -49,12 +50,37 @@ class BasePlugin(ABC):
             system_prompt=config.get("system_prompt", self.default_system_prompt),
             response_format=config.get("response_format", "json"),
             override_prompt=config.get("override_prompt"),
+            response_json_format=config.get("response_json_format"),
         )
 
     @property
     def effective_prompt(self) -> str:
         """Get the effective system prompt (override takes priority)"""
         return self.config.override_prompt or self.config.system_prompt
+
+    def build_effective_prompt(self) -> str:
+        """
+        Build the effective system prompt including JSON format examples.
+
+        If response_json_format is defined in config, append the format examples
+        to the system prompt automatically.
+        """
+        base_prompt = self.effective_prompt
+        json_format = self.config.response_json_format
+
+        if not json_format:
+            return base_prompt
+
+        format_examples = []
+        if "create_true" in json_format:
+            format_examples.append(f"需要建立約會時：\n{json_format['create_true']}")
+        if "create_false" in json_format:
+            format_examples.append(f"不需要建立約會時：\n{json_format['create_false']}")
+
+        if format_examples:
+            return f"{base_prompt}\n\n{' '.join(format_examples)}"
+
+        return base_prompt
 
     @abstractmethod
     async def execute(

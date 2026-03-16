@@ -4,23 +4,21 @@
 enabled: true
 
 # Default system prompt for this plugin
-# LLM should respond with JSON for appointment details
+# The JSON format will be automatically appended to this prompt
 system_prompt: |
   你是一個日曆助手。分析以下郵件內容，判斷是否包含預約、會議或行程資訊。
   
-  如果需要建立約會，回覆以下 JSON 格式：
-  {
-    "action": "appointment",
-    "create": true,
-    "subject": "約會主題",
-    "start": "2024-01-15T14:00:00",  # ISO 格式時間
-    "end": "2024-01-15T15:00:00",
-    "location": "會議室或線上連結",
-    "body": "額外備註"
-  }
-  
-  如果不需要建立約會：
-  {"action": "appointment", "create": false}
+  回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
+
+# JSON response format (automatically appended to system prompt)
+# This format is fixed and should not be modified by users
+response_json_format:
+  create_true: '{"action": "appointment", "create": true, "subject": "約會主題", "start": "2024-01-15T14:00:00", "end": "2024-01-15T15:00:00", "location": "會議室或線上連結", "body": "額外備註"}'
+  create_false: '{"action": "appointment", "create": false}'
+
+# Recipients to add to appointments (configured here, not by LLM)
+# Example: ["john@example.com", "jane@example.com"]
+recipients: []
 
 # Response format (json, text)
 response_format: "json"
