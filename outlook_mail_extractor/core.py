@@ -6,6 +6,7 @@ import pythoncom
 import win32com.client
 
 from .llm import LLMClient, load_llm_config
+from .logger import LoggerManager, get_logger
 from .models import (
     CheckStatus,
     EmailAnalysisResult,
@@ -128,7 +129,7 @@ class EmailProcessor:
             "_account": None,  # Will be set by caller
         }
 
-    def process_job(
+    async def process_job(
         self,
         job_config: dict,
         llm_client: LLMClient | None = None,
@@ -186,7 +187,7 @@ class EmailProcessor:
         # Process each email
         results = []
         for msg in msg_list:
-            result = self._process_email(
+            result = await self._process_email(
                 msg,
                 account_name,
                 llm_client,
@@ -198,7 +199,7 @@ class EmailProcessor:
 
         return results
 
-    def _process_email(
+    async def _process_email(
         self,
         message,
         account_name: str,
@@ -208,11 +209,14 @@ class EmailProcessor:
         dst_folder=None,
     ) -> EmailAnalysisResult:
         """Process single email with LLM and plugins"""
+        logger = get_logger()
+
         # Extract email data
         email_data = self.extract_email_data(message)
         email_data["_account"] = account_name
 
         subject = email_data.get("subject", "Unknown")
+        logger.info(f"處理郵件: {subject}")
 
         # If no LLM or plugins, just return basic data
         if not llm_client or not plugins:
@@ -243,6 +247,8 @@ class EmailProcessor:
         # Combine system prompts
         combined_system = "\n\n---\n\n".join(system_prompts)
 
+        logger = get_logger()
+
         # Call LLM
         llm_response = ""
         success = True
@@ -250,17 +256,20 @@ class EmailProcessor:
 
         try:
             llm_response = llm_client.chat(combined_system, user_prompt)
+            logger.debug(f"LLM 回覆: {llm_response}")
         except Exception as e:
             success = False
             error_msg = str(e)
+            logger.error(f"LLM 呼叫失敗: {e}")
 
         # Execute plugins
         plugin_results = []
         if success and not dry_run:
             for plugin in plugins:
                 if plugin.config.enabled:
+                    logger.info(f"執行 Plugin: {plugin.name}")
                     try:
-                        plugin_success = plugin.execute(
+                        plugin_success = await plugin.execute(
                             email_data, llm_response, self._client
                         )
                         plugin_results.append(
@@ -270,7 +279,14 @@ class EmailProcessor:
                                 message="Success" if plugin_success else "Failed",
                             )
                         )
+                        if plugin_success:
+                            logger.info(f"Plugin {plugin.name}: Success")
+                        else:
+                            logger.warning(
+                                f"Plugin {plugin.name}: Failed (回覆非預期格式)"
+                            )
                     except Exception as e:
+                        logger.exception(f"Plugin {plugin.name} error: {e}")
                         plugin_results.append(
                             PluginResult(
                                 plugin_name=plugin.name,
@@ -330,7 +346,7 @@ def check_llm_config(config_file: str | None = None) -> LLMConfigStatus:
         )
 
 
-def process_config_file(
+async def process_config_file(
     config_file: Path | str = "config/config.yaml",
     dry_run: bool = False,
 ) -> dict:
@@ -344,37 +360,54 @@ def process_config_file(
     Returns:
         All job results
     """
-    from .config import load_config
+    logger = get_logger()
 
-    config = load_config(config_file)
-    client = OutlookClient()
-    client.connect()
-
-    # Try to load LLM config
-    llm_config = load_llm_config()
-    llm_client = None
-    if llm_config.api_base:
-        llm_client = LLMClient(llm_config)
-
-    # Load plugin configs
-    plugin_configs = load_plugin_configs()
+    log_path = LoggerManager.start_session()
+    logger.info(f"開始執行，日誌文件: {log_path}")
+    logger.info(f"Config: {config_file}, Dry-run: {dry_run}")
 
     try:
+        from .config import load_config
+
+        config = load_config(config_file)
+        client = OutlookClient()
+        client.connect()
+
+        # Try to load LLM config
+        llm_config = load_llm_config()
+        llm_client = None
+        if llm_config.api_base:
+            llm_client = LLMClient(llm_config)
+            logger.info(f"LLM 客戶端已初始化: {llm_config.model}")
+
+        # Load plugin configs
+        plugin_configs = load_plugin_configs()
+        logger.info(f"已載入 {len(plugin_configs)} 個插件配置")
+
         processor = EmailProcessor(client)
         all_results = {}
 
         for job in config.get("jobs", []):
             job_name = job.get("name", "Unnamed Job")
-            results = processor.process_job(
+            logger.info(f"開始處理 Job: {job_name}")
+            results = await processor.process_job(
                 job,
                 llm_client=llm_client,
                 plugin_configs=plugin_configs,
                 dry_run=dry_run,
             )
             all_results[job_name] = results
+            logger.info(f"Job {job_name} 完成，處理 {len(results)} 封郵件")
 
+        logger.info("執行完成")
         return clean_invisible_chars(all_results)
+    except Exception as e:
+        logger.exception(f"執行失敗: {e}")
+        raise
     finally:
+        if llm_client:
+            llm_client.close()
         client.disconnect()
+        logger.info("已斷開 Outlook 連接")
         if llm_client:
             llm_client.close()

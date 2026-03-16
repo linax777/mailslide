@@ -1,15 +1,21 @@
 """命令列入口點"""
 
 import argparse
+import asyncio
 import json
 import sys
 from pathlib import Path
 
 from . import process_config_file
+from .logger import LoggerManager, get_logger
 
 
-def main():
+async def main():
     """CLI 主函式"""
+    LoggerManager.start_session()
+    logger = get_logger()
+    logger.info("命令列執行開始")
+
     parser = argparse.ArgumentParser(
         description="讀取 Outlook Classic 指定帳號/目錄郵件 輸出 JSON"
     )
@@ -42,13 +48,13 @@ def main():
 
     if not args.config.exists():
         print(f"錯誤: 找不到設定檔 {args.config}", file=sys.stderr)
+        logger.error(f"找不到設定檔: {args.config}")
         sys.exit(1)
 
     try:
-        results = process_config_file(
+        results = await process_config_file(
             config_file=args.config,
             dry_run=args.dry_run,
-            move_on_process=not args.no_move,
         )
 
         json_str = json.dumps(results, ensure_ascii=False, indent=2)
@@ -57,13 +63,17 @@ def main():
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(json_str)
             print(f"結果已儲存至 {args.output.resolve()}")
+            logger.info(f"結果已儲存至 {args.output.resolve()}")
         else:
             print(json_str)
 
+        logger.info("命令列執行完成")
+
     except Exception as e:
+        logger.exception(f"執行失敗: {e}")
         print(f"錯誤: {e}", file=sys.stderr)
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

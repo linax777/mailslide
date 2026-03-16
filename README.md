@@ -19,6 +19,7 @@ uv run python app.py
 - **插件系統**：可擴充的自動化處理插件
 - **排程執行**：支援 cron 表達式定期執行
 - **圖形介面**：直覺的 Textual TUI 介面
+- **即時日誌**：執行時即時顯示日誌，並保存到日誌檔案
 
 ## 專案架構
 
@@ -30,17 +31,19 @@ uv run python app.py
 │   ├── config.yaml.sample      # 設定檔範本
 │   ├── llm-config.yaml         # LLM API 設定
 │   ├── llm-config.yaml.sample  # LLM 設定範本
+│   ├── logging.yaml            # 日誌設定
 │   └── plugins/               # 插件設定
 │       ├── move_to_folder.yaml.sample
 │       ├── add_category.yaml.sample
 │       └── create_appointment.yaml.sample
-│
+├── logs/                      # 日誌輸出目錄
 └── outlook_mail_extractor/
     ├── __init__.py
     ├── __main__.py           # CLI 入口點
     ├── config.py             # 設定檔載入與驗證
     ├── core.py               # Outlook COM 連線與郵件處理
     ├── llm.py                # LLM API 整合
+    ├── logger.py             # 日誌管理
     ├── parser.py              # 郵件內容解析
     ├── models.py              # 資料模型
     ├── screens.py             # UI 畫面
@@ -166,6 +169,30 @@ class MyPlugin(BasePlugin):
 - **httpx** - HTTP 客戶端 (LLM API)
 - **BeautifulSoup** - HTML 解析
 - **pycron** - Cron 表達式解析
+- **loguru** - 日誌記錄
+
+## 日誌系統
+
+每次執行會自動建立新的日誌檔案：
+
+- **日誌目錄**：`logs/`
+- **檔案命名**：`session_YYYYMMDD_HHMMSS.log`
+- **滾動大小**：100MB
+- **保留時間**：1 週
+- **壓縮格式**：ZIP
+
+### 日誌設定 (config/logging.yaml)
+
+```yaml
+logging:
+  # UI 顯示的最低級別 (DEBUG, INFO, WARNING, ERROR)
+  display_level: "INFO"
+```
+
+### 即時日誌
+
+- TUI 介面 Home 分頁會即時顯示日誌內容
+- 日誌級別可通過 `display_level` 設定過濾
 
 ## 開發注意事項
 
@@ -227,11 +254,11 @@ uv run mypy .
 
 1. **UI 增強**
    - 支援設定檔編輯器
-   - 新增詳細的錯誤日誌
+   - ~~新增詳細的錯誤日誌~~ ✅ 已完成
 
 2. **錯誤處理**
    - 新增 LLM API 連線失敗的重試機制
-   - 新增詳細的錯誤日誌
+   - ~~新增詳細的錯誤日誌~~ ✅ 已完成
 
 ### 中期規劃
 

@@ -20,7 +20,7 @@ class OutlookMailExtractor(App):
         with TabbedContent(initial="home"):
             with TabPane("Home", id="home"):
                 yield HomeScreen()
-            with TabPane("排程", id="schedule"):
+            with TabPane("schedule", id="schedule"):
                 yield ScheduleScreen()
             with TabPane("About", id="about"):
                 yield AboutScreen()

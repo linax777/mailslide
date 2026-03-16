@@ -25,12 +25,15 @@ from outlook_mail_extractor.core import (
     process_config_file,
 )
 from outlook_mail_extractor.llm import load_llm_config
+from outlook_mail_extractor.logger import LoggerManager
 
 from .models import CheckStatus, ConfigStatus, OutlookStatus, SystemStatus
 
 CONFIG_PATH = Path("config/config.yaml")
 LLM_CONFIG_PATH = Path("config/llm-config.yaml")
 PLUGINS_DIR = Path("config/plugins")
+
+LEVEL_PRIORITY = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
 
 
 class AboutScreen(Static):
@@ -113,6 +116,7 @@ class HomeScreen(Static):
         self._scheduler_enabled = False
         self._cron_expression = "0 * * * *"  # Default: every hour
         self._last_run_time = None
+        self._polling = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="home-container"):
@@ -160,16 +164,19 @@ class HomeScreen(Static):
 
     def run_jobs(self) -> None:
         log_widget = self.query_one("#log-output", TextArea)
-        log_widget.load_text("🔄 執行中...\n")
+        log_widget.load_text("🔄 初始化日誌...\n")
+
+        LoggerManager.start_session()
 
         run_button = self.query_one("#run-jobs", Button)
         run_button.disabled = True
 
-        async def run_jobs():
+        self._polling = True
+        self.set_timer(1, self._poll_log)
+
+        async def execute_jobs():
             try:
-                results = await asyncio.to_thread(
-                    process_config_file, CONFIG_PATH, False
-                )
+                results = await process_config_file(CONFIG_PATH, False)
                 lines = ["✅ 執行完成\n"]
                 if results:
                     for job_name, job_results in results.items():
@@ -185,7 +192,41 @@ class HomeScreen(Static):
             except Exception as e:
                 self.call_later(self._update_log, f"❌ 執行失敗: {e}")
             finally:
+                self._polling = False
                 self.call_later(self._enable_button)
+
+        asyncio.create_task(execute_jobs())
+
+    def _poll_log(self) -> None:
+        if not self._polling:
+            return
+
+        log_path = LoggerManager.get_current_log_path()
+        if log_path and log_path.exists():
+            try:
+                content = log_path.read_text(encoding="utf-8")
+                filtered = self._filter_by_level(content)
+                self.query_one("#log-output", TextArea).load_text(filtered)
+            except Exception:
+                pass
+
+        if self._polling:
+            self.set_timer(1, self._poll_log)
+
+    def _filter_by_level(self, content: str) -> str:
+        """根據 display_level 過濾日誌"""
+        min_level = LEVEL_PRIORITY.get(LoggerManager.get_display_level(), 1)
+
+        lines = []
+        for line in content.split("\n"):
+            if not line.strip():
+                continue
+            for level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
+                if f"][{level}]" in line:
+                    if LEVEL_PRIORITY[level] >= min_level:
+                        lines.append(line)
+                    break
+        return "\n".join(lines)
 
         asyncio.create_task(run_jobs())
 

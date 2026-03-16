@@ -76,10 +76,21 @@ class MoveToFolderPlugin(BasePlugin):
 
     def _parse_response(self, response: str) -> dict:
         """Parse JSON from LLM response"""
+        import json
+        import re
+
+        # Remove markdown code block wrappers
+        clean = re.sub(r"^```json\s*", "", response.strip())
+        clean = re.sub(r"\s*```$", "", clean)
+        clean = clean.strip()
+
         # Try to extract JSON from response
-        json_match = re.search(r"\{[^}]+\}", response, re.DOTALL)
+        json_match = re.search(r"\{[^}]+\}", clean, re.DOTALL)
         if json_match:
-            return json.loads(json_match.group())
+            try:
+                return json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass
         return {}
 
     def _map_folder(self, folder_name: str) -> str:

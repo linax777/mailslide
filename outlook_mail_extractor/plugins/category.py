@@ -85,7 +85,19 @@ class AddCategoryPlugin(BasePlugin):
 
     def _parse_response(self, response: str) -> dict:
         """Parse JSON from LLM response"""
-        json_match = re.search(r"\{[^}]+\}", response, re.DOTALL)
+        import json
+        import re
+
+        # Remove markdown code block wrappers
+        clean = re.sub(r"^```json\s*", "", response.strip())
+        clean = re.sub(r"\s*```$", "", clean)
+        clean = clean.strip()
+
+        # Try to find JSON object
+        json_match = re.search(r"\{[^}]+\}", clean, re.DOTALL)
         if json_match:
-            return json.loads(json_match.group())
+            try:
+                return json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass
         return {}

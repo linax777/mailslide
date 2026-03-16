@@ -14,18 +14,12 @@ class CreateAppointmentPlugin(BasePlugin):
     name = "create_appointment"
     default_system_prompt = """你是一個日曆助手。分析以下郵件內容，判斷是否包含預約、會議或行程資訊。
 
-如果需要建立約會，回覆以下 JSON 格式：
-{
-  "action": "appointment",
-  "create": true,
-  "subject": "約會主題",
-  "start": "2024-01-15T14:00:00",
-  "end": "2024-01-15T15:00:00",
-  "location": "會議室或線上連結",
-  "body": "額外備註"
-}
+回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
 
-如果不需要建立約會：
+需要建立約會時：
+{"action": "appointment", "create": true, "subject": "約會主題", "start": "2024-01-15T14:00:00", "end": "2024-01-15T15:00:00", "location": "會議室或線上連結", "body": "額外備註"}
+
+不需要建立約會時：
 {"action": "appointment", "create": false}"""
 
     async def execute(
@@ -88,9 +82,21 @@ class CreateAppointmentPlugin(BasePlugin):
 
     def _parse_response(self, response: str) -> dict:
         """Parse JSON from LLM response"""
-        json_match = re.search(r"\{[^}]+\}", response, re.DOTALL)
+        import json
+        import re
+
+        # Remove markdown code block wrappers
+        clean = re.sub(r"^```json\s*", "", response.strip())
+        clean = re.sub(r"\s*```$", "", clean)
+        clean = clean.strip()
+
+        # Try to find JSON object
+        json_match = re.search(r"\{[^}]+\}", clean, re.DOTALL)
         if json_match:
-            return json.loads(json_match.group())
+            try:
+                return json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass
         return {}
 
     def _parse_datetime(self, dt_str: str) -> datetime | None:

@@ -10,6 +10,7 @@ from .core import (
     process_config_file,
 )
 from .llm import LLMClient, LLMConfig, LLMError, load_llm_config
+from .logger import LoggerManager, get_logger
 from .models import (
     CheckStatus,
     ConfigStatus,
@@ -52,4 +53,7 @@ __all__ = [
     "clean_content",
     "clean_invisible_chars",
     "parse_tables",
+    # Logger
+    "LoggerManager",
+    "get_logger",
 ]
