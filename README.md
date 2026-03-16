@@ -51,6 +51,8 @@ copy config\logging.yaml.sample config\logging.yaml
 copy config\plugins\*.yaml.sample config\plugins\
 ```
 
+> ⚠️ 初始化完成後，請務必打開各項設定檔，根據您的需求修改內容（如帳號、資料夾名稱、插件參數等）。
+
 ## 命令列模式（CLI）
 
 單次任務可直接使用 CLI 執行：
