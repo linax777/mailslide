@@ -167,23 +167,20 @@ class HomeScreen(Static):
     def run_jobs(self) -> None:
         log_widget = self.query_one("#log-output", Log)
         log_widget.clear()
-        log_widget.write_line("🔄 初始化日誌...")
 
-        LoggerManager.start_session()
-        log_path = LoggerManager.get_current_log_path()
-        log_widget.write_line(f"日誌文件: {log_path}")
+        # 設置 UI sink 回調
+        def ui_sink(message: str) -> None:
+            self.app.call_from_thread(log_widget.write_line, message)
+
+        LoggerManager.set_ui_sink(ui_sink)
+        LoggerManager.start_session(enable_ui_sink=True)
 
         run_button = self.query_one("#run-jobs", Button)
         run_button.disabled = True
 
-        self._polling = True
-        self.set_timer(0.3, self._poll_log)
-
-        self.run_worker(self._execute_jobs(), exclusive=True)
+        self.run_worker(self._execute_jobs(), exclusive=True, thread=True)
 
     async def _execute_jobs(self) -> None:
-        self._polling = True
-
         try:
             results = await process_config_file(CONFIG_PATH, False)
             self.call_later(self._update_log, "✅ 執行完成")
@@ -193,49 +190,8 @@ class HomeScreen(Static):
             error_msg = f"❌ 執行失敗: {e}\n{traceback.format_exc()}"
             self.call_later(self._update_log, error_msg)
         finally:
-            self._polling = False
+            LoggerManager.set_ui_sink(None)
             self.call_later(self._enable_button)
-
-    def _poll_log(self) -> None:
-        if not self._polling:
-            return
-
-        log_path = LoggerManager.get_current_log_path()
-        if log_path and log_path.exists():
-            try:
-                content = log_path.read_text(encoding="utf-8")
-                filtered = self._filter_by_level(content)
-                if filtered:
-                    self._update_log_display(filtered)
-            except Exception:
-                pass
-
-        if self._polling:
-            self.set_timer(0.3, self._poll_log)
-
-    def _update_log_display(self, text: str) -> None:
-        try:
-            log = self.query_one("#log-output", Log)
-            for line in text.split("\n"):
-                if line.strip():
-                    log.write_line(line)
-        except Exception:
-            pass
-
-    def _filter_by_level(self, content: str) -> str:
-        """根據 display_level 過濾日誌"""
-        min_level = LEVEL_PRIORITY.get(LoggerManager.get_display_level(), 1)
-
-        lines = []
-        for line in content.split("\n"):
-            if not line.strip():
-                continue
-            for level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
-                if f"][{level}]" in line:
-                    if LEVEL_PRIORITY[level] >= min_level:
-                        lines.append(line)
-                    break
-        return "\n".join(lines)
 
     def _update_log(self, text: str) -> None:
         try:

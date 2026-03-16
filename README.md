@@ -189,10 +189,39 @@ logging:
   display_level: "INFO"
 ```
 
-### 即時日誌
+### 即時日誌顯示 (重要)
 
-- TUI 介面 Home 分頁會即時顯示日誌內容
-- 日誌級別可通過 `display_level` 設定過濾
+TUI 介面 Home 分頁會即時顯示日誌內容。這是通過 loguru 的多重 sink 實現：
+
+1. **File Sink** - 寫入日誌檔案（包含 DEBUG 等詳細資訊）
+2. **UI Sink** - 即時寫入 Textual Log Widget（只顯示 INFO+）
+
+#### 實作要點
+
+1. **使用 `thread=True` 的 Worker**：
+   ```python
+   # 在獨立執行緒中運行 worker，讓 call_from_thread 能正常工作
+   self.run_worker(self._execute_jobs(), exclusive=True, thread=True)
+   ```
+
+2. **UI Sink 回調需使用 `call_from_thread`**：
+   ```python
+   def ui_sink(message: str) -> None:
+       self.app.call_from_thread(log_widget.write_line, message)
+   ```
+
+3. **Loguru 多重 Sink 配置**：
+   ```python
+   # File sink
+   logger.add(log_file, level="DEBUG", format="...")
+
+   # UI sink (仅 INFO+)
+   logger.add(ui_sink_callback, level="INFO", format="...")
+   ```
+
+4. **避免重複創建 Session**：
+   - 在 `screens.py` 中創建帶 UI sink 的 session
+   - 在 `core.py` 中複用現有 session（不要再次調用 `start_session()`）
 
 ## 開發注意事項
 
