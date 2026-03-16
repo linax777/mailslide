@@ -134,6 +134,10 @@ class HomeScreen(Static):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="home-container"):
+            yield Static(
+                "⌨️ Tab/方向鍵: 選擇 | Enter: 執行 | 🖱️ 可使用滑鼠操作點擊元件",
+                id="help-text",
+            )
             with Horizontal(id="home-actions"):
                 yield Button("▶️ 執行", id="run-jobs", variant="primary")
                 yield Button("🔄 重新整理", id="refresh-jobs")

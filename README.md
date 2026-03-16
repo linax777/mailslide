@@ -2,6 +2,30 @@
 
 從 Outlook 提取郵件工具，支援 LLM 分析與自動化處理
 
+## 安裝 uv（必備）
+
+本專案使用 [uv](https://github.com/astral-sh/uv) 管理 Python 依賴，請先安裝 uv：
+
+```powershell
+# PowerShell (Windows)
+irm https://astral.sh/uv/install.ps1 | iex
+
+# 或使用 pip
+pip install uv
+
+# 或使用 winget
+winget install astral-sh.uv
+```
+
+## 安裝依賴
+
+```bash
+# 安裝專案依賴（同步模式）
+uv sync
+```
+
+> ⚠️ 請務必使用 `uv sync` 而非 `uv pip install`，以確保依賴版本一致性。
+
 ## 命令列模式（CLI）
 
 單次任務可直接使用 CLI 執行：
@@ -71,6 +95,8 @@ model: "llama3"
 | create_appointment | AI 分析郵件內容建立行事曆約會 |
 
 ## 圖形介面
+
+> 💡 建議使用 PowerShell 執行本程式，以獲得更好的相容性與顯示效果。
 
 執行 `uv run python app.py` 開啟 TUI 介面：
 
