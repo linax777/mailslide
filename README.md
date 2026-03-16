@@ -41,11 +41,13 @@ jobs:
 | 設定項 | 說明 |
 |--------|------|
 | name | 工作名稱（隨意命名） |
-| account | Outlook 帳號 Email |
+| account | Outlook 帳號 Email 或資料檔案(pst)名稱 |
 | source | 來源資料夾（如「收件匣」） |
-| destination | 處理後移動到（可省略） |
+| destination | 處理後移動到（可省略，若省略則郵件不會移動，可能重複處理） |
 | limit | 處理的郵件數量 |
 | plugins | 啟用的插件（可省略） |
+
+> 💡 提示：若使用 `move_to_folder` 插件讓 LLM 決定移動目錄，則省略 `destination`，由插件負責移動。
 
 ## 設定 LLM（可選）
 
