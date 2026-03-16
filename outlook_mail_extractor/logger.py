@@ -49,7 +49,8 @@ class LoggerManager:
             level="DEBUG",
             format="[{time:YYYY-MM-DD HH:mm:ss}][{level}] {message}",
             encoding="utf-8",
-            enqueue=True,
+            enqueue=False,
+            diagnose=False,
         )
 
         logger.info(f"日誌 session 開始，display_level: {cls._display_level}")

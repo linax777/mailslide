@@ -10,6 +10,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import (
     Button,
     DataTable,
+    Log,
     Static,
     Switch,
     TabbedContent,
@@ -17,6 +18,7 @@ from textual.widgets import (
     TextArea,
     Input,
 )
+from textual.worker import Worker, WorkerState
 
 from outlook_mail_extractor.config import load_config
 from outlook_mail_extractor.core import (
@@ -126,7 +128,7 @@ class HomeScreen(Static):
             yield Static("📋 Jobs 列表", id="jobs-title")
             yield DataTable(id="jobs-table")
             yield Static("📝 執行日誌", id="log-title")
-            yield TextArea("", id="log-output", read_only=True)
+            yield Log(id="log-output", auto_scroll=True)
 
     def on_mount(self) -> None:
         self._load_jobs()
@@ -163,39 +165,36 @@ class HomeScreen(Static):
             self.run_jobs()
 
     def run_jobs(self) -> None:
-        log_widget = self.query_one("#log-output", TextArea)
-        log_widget.load_text("🔄 初始化日誌...\n")
+        log_widget = self.query_one("#log-output", Log)
+        log_widget.clear()
+        log_widget.write_line("🔄 初始化日誌...")
 
         LoggerManager.start_session()
+        log_path = LoggerManager.get_current_log_path()
+        log_widget.write_line(f"日誌文件: {log_path}")
 
         run_button = self.query_one("#run-jobs", Button)
         run_button.disabled = True
 
         self._polling = True
-        self.set_timer(1, self._poll_log)
+        self.set_timer(0.3, self._poll_log)
 
-        async def execute_jobs():
-            try:
-                results = await process_config_file(CONFIG_PATH, False)
-                lines = ["✅ 執行完成\n"]
-                if results:
-                    for job_name, job_results in results.items():
-                        lines.append(f"\n--- {job_name} ---")
-                        lines.append(f"處理郵件數: {len(job_results)}")
-                        for result in job_results:
-                            status = "✅" if result.success else "❌"
-                            lines.append(f"{status} {result.email_subject}")
-                            if result.plugin_results:
-                                for pr in result.plugin_results:
-                                    lines.append(f"   - {pr.plugin_name}: {pr.message}")
-                self.call_later(self._update_log, "\n".join(lines))
-            except Exception as e:
-                self.call_later(self._update_log, f"❌ 執行失敗: {e}")
-            finally:
-                self._polling = False
-                self.call_later(self._enable_button)
+        self.run_worker(self._execute_jobs(), exclusive=True)
 
-        asyncio.create_task(execute_jobs())
+    async def _execute_jobs(self) -> None:
+        self._polling = True
+
+        try:
+            results = await process_config_file(CONFIG_PATH, False)
+            self.call_later(self._update_log, "✅ 執行完成")
+        except Exception as e:
+            import traceback
+
+            error_msg = f"❌ 執行失敗: {e}\n{traceback.format_exc()}"
+            self.call_later(self._update_log, error_msg)
+        finally:
+            self._polling = False
+            self.call_later(self._enable_button)
 
     def _poll_log(self) -> None:
         if not self._polling:
@@ -206,12 +205,22 @@ class HomeScreen(Static):
             try:
                 content = log_path.read_text(encoding="utf-8")
                 filtered = self._filter_by_level(content)
-                self.query_one("#log-output", TextArea).load_text(filtered)
+                if filtered:
+                    self._update_log_display(filtered)
             except Exception:
                 pass
 
         if self._polling:
-            self.set_timer(1, self._poll_log)
+            self.set_timer(0.3, self._poll_log)
+
+    def _update_log_display(self, text: str) -> None:
+        try:
+            log = self.query_one("#log-output", Log)
+            for line in text.split("\n"):
+                if line.strip():
+                    log.write_line(line)
+        except Exception:
+            pass
 
     def _filter_by_level(self, content: str) -> str:
         """根據 display_level 過濾日誌"""
@@ -228,11 +237,12 @@ class HomeScreen(Static):
                     break
         return "\n".join(lines)
 
-        asyncio.create_task(run_jobs())
-
     def _update_log(self, text: str) -> None:
-        log_widget = self.query_one("#log-output", TextArea)
-        log_widget.load_text(text)
+        try:
+            log = self.query_one("#log-output", Log)
+            log.write_line(text)
+        except Exception:
+            pass
 
     def _enable_button(self) -> None:
         run_button = self.query_one("#run-jobs", Button)
@@ -281,7 +291,7 @@ class ScheduleScreen(Static):
                 id="examples-content",
             )
             yield Static("📝 排程日誌", id="log-title")
-            yield TextArea("", id="log-output", read_only=True)
+            yield Log(id="log-output", auto_scroll=True)
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         if event.switch.id == "schedule-switch":
@@ -330,13 +340,8 @@ class ScheduleScreen(Static):
 
     def _log(self, message: str) -> None:
         try:
-            log_widget = self.query_one("#log-output", TextArea)
-            current = log_widget.text or ""
-            lines = current.split("\n")
-            if len(lines) > 100:
-                lines = lines[-100:]
-            lines.append(message)
-            log_widget.load_text("\n".join(lines))
+            log_widget = self.query_one("#log-output", Log)
+            log_widget.write_line(message)
         except Exception:
             pass
 

@@ -396,8 +396,12 @@ async def process_config_file(
     """
     logger = get_logger()
 
-    log_path = LoggerManager.start_session()
-    logger.info(f"開始執行，日誌文件: {log_path}")
+    existing_log_path = LoggerManager.get_current_log_path()
+    if existing_log_path:
+        logger.info(f"使用現有日誌 session: {existing_log_path}")
+    else:
+        log_path = LoggerManager.start_session()
+        logger.info(f"開始執行，日誌文件: {log_path}")
     logger.info(f"Config: {config_file}, Dry-run: {dry_run}")
 
     try:
