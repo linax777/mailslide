@@ -432,14 +432,38 @@ class MainConfigTab(Static):
 class LLMConfigTab(Static):
     """LLM 設定分頁"""
 
+    CSS = """
+    #llm-help {
+        width: 100%;
+    }
+    #llm-examples {
+        width: 100%;
+    }
+    """
+
     def compose(self) -> ComposeResult:
-        yield Static("🤖 LLM 設定 (config/llm-config.yaml)", id="llm-config-title")
-        yield TextArea("", id="llm-config-content", read_only=True)
-        yield Static("📊 設定值", id="llm-values-title")
-        yield DataTable(id="llm-table")
-        with Horizontal(id="llm-actions"):
-            yield Button("🔗 測試連線", id="test-llm-connection", variant="primary")
-            yield Static("", id="llm-test-result")
+        with Vertical(id="llm-main"):
+            yield Static("🤖 LLM 設定 (config/llm-config.yaml)", id="llm-config-title")
+            yield TextArea("", id="llm-config-content", read_only=True)
+            yield Static("📊 設定值", id="llm-values-title")
+            yield DataTable(id="llm-table")
+            yield Static("💡 說明", id="llm-help-title")
+            yield Static(
+                "• Provider: LLM 供應商 (openai/ollama/anthropic 等)\n"
+                "• API Base: API 伺服器位址 (如 Ollama 本機: http://localhost:11434/v1)\n"
+                "• API Key: API 密鑰 (OpenAI 需要，其他可能可留空)\n"
+                "• Model: 模型名稱 (如 llama3, gpt-4 等)\n"
+                "• Timeout: 請求逾時秒數",
+                id="llm-help",
+            )
+            yield Static("🔌 連線測試", id="llm-test-title")
+            yield Static(
+                "點擊「測試連線」按鈕驗證 LLM API 是否可正常連線\n"
+                "測試會發送一個簡單的請求確認 API 可用性",
+                id="llm-test-desc",
+            )
+            with Horizontal(id="llm-actions"):
+                yield Button("🔗 測試連線", id="test-llm-connection", variant="primary")
 
     def on_mount(self) -> None:
         self._load_llm_config()
@@ -478,9 +502,21 @@ class LLMConfigTab(Static):
             self._test_llm_connection()
 
     def _test_llm_connection(self) -> None:
-        result_widget = self.query_one("#llm-test-result", Static)
-        result_widget.update("🔄 測試中...")
+        if not LLM_CONFIG_PATH.exists():
+            self.app.notify(
+                "❌ llm-config.yaml 不存在，請先建立設定檔",
+                severity="error",
+            )
+            return
 
+        test_button = self.query_one("#test-llm-connection", Button)
+        test_button.disabled = True
+
+        self.app.notify("🔄 開始測試 LLM 連線...")
+
+        self.run_worker(self._execute_test(), exclusive=True)
+
+    async def _execute_test(self) -> None:
         try:
             llm_config = load_llm_config()
             from outlook_mail_extractor.llm import LLMClient
@@ -494,11 +530,32 @@ class LLMConfigTab(Static):
             client.close()
 
             if "ok" in response.lower():
-                result_widget.update("✅ 連線成功！")
+                self.call_later(
+                    self.app.notify,
+                    "✅ LLM 連線成功！",
+                    severity="information",
+                )
             else:
-                result_widget.update(f"⚠️ 回覆異常: {response[:50]}")
+                self.call_later(
+                    self.app.notify,
+                    f"⚠️ LLM 回覆異常: {response[:50]}",
+                    severity="warning",
+                )
         except Exception as e:
-            result_widget.update(f"❌ 連線失敗: {e}")
+            self.call_later(
+                self.app.notify,
+                f"❌ LLM 連線失敗: {e}",
+                severity="error",
+            )
+        finally:
+            self.call_later(self._enable_button)
+
+    def _enable_button(self) -> None:
+        try:
+            test_button = self.query_one("#test-llm-connection", Button)
+            test_button.disabled = False
+        except Exception:
+            pass
 
 
 class PluginsConfigTab(Static):

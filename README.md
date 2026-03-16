@@ -115,12 +115,15 @@ include_fields:                # 要包含的欄位
 
 > 💡 建議使用 PowerShell 執行本程式，以獲得更好的相容性與顯示效果。
 
-執行 `uv run python app.py` 開啟 TUI 介面：
+執行 `uv run app.py` 開啟 TUI 介面：
 
 - **Home**：執行 Jobs、查看日誌
-- **schedule**：設定自動排程
+- **Schedule**：設定自動排程
 - **Guide**：使用說明
 - **Configuration**：查看/編輯設定檔
+  - 一般設定：查看主設定檔與 Jobs 列表
+  - LLM 設定：查看 LLM 設定值，可測試連線
+  - Plugin 設定：查看各 Plugin 設定檔
 - **About**：系統狀態檢查
 
 ## 需求
