@@ -93,6 +93,23 @@ model: "llama3"
 | add_category | AI 分析郵件並自動加上分類標籤 |
 | move_to_folder | AI 判斷應該移動到哪個資料夾 |
 | create_appointment | AI 分析郵件內容建立行事曆約會 |
+| write_file | 將郵件資料儲存為 JSON 檔案 |
+
+### write_file 插件設定
+
+複製 `config/plugins/write_file.yaml.sample` 為 `config/plugins/write_file.yaml`：
+
+```yaml
+enabled: true
+output_dir: "output"           # 輸出目錄
+filename_format: "{subject}_{timestamp}"  # 檔名格式
+include_fields:                # 要包含的欄位
+  - subject
+  - sender
+  - received
+  - body
+  - tables
+```
 
 ## 圖形介面
 

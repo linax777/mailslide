@@ -1,0 +1,23 @@
+# Write File Plugin Configuration
+# Action: Write email data to JSON file (one file per email)
+
+enabled: true
+
+# Output directory for JSON files (absolute or relative path)
+# Can use environment variables like ${HOME}/output
+output_dir: "output"
+
+# Filename format (use {subject} and {timestamp} placeholders)
+filename_format: "{subject}_{timestamp}"
+
+# Fields to include in JSON output
+include_fields:
+  - subject
+  - sender
+  - received
+  - body
+  - tables
+  # Add other fields as needed: to, cc, categories, etc.
+
+# Note: This plugin does not require LLM response and can run independently
+# Place it first in the plugins list to save email data before any modifications

@@ -10,7 +10,7 @@ from .base import (
 )
 
 # Import all plugins to register them
-from . import category, calendar, move  # noqa: F401, E402
+from . import category, calendar, move, write_file  # noqa: F401, E402
 
 __all__ = [
     "BasePlugin",
