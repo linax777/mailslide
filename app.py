@@ -2,7 +2,9 @@
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer, Header, TabbedContent, TabPane
+from textual.containers import Center, Horizontal, Middle
+from textual.screen import ModalScreen
+from textual.widgets import Button, Footer, Header, Label, TabbedContent, TabPane
 
 from outlook_mail_extractor.screens import (
     AboutScreen,
@@ -10,6 +12,19 @@ from outlook_mail_extractor.screens import (
     HomeScreen,
     ScheduleScreen,
 )
+
+
+class ConfirmScreen(ModalScreen[bool]):
+    def compose(self) -> ComposeResult:
+        with Middle():
+            with Center():
+                yield Label("確定要結束程式嗎？\n")
+                with Horizontal():
+                    yield Button("確定", variant="error", id="yes")
+                    yield Button("取消", variant="primary", id="no")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "yes")
 
 
 class OutlookMailExtractor(App):
@@ -42,6 +57,11 @@ class OutlookMailExtractor(App):
         self.theme = (
             "textual-dark" if self.theme == "textual-light" else "textual-light"
         )
+
+    async def action_quit(self) -> None:
+        result = await self.push_screen(ConfirmScreen())
+        if result:
+            self.exit()
 
 
 if __name__ == "__main__":
