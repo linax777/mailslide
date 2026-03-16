@@ -76,6 +76,14 @@ class BasePlugin(ABC):
             format_examples.append(f"需要建立約會時：\n{json_format['create_true']}")
         if "create_false" in json_format:
             format_examples.append(f"不需要建立約會時：\n{json_format['create_false']}")
+        if "has_category" in json_format:
+            format_examples.append(f"需要分類時：\n{json_format['has_category']}")
+        if "no_category" in json_format:
+            format_examples.append(f"不需要分類時：\n{json_format['no_category']}")
+        if "move" in json_format:
+            format_examples.append(f"需要移動時：\n{json_format['move']}")
+        if "no_move" in json_format:
+            format_examples.append(f"不需要移動時：\n{json_format['no_move']}")
 
         if format_examples:
             return f"{base_prompt}\n\n{' '.join(format_examples)}"

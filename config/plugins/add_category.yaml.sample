@@ -4,10 +4,10 @@
 enabled: true
 
 # Default system prompt for this plugin
-# LLM should respond with JSON: {"action": "category", "categories": ["Meeting", "Important"]}
+# The JSON format will be automatically appended to this prompt
 system_prompt: |
   你是一個郵件分類助手。分析以下郵件內容，選擇適當的分類標籤。
-  
+
   可用的分類：
   - Meeting (會議)
   - Bill (帳單)
@@ -16,9 +16,14 @@ system_prompt: |
   - Personal (個人)
   - Work (工作)
   - Newsletter (電子報)
-  
-  回覆 JSON 格式：
-  {"action": "category", "categories": ["分類1", "分類2"]}
+
+  回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
+
+# JSON response format (automatically appended to system prompt)
+# This format is fixed and should not be modified by users
+response_json_format:
+  has_category: '{"action": "category", "categories": ["分類1", "分類2"]}'
+  no_category: '{"action": "category", "categories": []}'
 
 # Response format (json, text)
 response_format: "json"

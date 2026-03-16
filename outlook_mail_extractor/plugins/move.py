@@ -1,6 +1,6 @@
 """Move To Folder Plugin"""
 
-from . import BasePlugin, register_plugin
+from . import BasePlugin, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -17,9 +17,12 @@ class MoveToFolderPlugin(BasePlugin):
 - 採購/Purchase：採購相關郵件
 - 其他/Other：無法分類的郵件
 
-回覆 JSON 格式：
-{"action": "move", "folder": "資料夾名稱"}"""
+回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。"""
 
+    default_response_json_format = {
+        "move": '{"action": "move", "folder": "資料夾名稱"}',
+        "no_move": '{"action": "move", "folder": ""}',
+    }
     FOLDER_MAPPING = {
         "會議": "會議",
         "meeting": "會議",
@@ -32,6 +35,21 @@ class MoveToFolderPlugin(BasePlugin):
         "其他": "其他",
         "other": "其他",
     }
+
+    def __init__(self, config: dict | None = None):
+        config = config or {}
+        self.config = self._load_config(config)
+
+    def _load_config(self, config: dict) -> PluginConfig:
+        return PluginConfig(
+            enabled=config.get("enabled", True),
+            system_prompt=config.get("system_prompt", self.default_system_prompt),
+            response_format=config.get("response_format", "json"),
+            override_prompt=config.get("override_prompt"),
+            response_json_format=config.get(
+                "response_json_format", self.default_response_json_format
+            ),
+        )
 
     async def execute(
         self,

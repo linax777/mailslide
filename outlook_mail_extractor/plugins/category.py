@@ -1,6 +1,6 @@
 """Add Category Plugin"""
 
-from . import BasePlugin, register_plugin
+from . import BasePlugin, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -19,9 +19,12 @@ class AddCategoryPlugin(BasePlugin):
 - Work (工作)
 - Newsletter (電子報)
 
-回覆 JSON 格式：
-{"action": "category", "categories": ["分類1", "分類2"]}"""
+回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。"""
 
+    default_response_json_format = {
+        "has_category": '{"action": "category", "categories": ["分類1", "分類2"]}',
+        "no_category": '{"action": "category", "categories": []}',
+    }
     VALID_CATEGORIES = {
         "meeting",
         "會議",
@@ -38,6 +41,21 @@ class AddCategoryPlugin(BasePlugin):
         "newsletter",
         "電子報",
     }
+
+    def __init__(self, config: dict | None = None):
+        config = config or {}
+        self.config = self._load_config(config)
+
+    def _load_config(self, config: dict) -> PluginConfig:
+        return PluginConfig(
+            enabled=config.get("enabled", True),
+            system_prompt=config.get("system_prompt", self.default_system_prompt),
+            response_format=config.get("response_format", "json"),
+            override_prompt=config.get("override_prompt"),
+            response_json_format=config.get(
+                "response_json_format", self.default_response_json_format
+            ),
+        )
 
     async def execute(
         self,
