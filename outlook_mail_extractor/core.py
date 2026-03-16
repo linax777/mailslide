@@ -5,7 +5,6 @@ from pathlib import Path
 import pythoncom
 import win32com.client
 
-from .config import apply_filter, get_filter, load_filters
 from .llm import LLMClient, load_llm_config
 from .models import (
     CheckStatus,
@@ -140,7 +139,7 @@ class EmailProcessor:
         Process single job with LLM analysis and plugins.
 
         Args:
-            job_config: Job config dict with name, account, filter, plugins
+            job_config: Job config dict with name, account, source, destination, limit
             llm_client: Optional LLM client for analysis
             plugin_configs: Plugin configurations
             dry_run: Test mode (don't execute actions)
@@ -149,21 +148,34 @@ class EmailProcessor:
             List of EmailAnalysisResult
         """
         account_name = job_config.get("account")
-        filter_name = job_config.get("filter", "default")
-        plugin_names = job_config.get("plugins", [])
-
-        # Load filter config
-        filters = load_filters()
-        filter_config = get_filter(filter_name, filters)
+        source_folder = job_config.get("source", "Inbox")
+        destination_folder = job_config.get("destination")
+        limit = job_config.get("limit", 10)
 
         # Get source folder
-        src_folder = self._client.get_folder(account_name, "Inbox")
+        src_folder = self._client.get_folder(account_name, source_folder)
 
-        # Apply filter
+        # Get destination folder if specified
+        dst_folder = None
+        if destination_folder:
+            dst_folder = self._client.get_folder(account_name, destination_folder)
+
+        # Get messages from source folder (sorted by date, newest first)
         messages = src_folder.Items
-        filtered_messages = apply_filter(messages, filter_config)
+        messages.Sort("[ReceivedTime]", True)
 
-        # Initialize plugins
+        # Get messages up to limit
+        msg_list = []
+        msg = messages.GetFirst()
+        count = 0
+        while msg and count < limit:
+            if msg.Class == 43:  # Mail item
+                msg_list.append(msg)
+            count += 1
+            msg = messages.GetNext()
+
+        # Initialize plugins (optional, for backward compatibility)
+        plugin_names = job_config.get("plugins", [])
         plugins = []
         if plugin_configs:
             for plugin_name in plugin_names:
@@ -173,13 +185,14 @@ class EmailProcessor:
 
         # Process each email
         results = []
-        for msg in filtered_messages:
+        for msg in msg_list:
             result = self._process_email(
                 msg,
                 account_name,
                 llm_client,
                 plugins,
                 dry_run,
+                dst_folder,
             )
             results.append(result)
 
@@ -192,6 +205,7 @@ class EmailProcessor:
         llm_client: LLMClient | None,
         plugins: list,
         dry_run: bool,
+        dst_folder=None,
     ) -> EmailAnalysisResult:
         """Process single email with LLM and plugins"""
         # Extract email data
@@ -265,6 +279,13 @@ class EmailProcessor:
                             )
                         )
 
+        # Move email to destination folder if specified
+        if dst_folder and success and not dry_run:
+            try:
+                message.Move(dst_folder)
+            except Exception as e:
+                error_msg = f"Move failed: {e}"
+
         return EmailAnalysisResult(
             email_subject=subject,
             llm_response=llm_response,
@@ -310,7 +331,7 @@ def check_llm_config(config_file: str | None = None) -> LLMConfigStatus:
 
 
 def process_config_file(
-    config_file: Path | str = "config.yaml",
+    config_file: Path | str = "config/config.yaml",
     dry_run: bool = False,
 ) -> dict:
     """

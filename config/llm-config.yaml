@@ -1,0 +1,17 @@
+# LLM API Configuration
+
+# Provider: openai (OpenAI compatible API)
+# Supported: llama.cpp, LM Studio, Ollama, OpenAI, etc.
+provider: "openai"
+
+# API endpoint (OpenAI compatible)
+api_base: "http://localhost:8080"
+
+# API key (leave empty for local servers like llama.cpp/Ollama)
+api_key: ""
+
+# Model name
+model: "Qwen3.5-2B-Q8_0.gguf"
+
+# Request timeout in seconds
+timeout: 30

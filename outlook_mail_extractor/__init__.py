@@ -1,6 +1,6 @@
 """Outlook Mail Extractor - Read emails from Outlook Classic"""
 
-from .config import apply_filter, get_filter, load_config, load_filters, validate_config
+from .config import load_config, validate_config
 from .core import (
     EmailProcessor,
     FolderNotFoundError,
@@ -38,9 +38,6 @@ __all__ = [
     "load_llm_config",
     # Config
     "load_config",
-    "load_filters",
-    "get_filter",
-    "apply_filter",
     "validate_config",
     # Models
     "CheckStatus",

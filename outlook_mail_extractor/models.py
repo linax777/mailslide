@@ -18,7 +18,7 @@ class ConfigStatus:
 
     status: CheckStatus
     message: str
-    path: str = "config.yaml"
+    path: str = "config/config.yaml"
 
 
 @dataclass

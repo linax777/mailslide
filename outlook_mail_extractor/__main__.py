@@ -17,7 +17,7 @@ def main():
         "--config",
         "-c",
         type=Path,
-        default=Path("config.yaml"),
+        default=Path("config/config.yaml"),
         help="指定 YAML 設定檔路徑",
     )
     parser.add_argument(

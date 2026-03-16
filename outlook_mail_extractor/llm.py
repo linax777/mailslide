@@ -99,7 +99,7 @@ def load_llm_config(config_file: str | None = None) -> LLMConfig:
 
     import yaml
 
-    config_path = Path(config_file) if config_file else Path("llm.yaml")
+    config_path = Path(config_file) if config_file else Path("config/llm-config.yaml")
 
     if not config_path.exists():
         return LLMConfig()

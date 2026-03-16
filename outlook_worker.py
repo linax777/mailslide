@@ -25,12 +25,12 @@ Outlook Mail Extractor - 讀取 Outlook Classic 指定帳號/目錄郵件 輸出
 
 2. 作為命令列工具使用：
    ```
-   python -m outlook_mail_extractor --config config.yaml
+   python -m outlook_mail_extractor --config config/config.yaml
    ```
 
-安裝後也可使用：
+   安裝後也可使用：
    ```
-   outlook-extract --config config.yaml
+   outlook-extract --config config/config.yaml
    ```
 """
 
