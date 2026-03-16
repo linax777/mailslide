@@ -1,6 +1,7 @@
 """Outlook Mail Extractor - 應用程式入口"""
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.widgets import Footer, Header, TabbedContent, TabPane
 
 from outlook_mail_extractor.screens import (
@@ -12,7 +13,10 @@ from outlook_mail_extractor.screens import (
 
 
 class OutlookMailExtractor(App):
-    BINDINGS = [("d", "toggle_dark", "Toggle dark mode")]
+    BINDINGS = [
+        Binding("d", "toggle_dark", "Toggle dark mode"),
+        Binding(key="q", action="quit", description="Quit the app"),
+    ]
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -22,10 +26,10 @@ class OutlookMailExtractor(App):
                 yield HomeScreen()
             with TabPane("schedule", id="schedule"):
                 yield ScheduleScreen()
-            with TabPane("About", id="about"):
-                yield AboutScreen()
             with TabPane("Configuration", id="config"):
                 yield ConfigScreen()
+            with TabPane("About", id="about"):
+                yield AboutScreen()
 
     def action_show_tab(self, tab: str) -> None:
         self.get_child_by_type(TabbedContent).active = tab

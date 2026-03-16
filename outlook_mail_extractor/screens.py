@@ -251,6 +251,10 @@ class ScheduleScreen(Static):
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         if event.switch.id == "schedule-switch":
+            if event.switch.value:
+                if not self._validate_cron():
+                    event.switch.value = False
+                    return
             self._scheduler_enabled = event.switch.value
             self._update_schedule_status()
 
@@ -258,6 +262,64 @@ class ScheduleScreen(Static):
         if event.input.id == "cron-input":
             self._cron_expression = event.input.value
             self._update_schedule_status()
+
+    def _validate_cron(self) -> bool:
+        """驗證 cron 表達式"""
+        parts = self._cron_expression.strip().split()
+        if len(parts) != 5:
+            self._show_error(f"❌ Cron 表達式需有 5 個欄位，實際為 {len(parts)} 個")
+            return False
+
+        field_names = ["分鐘", "小時", "日期", "月份", "星期"]
+        valid_ranges = [
+            (0, 59),  # 分鐘
+            (0, 23),  # 小時
+            (1, 31),  # 日期
+            (1, 12),  # 月份
+            (0, 6),  # 星期 (0-6, 0=週日)
+        ]
+
+        for i, (part, name, (min_val, max_val)) in enumerate(
+            zip(parts, field_names, valid_ranges)
+        ):
+            if not self._validate_cron_field(part, min_val, max_val):
+                self._show_error(f"❌ 第 {i + 1} 個欄位 ({name}) 格式錯誤: {part}")
+                return False
+        return True
+
+    def _validate_cron_field(self, field: str, min_val: int, max_val: int) -> bool:
+        """驗證單個 cron 欄位"""
+        if field == "*":
+            return True
+        if field.startswith("*/"):
+            try:
+                step = int(field[2:])
+                return step > 0
+            except ValueError:
+                return False
+        if "," in field:
+            return all(
+                self._validate_cron_field(f, min_val, max_val) for f in field.split(",")
+            )
+        if "-" in field:
+            parts = field.split("-")
+            if len(parts) != 2:
+                return False
+            try:
+                start, end = int(parts[0]), int(parts[1])
+                return min_val <= start <= max_val and min_val <= end <= max_val
+            except ValueError:
+                return False
+        try:
+            val = int(field)
+            return min_val <= val <= max_val
+        except ValueError:
+            return False
+
+    def _show_error(self, message: str) -> None:
+        """顯示錯誤訊息"""
+        self._log(message)
+        self.app.notify(message, severity="error")
 
     def _update_schedule_status(self) -> None:
         if self._scheduler_enabled:
