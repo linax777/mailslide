@@ -1,11 +1,11 @@
-"""資料模型 - 系統狀態相關"""
+"""Data models - System status and LLM related"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
 class CheckStatus(str, Enum):
-    """檢查狀態枚舉"""
+    """Check status enum"""
 
     OK = "ok"
     ERROR = "error"
@@ -14,7 +14,7 @@ class CheckStatus(str, Enum):
 
 @dataclass
 class ConfigStatus:
-    """設定檔檢查狀態"""
+    """Config file check status"""
 
     status: CheckStatus
     message: str
@@ -23,7 +23,7 @@ class ConfigStatus:
 
 @dataclass
 class OutlookStatus:
-    """Outlook 連線狀態"""
+    """Outlook connection status"""
 
     status: CheckStatus
     message: str
@@ -32,15 +32,53 @@ class OutlookStatus:
 
 @dataclass
 class SystemStatus:
-    """系統整體狀態"""
+    """Overall system status"""
 
     config: ConfigStatus
     outlook: OutlookStatus
 
     @property
     def is_all_ok(self) -> bool:
-        """檢查是否所有項目都正常"""
+        """Check if all items are OK"""
         return (
             self.config.status == CheckStatus.OK
             and self.outlook.status == CheckStatus.OK
         )
+
+
+class LLMProvider(str, Enum):
+    """LLM provider type"""
+
+    OPENAI = "openai"
+    LLAMA_CPP = "llama.cpp"
+
+
+@dataclass
+class LLMConfigStatus:
+    """LLM configuration status"""
+
+    status: CheckStatus
+    message: str
+    provider: str = ""
+    model: str = ""
+
+
+@dataclass
+class PluginResult:
+    """Result of plugin execution"""
+
+    plugin_name: str
+    success: bool
+    message: str = ""
+    details: dict = field(default_factory=dict)
+
+
+@dataclass
+class EmailAnalysisResult:
+    """Result of email LLM analysis"""
+
+    email_subject: str
+    llm_response: str
+    plugin_results: list[PluginResult] = field(default_factory=list)
+    success: bool = True
+    error_message: str = ""

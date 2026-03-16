@@ -1,19 +1,15 @@
-# example config.yaml , rename to config.yaml to use
+# Main configuration - Jobs basic info
+# Rename to config.yaml to use
+
 jobs:
-  - name: "客戶詢價"
-    account: "sales@yourcompany.com"
-    source: "收件匣"
-    destination: "已處理_詢價"
+  - name: "處理會議郵件"
+    account: "your@email.com"
+    filter: "meeting_filter"    # Reference to filters.yaml
+    plugins: ["move_to_folder", "add_category"]
+    limit: 10
+
+  - name: "處理帳單"
+    account: "your@email.com"
+    filter: "bill_filter"
+    plugins: ["add_category"]
     limit: 5
-
-  - name: "技術支援"
-    account: "support@yourcompany.com"
-    source: "Inbox/Urgent"  # 支援子目錄
-    destination: "已處理_技術支援"
-    limit: 10
-
-  - name: "處理本地信件"
-    account: "local_mail"  # 支援 PST檔案/本地郵件資料夾，直接填寫左側顯示的頂層名稱
-    source: "收件匣"
-    destination: "收件匣/已處理"
-    limit: 10

@@ -1,30 +1,57 @@
-"""Outlook Mail Extractor - 讀取 Outlook Classic 郵件的 Python 模組"""
+"""Outlook Mail Extractor - Read emails from Outlook Classic"""
 
-from .config import load_config, validate_config
+from .config import apply_filter, get_filter, load_config, load_filters, validate_config
 from .core import (
     EmailProcessor,
     FolderNotFoundError,
     OutlookClient,
     OutlookConnectionError,
+    check_llm_config,
     process_config_file,
+)
+from .llm import LLMClient, LLMConfig, LLMError, load_llm_config
+from .models import (
+    CheckStatus,
+    ConfigStatus,
+    EmailAnalysisResult,
+    LLMConfigStatus,
+    OutlookStatus,
+    PluginResult,
+    SystemStatus,
 )
 from .parser import clean_content, clean_invisible_chars, parse_tables
 
 __version__ = "1.0.0"
 
 __all__ = [
-    # 例外類別
+    # Exceptions
     "OutlookConnectionError",
     "FolderNotFoundError",
-    # 核心類別
+    "LLMError",
+    # Core classes
     "OutlookClient",
     "EmailProcessor",
-    # 便利函式
-    "process_config_file",
-    # 設定檔
+    # LLM
+    "LLMClient",
+    "LLMConfig",
+    "check_llm_config",
+    "load_llm_config",
+    # Config
     "load_config",
+    "load_filters",
+    "get_filter",
+    "apply_filter",
     "validate_config",
-    # 工具函式
+    # Models
+    "CheckStatus",
+    "ConfigStatus",
+    "OutlookStatus",
+    "SystemStatus",
+    "LLMConfigStatus",
+    "PluginResult",
+    "EmailAnalysisResult",
+    # Utilities
+    "process_config_file",
     "clean_content",
     "clean_invisible_chars",
     "parse_tables",

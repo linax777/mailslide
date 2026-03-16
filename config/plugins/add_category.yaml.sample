@@ -1,0 +1,24 @@
+# Add Category Plugin Configuration
+# Action: Add categories/labels to email based on LLM response
+
+enabled: true
+
+# Default system prompt for this plugin
+# LLM should respond with JSON: {"action": "category", "categories": ["Meeting", "Important"]}
+system_prompt: |
+  你是一個郵件分類助手。分析以下郵件內容，選擇適當的分類標籤。
+  
+  可用的分類：
+  - Meeting (會議)
+  - Bill (帳單)
+  - Important (重要)
+  - Urgent (緊急)
+  - Personal (個人)
+  - Work (工作)
+  - Newsletter (電子報)
+  
+  回覆 JSON 格式：
+  {"action": "category", "categories": ["分類1", "分類2"]}
+
+# Response format (json, text)
+response_format: "json"

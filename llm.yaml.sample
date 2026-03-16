@@ -1,0 +1,18 @@
+# LLM API Configuration
+# Rename to llm.yaml to use
+
+# Provider: openai (OpenAI compatible API)
+# Supported: llama.cpp, LM Studio, Ollama, OpenAI, etc.
+provider: "openai"
+
+# API endpoint (OpenAI compatible)
+api_base: "http://localhost:11434/v1"
+
+# API key (leave empty for local servers like llama.cpp/Ollama)
+api_key: ""
+
+# Model name
+model: "llama3"
+
+# Request timeout in seconds
+timeout: 30

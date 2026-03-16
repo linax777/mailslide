@@ -1,27 +1,36 @@
-"""Outlook 連線與郵件處理核心模組"""
+"""Outlook connection and email processing core module"""
 
 from pathlib import Path
 
 import pythoncom
 import win32com.client
 
+from .config import apply_filter, get_filter, load_filters
+from .llm import LLMClient, load_llm_config
+from .models import (
+    CheckStatus,
+    EmailAnalysisResult,
+    LLMConfigStatus,
+    PluginResult,
+)
 from .parser import clean_content, clean_invisible_chars, parse_tables
+from .plugins import get_plugin, load_plugin_configs
 
 
 class OutlookConnectionError(Exception):
-    """無法連線至 Outlook 時拋出"""
+    """Cannot connect to Outlook"""
 
     pass
 
 
 class FolderNotFoundError(Exception):
-    """找不到指定資料夾時拋出"""
+    """Folder not found"""
 
     pass
 
 
 class OutlookClient:
-    """Outlook COM 連線管理"""
+    """Outlook COM connection management"""
 
     def __init__(self):
         self._outlook = None
@@ -30,10 +39,10 @@ class OutlookClient:
 
     def connect(self) -> None:
         """
-        建立 Outlook 連線
+        Establish Outlook connection.
 
         Raises:
-            OutlookConnectionError: 無法連線時
+            OutlookConnectionError: When connection fails
         """
         try:
             pythoncom.CoInitialize()
@@ -43,12 +52,12 @@ class OutlookClient:
         except Exception as e:
             pythoncom.CoUninitialize()
             raise OutlookConnectionError(
-                f"無法連線至 Outlook。請確認已安裝並登入 Microsoft Outlook Classic。\n"
-                f"詳細錯誤: {e}"
+                f"Cannot connect to Outlook. Please ensure Microsoft Outlook Classic "
+                f"is installed and logged in.\nDetails: {e}"
             ) from e
 
     def disconnect(self) -> None:
-        """關閉 Outlook 連線"""
+        """Close Outlook connection"""
         if self._connected:
             pythoncom.CoUninitialize()
             self._outlook = None
@@ -57,44 +66,26 @@ class OutlookClient:
 
     @property
     def is_connected(self) -> bool:
-        """檢查是否已連線"""
+        """Check if connected"""
         return self._connected
 
     def list_accounts(self) -> list[str]:
-        """
-        列出所有可用帳號
-
-        Returns:
-            帳號名稱列表
-        """
+        """List all available accounts"""
         if not self._connected:
-            raise OutlookConnectionError("尚未連線，請先呼叫 connect()")
+            raise OutlookConnectionError("Not connected, call connect() first")
         return [store.Name for store in self._mapi.Folders]
 
     def get_folder(
         self, account: str, folder_path: str, create_if_missing: bool = False
     ):
-        """
-        取得指定帳號下的資料夾
-
-        Args:
-            account: 帳號名稱
-            folder_path: 資料夾路徑 (如 "Inbox/Archive" 或 "Inbox\\Archive")
-            create_if_missing: 是否在不存在時建立
-
-        Returns:
-            Folder 物件
-
-        Raises:
-            FolderNotFoundError: 找不到資料夾時
-        """
+        """Get folder from specified account"""
         if not self._connected:
-            raise OutlookConnectionError("尚未連線，請先呼叫 connect()")
+            raise OutlookConnectionError("Not connected, call connect() first")
 
         try:
             acc_root = self._mapi.Folders[account]
         except Exception as e:
-            raise FolderNotFoundError(f"找不到帳號: {account}") from e
+            raise FolderNotFoundError(f"Account not found: {account}") from e
 
         current_folder = acc_root
         parts = folder_path.replace("\\", "/").split("/")
@@ -108,32 +99,19 @@ class OutlookClient:
                     current_folder.Folders.Add(part)
                     current_folder = current_folder.Folders[part]
                 else:
-                    raise FolderNotFoundError(f"找不到路徑: {part}")
+                    raise FolderNotFoundError(f"Path not found: {part}")
         return current_folder
 
 
 class EmailProcessor:
-    """郵件處理邏輯"""
+    """Email processing logic"""
 
     def __init__(self, client: OutlookClient):
-        """
-        初始化郵件處理器
-
-        Args:
-            client: 已連線的 OutlookClient 實例
-        """
+        """Initialize email processor"""
         self._client = client
 
     def extract_email_data(self, message) -> dict:
-        """
-        擷取單封郵件的資料
-
-        Args:
-            message: Outlook MailItem 物件
-
-        Returns:
-            包含郵件資料的字典
-        """
+        """Extract data from single email"""
         raw_body = str(message.Body) if getattr(message, "Body", None) else ""
         clean_body = clean_content(raw_body)
 
@@ -147,86 +125,203 @@ class EmailProcessor:
             "received": str(message.ReceivedTime),
             "body": clean_body,
             "tables": parse_tables(message.HTMLBody),
+            "_message": message,  # Keep reference for actions
+            "_account": None,  # Will be set by caller
         }
 
     def process_job(
         self,
         job_config: dict,
+        llm_client: LLMClient | None = None,
+        plugin_configs: dict | None = None,
         dry_run: bool = False,
-        move_on_process: bool = True,
-    ) -> list[dict]:
+    ) -> list[EmailAnalysisResult]:
         """
-        處理單個 job 設定
+        Process single job with LLM analysis and plugins.
 
         Args:
-            job_config: 包含 name, account, source, destination, limit 的字典
-            dry_run: 是否為測試模式 (不實際移動郵件)
-            move_on_process: 是否在處理後移動郵件
+            job_config: Job config dict with name, account, filter, plugins
+            llm_client: Optional LLM client for analysis
+            plugin_configs: Plugin configurations
+            dry_run: Test mode (don't execute actions)
 
         Returns:
-            處理結果列表
+            List of EmailAnalysisResult
         """
-        job_name = job_config.get("name", "Unnamed Job")
         account_name = job_config.get("account")
-        source_path = job_config["source"]
-        dest_path = job_config.get("destination")
-        limit = job_config.get("limit", 5)
+        filter_name = job_config.get("filter", "default")
+        plugin_names = job_config.get("plugins", [])
 
-        # 取得來源資料夾
-        src_folder = self._client.get_folder(account_name, source_path)
+        # Load filter config
+        filters = load_filters()
+        filter_config = get_filter(filter_name, filters)
 
-        # 取得目的資料夾
-        dest_folder = None
-        if dest_path:
-            dest_folder = self._client.get_folder(
-                account_name, dest_path, create_if_missing=not dry_run
+        # Get source folder
+        src_folder = self._client.get_folder(account_name, "Inbox")
+
+        # Apply filter
+        messages = src_folder.Items
+        filtered_messages = apply_filter(messages, filter_config)
+
+        # Initialize plugins
+        plugins = []
+        if plugin_configs:
+            for plugin_name in plugin_names:
+                plugin = get_plugin(plugin_name, plugin_configs.get(plugin_name))
+                if plugin:
+                    plugins.append(plugin)
+
+        # Process each email
+        results = []
+        for msg in filtered_messages:
+            result = self._process_email(
+                msg,
+                account_name,
+                llm_client,
+                plugins,
+                dry_run,
+            )
+            results.append(result)
+
+        return results
+
+    def _process_email(
+        self,
+        message,
+        account_name: str,
+        llm_client: LLMClient | None,
+        plugins: list,
+        dry_run: bool,
+    ) -> EmailAnalysisResult:
+        """Process single email with LLM and plugins"""
+        # Extract email data
+        email_data = self.extract_email_data(message)
+        email_data["_account"] = account_name
+
+        subject = email_data.get("subject", "Unknown")
+
+        # If no LLM or plugins, just return basic data
+        if not llm_client or not plugins:
+            return EmailAnalysisResult(
+                email_subject=subject,
+                llm_response="",
+                plugin_results=[],
+                success=True,
             )
 
-        # 取得郵件
-        messages = src_folder.Items
-        messages.Sort("[ReceivedTime]", True)  # 由新到舊
+        # Build user prompt with email content
+        user_prompt = self._build_email_prompt(email_data)
 
-        # 收集要處理的郵件
-        items_to_process = []
-        item = messages.GetFirst()
-        count = 0
+        # Collect system prompts from all plugins
+        system_prompts = []
+        for plugin in plugins:
+            if plugin.config.enabled:
+                system_prompts.append(plugin.effective_prompt)
 
-        while item:
-            if count >= limit:
-                break
-            if item.Class == 43:  # olMail
-                items_to_process.append(item)
-                count += 1
-            item = messages.GetNext()
+        if not system_prompts:
+            return EmailAnalysisResult(
+                email_subject=subject,
+                llm_response="",
+                plugin_results=[],
+                success=True,
+            )
 
-        # 處理郵件
-        job_emails = []
-        for msg in items_to_process:
-            email_data = self.extract_email_data(msg)
-            job_emails.append(email_data)
+        # Combine system prompts
+        combined_system = "\n\n---\n\n".join(system_prompts)
 
-            # 移動郵件
-            if move_on_process and not dry_run and dest_folder:
-                msg.Move(dest_folder)
+        # Call LLM
+        llm_response = ""
+        success = True
+        error_msg = ""
 
-        return job_emails
+        try:
+            llm_response = llm_client.chat(combined_system, user_prompt)
+        except Exception as e:
+            success = False
+            error_msg = str(e)
+
+        # Execute plugins
+        plugin_results = []
+        if success and not dry_run:
+            for plugin in plugins:
+                if plugin.config.enabled:
+                    try:
+                        plugin_success = plugin.execute(
+                            email_data, llm_response, self._client
+                        )
+                        plugin_results.append(
+                            PluginResult(
+                                plugin_name=plugin.name,
+                                success=plugin_success,
+                                message="Success" if plugin_success else "Failed",
+                            )
+                        )
+                    except Exception as e:
+                        plugin_results.append(
+                            PluginResult(
+                                plugin_name=plugin.name,
+                                success=False,
+                                message=f"Error: {e}",
+                            )
+                        )
+
+        return EmailAnalysisResult(
+            email_subject=subject,
+            llm_response=llm_response,
+            plugin_results=plugin_results,
+            success=success,
+            error_message=error_msg,
+        )
+
+    def _build_email_prompt(self, email_data: dict) -> str:
+        """Build user prompt from email data"""
+        parts = []
+        parts.append(f"Subject: {email_data.get('subject', '')}")
+        parts.append(f"From: {email_data.get('sender', '')}")
+        parts.append(f"Received: {email_data.get('received', '')}")
+        parts.append(f"\nBody:\n{email_data.get('body', '')}")
+
+        tables = email_data.get("tables", [])
+        if tables:
+            parts.append("\nTables found in email:")
+            for i, table in enumerate(tables):
+                parts.append(f"\nTable {i + 1}:")
+                for row in table[:5]:  # Limit to first 5 rows
+                    parts.append(str(row))
+
+        return "\n".join(parts)
+
+
+def check_llm_config(config_file: str | None = None) -> LLMConfigStatus:
+    """Check LLM configuration status"""
+    try:
+        config = load_llm_config(config_file)
+        return LLMConfigStatus(
+            status=CheckStatus.OK,
+            message=f"Ready - {config.provider}: {config.model}",
+            provider=config.provider,
+            model=config.model,
+        )
+    except Exception as e:
+        return LLMConfigStatus(
+            status=CheckStatus.ERROR,
+            message=str(e),
+        )
 
 
 def process_config_file(
-    config_file: Path | str,
+    config_file: Path | str = "config.yaml",
     dry_run: bool = False,
-    move_on_process: bool = True,
 ) -> dict:
     """
-    便利函式：直接處理設定檔
+    Process config file with LLM analysis and plugins.
 
     Args:
-        config_file: YAML 設定檔路徑
-        dry_run: 測試模式
-        move_on_process: 是否在處理後移動郵件
+        config_file: Config file path
+        dry_run: Test mode
 
     Returns:
-        所有 job 的處理結果
+        All job results
     """
     from .config import load_config
 
@@ -234,16 +329,31 @@ def process_config_file(
     client = OutlookClient()
     client.connect()
 
+    # Try to load LLM config
+    llm_config = load_llm_config()
+    llm_client = None
+    if llm_config.api_base:
+        llm_client = LLMClient(llm_config)
+
+    # Load plugin configs
+    plugin_configs = load_plugin_configs()
+
     try:
         processor = EmailProcessor(client)
         all_results = {}
 
         for job in config.get("jobs", []):
             job_name = job.get("name", "Unnamed Job")
-            results = processor.process_job(job, dry_run, move_on_process)
+            results = processor.process_job(
+                job,
+                llm_client=llm_client,
+                plugin_configs=plugin_configs,
+                dry_run=dry_run,
+            )
             all_results[job_name] = results
 
-        # 清理不可見字元
         return clean_invisible_chars(all_results)
     finally:
         client.disconnect()
+        if llm_client:
+            llm_client.close()
