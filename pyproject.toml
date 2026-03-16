@@ -22,5 +22,10 @@ outlook-extract = "outlook_mail_extractor.__main__:main"
 include = ["outlook_mail_extractor*"]
 exclude = ["config*", "tasks*", "tests*"]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.15.6",
+]
+
 
 
