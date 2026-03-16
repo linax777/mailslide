@@ -42,7 +42,7 @@ class OutlookMailExtractor(App):
                 yield HomeScreen()
             with TabPane("schedule", id="schedule"):
                 yield ScheduleScreen()
-            with TabPane("Usage", id="usage"):
+            with TabPane("Guide", id="usage"):
                 yield UsageScreen()
             with TabPane("Configuration", id="config"):
                 yield ConfigScreen()
