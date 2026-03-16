@@ -4,9 +4,8 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
-from . import BasePlugin, PluginConfig, register_plugin
+from . import BasePlugin, PluginConfig, clean_invisible_chars, register_plugin
 
 
 @register_plugin
@@ -56,7 +55,7 @@ class WriteFilePlugin(BasePlugin):
                 if isinstance(value, str):
                     value = value.strip()
                 result[key] = value
-        return result
+        return clean_invisible_chars(result)
 
     async def execute(
         self,

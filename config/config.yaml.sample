@@ -3,6 +3,7 @@
 #
 # Job fields:
 #   - name: Job name (display only)
+#   - enable: true/false - whether to execute this job (default: true)
 #   - account: Outlook account email
 #   - source: Source folder path (e.g., "收件匣/microsoft")
 #   - destination: Destination folder for auto-move (optional)
@@ -17,6 +18,7 @@
 
 jobs:
   - name: "處理microsoft郵件"
+    enable: true
     account: "your@email.com"
     source: "收件匣/microsoft"
     destination: "收件匣/microsoft/processed"
@@ -25,6 +27,7 @@ jobs:
       - add_category
 
   - name: "處理帳單"
+    enable: false  # This job will be skipped
     account: "your@email.com"
     source: "收件匣/bills"
     destination: "收件匣/bills/processed"

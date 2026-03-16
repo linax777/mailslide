@@ -17,7 +17,7 @@ def clean_invisible_chars(obj: Any) -> Any:
         清理後的物件
     """
     if isinstance(obj, str):
-        return re.sub(r"[\u200b-\u200f\ufeff\u202a-\u202e]", "", obj)
+        return re.sub(r"[\u00a0\u200b-\u200f\ufeff\u202a-\u202e\u034f]", "", obj)
     elif isinstance(obj, dict):
         return {
             clean_invisible_chars(k): clean_invisible_chars(v) for k, v in obj.items()
@@ -40,6 +40,8 @@ def clean_content(text: str, max_length: int = 800) -> str:
     """
     if not text:
         return ""
+    # 0. 移除隱藏字元
+    text = re.sub(r"[\u200b-\u200f\ufeff\u202a-\u202e\r]", "", text)
     # 1. 移除網址
     text = re.sub(r"http[s]?://\S+", "[URL]", text)
     # 2. 移除長度超過 20 的純隨機英數字串 (常見於追蹤碼或加密片段)

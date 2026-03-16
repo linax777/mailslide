@@ -243,15 +243,48 @@ class EmailProcessor:
 
         # Collect system prompts from all plugins
         system_prompts = []
+        plugins_needing_llm = []
+        plugins_no_llm = []
         for plugin in plugins:
-            if plugin.config.enabled:
-                system_prompts.append(plugin.build_effective_prompt())
+            if not plugin.config.enabled:
+                continue
+            prompt = plugin.build_effective_prompt()
+            if prompt:
+                system_prompts.append(prompt)
+                plugins_needing_llm.append(plugin)
+            else:
+                plugins_no_llm.append(plugin)
 
+        # Execute plugins that don't need LLM first
+        plugin_results = []
+        if not dry_run:
+            for plugin in plugins_no_llm:
+                logger.info(f"執行 Plugin (無需 LLM): {plugin.name}")
+                try:
+                    plugin_success = await plugin.execute(email_data, "", self._client)
+                    plugin_results.append(
+                        PluginResult(
+                            plugin_name=plugin.name,
+                            success=plugin_success,
+                            message="Success" if plugin_success else "Failed",
+                        )
+                    )
+                except Exception as e:
+                    logger.exception(f"Plugin {plugin.name} error: {e}")
+                    plugin_results.append(
+                        PluginResult(
+                            plugin_name=plugin.name,
+                            success=False,
+                            message=f"Error: {e}",
+                        )
+                    )
+
+        # If no plugins need LLM, return early
         if not system_prompts:
             return EmailAnalysisResult(
                 email_subject=subject,
                 llm_response="",
-                plugin_results=[],
+                plugin_results=plugin_results,
                 success=True,
             )
 
@@ -273,10 +306,9 @@ class EmailProcessor:
             error_msg = str(e)
             logger.error(f"LLM 呼叫失敗: {e}")
 
-        # Execute plugins
-        plugin_results = []
+        # Execute plugins that need LLM
         if success and not dry_run:
-            for plugin in plugins:
+            for plugin in plugins_needing_llm:
                 if plugin.config.enabled:
                     # Check if plugin should be skipped based on LLM response
                     if plugin.name == "create_appointment":
@@ -426,6 +458,10 @@ async def process_config_file(
         all_results = {}
 
         for job in config.get("jobs", []):
+            if job.get("enable", True) is False:
+                job_name = job.get("name", "Unnamed Job")
+                logger.info(f"跳过 Job (已停用): {job_name}")
+                continue
             job_name = job.get("name", "Unnamed Job")
             logger.info(f"開始處理 Job: {job_name}")
             results = await processor.process_job(

@@ -34,6 +34,17 @@ from outlook_mail_extractor.logger import LoggerManager
 
 from .models import CheckStatus, ConfigStatus, OutlookStatus, SystemStatus
 
+MAX_CELL_LENGTH = 25
+
+
+def truncate(text: str | None, max_len: int = MAX_CELL_LENGTH) -> str:
+    if text is None:
+        return ""
+    if len(text) > max_len:
+        return text[: max_len - 2] + ".."
+    return text
+
+
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "config.yaml"
 LLM_CONFIG_PATH = Path(__file__).parent.parent / "config" / "llm-config.yaml"
 PLUGINS_DIR = Path(__file__).parent.parent / "config" / "plugins"
@@ -159,17 +170,19 @@ class HomeScreen(Static):
         try:
             config = load_config(CONFIG_PATH)
             table.clear()
-            table.add_columns("#", "名稱", "帳號", "來源", "目標", "Plugins")
+            table.add_columns("#", "啟用", "名稱", "帳號", "來源", "目標", "Plugins")
 
             for idx, job in enumerate(config.get("jobs", []), 1):
                 plugins = ", ".join(job.get("plugins", [])) or "-"
+                enable = "✓" if job.get("enable", True) else "✗"
                 table.add_row(
                     str(idx),
-                    job.get("name", ""),
-                    job.get("account", ""),
-                    job.get("source", ""),
-                    job.get("destination", "") or "-",
-                    plugins,
+                    enable,
+                    truncate(job.get("name", "")),
+                    truncate(job.get("account", "")),
+                    truncate(job.get("source", "")),
+                    truncate(job.get("destination")) or "-",
+                    truncate(plugins),
                 )
         except Exception as e:
             table.add_row(f"❌ 載入失敗: {e}", "", "")
@@ -407,15 +420,19 @@ class MainConfigTab(Static):
             config = load_config(CONFIG_PATH)
             table.clear()
 
-            table.add_columns("名稱", "帳號", "來源", "目標", "Plugins", "Limit")
+            table.add_columns(
+                "啟用", "名稱", "帳號", "來源", "目標", "Plugins", "Limit"
+            )
             for job in config.get("jobs", []):
                 plugins = ", ".join(job.get("plugins", [])) or "-"
+                enable = "✓" if job.get("enable", True) else "✗"
                 table.add_row(
-                    job.get("name", ""),
-                    job.get("account", ""),
-                    job.get("source", ""),
-                    job.get("destination", "") or "-",
-                    plugins,
+                    enable,
+                    truncate(job.get("name", "")),
+                    truncate(job.get("account", "")),
+                    truncate(job.get("source", "")),
+                    truncate(job.get("destination", "")) or "-",
+                    truncate(plugins),
                     str(job.get("limit", "")),
                 )
 
