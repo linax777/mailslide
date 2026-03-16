@@ -1,6 +1,7 @@
 """UI 畫面 - TabbedContent 各標籤頁"""
 
 import asyncio
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -31,9 +32,9 @@ from outlook_mail_extractor.logger import LoggerManager
 
 from .models import CheckStatus, ConfigStatus, OutlookStatus, SystemStatus
 
-CONFIG_PATH = Path("config/config.yaml")
-LLM_CONFIG_PATH = Path("config/llm-config.yaml")
-PLUGINS_DIR = Path("config/plugins")
+CONFIG_PATH = Path(__file__).parent.parent / "config" / "config.yaml"
+LLM_CONFIG_PATH = Path(__file__).parent.parent / "config" / "llm-config.yaml"
+PLUGINS_DIR = Path(__file__).parent.parent / "config" / "plugins"
 
 LEVEL_PRIORITY = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
 
@@ -489,34 +490,57 @@ class PluginsConfigTab(Static):
     """Plugin 設定分頁"""
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="plugin-list-container"):
+        with Vertical(id="plugin-main"):
             yield Static("📦 Plugins", id="plugin-list-title")
-            yield DataTable(id="plugin-list")
-        yield Static("📄 選取的 Plugin 設定", id="plugin-content-title")
-        yield TextArea("", id="plugin-content", read_only=True)
+            yield DataTable(id="plugin-list", show_cursor=True, cursor_type="row")
+            yield Button("🔄 重新整理", id="refresh-plugins", variant="primary")
+            yield Static("📄 選取的 Plugin 設定", id="plugin-content-title")
+            yield TextArea("", id="plugin-content", read_only=True)
 
     def on_mount(self) -> None:
         self._load_plugins()
 
-    def _load_plugins(self) -> None:
-        table = self.query_one("#plugin-list", DataTable)
+    def on_show(self) -> None:
+        self._load_plugins()
 
-        if not PLUGINS_DIR.exists():
-            table.add_row("❌ plugins 目錄不存在")
-            return
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "refresh-plugins":
+            self._load_plugins()
+
+    def _load_plugins(self) -> None:
+        title = self.query_one("#plugin-list-title", Static)
+        table = self.query_one("#plugin-list", DataTable)
 
         table.clear()
         table.add_columns("Plugin 名稱", "狀態")
 
-        plugin_files = sorted(PLUGINS_DIR.glob("*.yaml"))
+        if not PLUGINS_DIR.exists():
+            title.update("📦 Plugins (目錄不存在)")
+            table.add_row("❌ plugins 目錄不存在", "")
+            return
+
+        plugin_files = sorted(PLUGINS_DIR.glob("*.yaml*"))
+
         if not plugin_files:
+            title.update("📦 Plugins (0 個)")
             table.add_row("(無 Plugin 設定檔)", "")
-        else:
-            for pf in plugin_files:
+            return
+
+        seen: set[str] = set()
+        for pf in plugin_files:
+            if pf.name.endswith(".yaml.sample"):
+                name = pf.name[:-12]
+                is_sample = True
+            else:
                 name = pf.stem
-                is_sample = pf.suffix == ".yaml.sample"
-                status = "📝 sample" if is_sample else "✅ 已啟用"
-                table.add_row(name, status)
+                is_sample = False
+            if name in seen:
+                continue
+            seen.add(name)
+            status = "sample" if is_sample else "active"
+            table.add_row(name, status)
+
+        title.update(f"📦 Plugins ({len(seen)} 個)")
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         table = self.query_one("#plugin-list", DataTable)

@@ -35,6 +35,7 @@ uv run python app.py
 │   └── plugins/               # 插件設定
 │       ├── move_to_folder.yaml.sample
 │       ├── add_category.yaml.sample
+│       ├── create_appointment.yaml
 │       └── create_appointment.yaml.sample
 ├── logs/                      # 日誌輸出目錄
 └── outlook_mail_extractor/
@@ -103,7 +104,7 @@ response_format: "json"
 | Home | Jobs 列表、執行按鈕、日誌輸出 |
 | 排程 | 排程開關、Cron 表達式設定 |
 | About | 系統狀態檢查 (設定檔、Outlook 連線) |
-| Configuration | 設定檔檢視 (一般、LLM、Plugins) |
+| Configuration | 設定檔檢視 (一般、LLM、Plugins，含重新整理按鈕) |
 
 ### 排程功能
 
