@@ -2,14 +2,25 @@
 
 從 Outlook 提取郵件工具，支援 LLM 分析與自動化處理
 
-## 如何執行
+## 命令列模式（CLI）
+
+單次任務可直接使用 CLI 執行：
 
 ```bash
-# 安裝依賴
-uv pip install -e .
+# 使用預設設定檔
+uv run outlook-extract
 
-# 執行應用程式
-uv run python app.py
+# 指定自訂設定檔
+uv run outlook-extract --config path/to/config.yaml
+
+# 測試模式（僅讀取，不移動郵件）
+uv run outlook-extract --dry-run
+
+# 輸出結果至 JSON 檔案
+uv run outlook-extract --output result.json
+
+# 不移動郵件，僅擷取資料
+uv run outlook-extract --no-move
 ```
 
 ## 如何設定 config.yaml
@@ -63,7 +74,7 @@ model: "llama3"
 
 - **Home**：執行 Jobs、查看日誌
 - **schedule**：設定自動排程
-- **Usage**：使用說明
+- **Guide**：使用說明
 - **Configuration**：查看/編輯設定檔
 - **About**：系統狀態檢查
 
