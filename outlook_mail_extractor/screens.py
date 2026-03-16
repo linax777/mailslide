@@ -201,6 +201,21 @@ class HomeScreen(Static):
 class ScheduleScreen(Static):
     """Schedule 標籤頁 - 排程設定"""
 
+    CSS = """
+    #schedule-switch {
+        width: 12;
+    }
+    #cron-input {
+        width: 25;
+    }
+    #schedule-enable-label {
+        width: 10;
+    }
+    #cron-label {
+        width: 10;
+    }
+    """
+
     def __init__(self):
         super().__init__()
         self._scheduler_enabled = False
@@ -210,10 +225,10 @@ class ScheduleScreen(Static):
     def compose(self) -> ComposeResult:
         with Vertical(id="schedule-container"):
             yield Static("🔄 排程設定", id="schedule-title")
-            with Horizontal(id="schedule-toggle"):
+            with Vertical(id="schedule-toggle"):
                 yield Static("啟用排程:", id="schedule-enable-label")
                 yield Switch(id="schedule-switch")
-            with Horizontal(id="schedule-cron"):
+            with Vertical(id="schedule-cron"):
                 yield Static("Cron 表達式:", id="cron-label")
                 yield Input("0 * * * *", id="cron-input", placeholder="* * * * *")
             yield Static("常用範例:", id="examples-title")
