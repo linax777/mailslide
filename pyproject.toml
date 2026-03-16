@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "beautifulsoup4>=4.14.3",
     "httpx>=0.27.0",
+    "pycron>=0.2.2",
     "pywin32>=311",
     "pyyaml>=6.0.3",
     "textual>=8.1.1",

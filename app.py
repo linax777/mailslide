@@ -3,7 +3,12 @@
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header, TabbedContent, TabPane
 
-from outlook_mail_extractor.screens import AboutScreen, ConfigScreen, HomeScreen
+from outlook_mail_extractor.screens import (
+    AboutScreen,
+    ConfigScreen,
+    HomeScreen,
+    ScheduleScreen,
+)
 
 
 class OutlookMailExtractor(App):
@@ -15,6 +20,8 @@ class OutlookMailExtractor(App):
         with TabbedContent(initial="home"):
             with TabPane("Home", id="home"):
                 yield HomeScreen()
+            with TabPane("排程", id="schedule"):
+                yield ScheduleScreen()
             with TabPane("About", id="about"):
                 yield AboutScreen()
             with TabPane("Configuration", id="config"):

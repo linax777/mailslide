@@ -1,11 +1,22 @@
 """UI 畫面 - TabbedContent 各標籤頁"""
 
 import asyncio
+from datetime import datetime
 from pathlib import Path
 
+import pycron
 from textual.app import ComposeResult
-from textual.containers import Horizontal
-from textual.widgets import Button, DataTable, Static, TabbedContent, TabPane, TextArea
+from textual.containers import Horizontal, Vertical
+from textual.widgets import (
+    Button,
+    DataTable,
+    Static,
+    Switch,
+    TabbedContent,
+    TabPane,
+    TextArea,
+    Input,
+)
 
 from outlook_mail_extractor.config import load_config
 from outlook_mail_extractor.core import (
@@ -97,14 +108,21 @@ class AboutScreen(Static):
 class HomeScreen(Static):
     """Home 標籤頁 - 執行 Jobs"""
 
+    def __init__(self):
+        super().__init__()
+        self._scheduler_enabled = False
+        self._cron_expression = "0 * * * *"  # Default: every hour
+        self._last_run_time = None
+
     def compose(self) -> ComposeResult:
-        with Horizontal(id="home-actions"):
-            yield Button("▶️ 執行", id="run-jobs", variant="primary")
-            yield Button("🔄 重新整理", id="refresh-jobs")
-        yield Static("📋 Jobs 列表", id="jobs-title")
-        yield DataTable(id="jobs-table")
-        yield Static("📝 執行日誌", id="log-title")
-        yield TextArea("", id="log-output", read_only=True)
+        with Vertical(id="home-container"):
+            with Horizontal(id="home-actions"):
+                yield Button("▶️ 執行", id="run-jobs", variant="primary")
+                yield Button("🔄 重新整理", id="refresh-jobs")
+            yield Static("📋 Jobs 列表", id="jobs-title")
+            yield DataTable(id="jobs-table")
+            yield Static("📝 執行日誌", id="log-title")
+            yield TextArea("", id="log-output", read_only=True)
 
     def on_mount(self) -> None:
         self._load_jobs()
@@ -138,9 +156,9 @@ class HomeScreen(Static):
         if event.button.id == "refresh-jobs":
             self._load_jobs()
         elif event.button.id == "run-jobs":
-            self._run_jobs_async()
+            self.run_jobs()
 
-    def _run_jobs_async(self) -> None:
+    def run_jobs(self) -> None:
         log_widget = self.query_one("#log-output", TextArea)
         log_widget.load_text("🔄 執行中...\n")
 
@@ -178,6 +196,93 @@ class HomeScreen(Static):
     def _enable_button(self) -> None:
         run_button = self.query_one("#run-jobs", Button)
         run_button.disabled = False
+
+
+class ScheduleScreen(Static):
+    """Schedule 標籤頁 - 排程設定"""
+
+    def __init__(self):
+        super().__init__()
+        self._scheduler_enabled = False
+        self._cron_expression = "0 * * * *"
+        self._last_run_time = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="schedule-container"):
+            yield Static("🔄 排程設定", id="schedule-title")
+            with Horizontal(id="schedule-toggle"):
+                yield Static("啟用排程:", id="schedule-enable-label")
+                yield Switch(id="schedule-switch")
+            with Horizontal(id="schedule-cron"):
+                yield Static("Cron 表達式:", id="cron-label")
+                yield Input("0 * * * *", id="cron-input", placeholder="* * * * *")
+            yield Static("常用範例:", id="examples-title")
+            yield Static(
+                "0 * * * * - 每小時\n"
+                "0 9 * * * - 每天早上 9 點\n"
+                "0 9 * * 1-5 - 平日早上 9 點\n"
+                "*/15 * * * * - 每 15 分鐘",
+                id="examples-content",
+            )
+            yield Static("📝 排程日誌", id="log-title")
+            yield TextArea("", id="log-output", read_only=True)
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        if event.switch.id == "schedule-switch":
+            self._scheduler_enabled = event.switch.value
+            self._update_schedule_status()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "cron-input":
+            self._cron_expression = event.input.value
+            self._update_schedule_status()
+
+    def _update_schedule_status(self) -> None:
+        if self._scheduler_enabled:
+            self._start_scheduler()
+        else:
+            self._stop_scheduler()
+
+    def _start_scheduler(self) -> None:
+        self._last_run_time = datetime.now()
+        self.set_interval(60, self._check_schedule)
+        self._log(f"🔄 排程已啟用: {self._cron_expression}")
+
+    def _stop_scheduler(self) -> None:
+        self._log("⏹️ 排程已停用")
+
+    def _check_schedule(self) -> None:
+        now = datetime.now()
+        try:
+            if pycron.is_now(self._cron_expression):
+                if (
+                    self._last_run_time is None
+                    or (now - self._last_run_time).total_seconds() > 60
+                ):
+                    self._last_run_time = now
+                    self._log(f"⏰ 排程觸發 ({now.strftime('%H:%M')}): 執行中...")
+                    self._run_jobs()
+        except Exception as e:
+            self._log(f"⚠️ 排程檢查錯誤: {e}")
+
+    def _run_jobs(self) -> None:
+        try:
+            home_screen = self.app.query_one(HomeScreen)
+            home_screen.run_jobs()
+        except Exception as e:
+            self._log(f"❌ 執行失敗: {e}")
+
+    def _log(self, message: str) -> None:
+        try:
+            log_widget = self.query_one("#log-output", TextArea)
+            current = log_widget.text or ""
+            lines = current.split("\n")
+            if len(lines) > 100:
+                lines = lines[-100:]
+            lines.append(message)
+            log_widget.load_text("\n".join(lines))
+        except Exception:
+            pass
 
 
 class MainConfigTab(Static):
