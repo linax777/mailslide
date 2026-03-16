@@ -1,0 +1,19 @@
+[project]
+name = "outlook-mail-extractor"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "pywin32>=311",
+    "pyyaml>=6.0.3",
+    "textual>=8.1.1",
+    "textual-dev>=1.8.0",
+]
+
+[project.scripts]
+outlook-extract = "outlook_mail_extractor.__main__:main"
+
+
+
