@@ -3,11 +3,10 @@
 from textual.app import App, ComposeResult
 from textual.widgets import Footer, Header, TabbedContent, TabPane
 
-from outlook_mail_extractor.screens import ConfigScreen, HomeScreen
+from outlook_mail_extractor.screens import AboutScreen, ConfigScreen, HomeScreen
 
 
 class OutlookMailExtractor(App):
-
     BINDINGS = [("d", "toggle_dark", "Toggle dark mode")]
 
     def compose(self) -> ComposeResult:
@@ -16,6 +15,8 @@ class OutlookMailExtractor(App):
         with TabbedContent(initial="home"):
             with TabPane("Home", id="home"):
                 yield HomeScreen()
+            with TabPane("About", id="about"):
+                yield AboutScreen()
             with TabPane("Configuration", id="config"):
                 yield ConfigScreen()
 

@@ -1,5 +1,6 @@
 """UI 畫面 - TabbedContent 各標籤頁"""
 
+import asyncio
 from pathlib import Path
 
 from textual.app import ComposeResult
@@ -7,7 +8,11 @@ from textual.containers import Horizontal
 from textual.widgets import Button, DataTable, Static, TabbedContent, TabPane, TextArea
 
 from outlook_mail_extractor.config import load_config
-from outlook_mail_extractor.core import OutlookClient, OutlookConnectionError
+from outlook_mail_extractor.core import (
+    OutlookClient,
+    OutlookConnectionError,
+    process_config_file,
+)
 from outlook_mail_extractor.llm import load_llm_config
 
 from .models import CheckStatus, ConfigStatus, OutlookStatus, SystemStatus
@@ -17,8 +22,8 @@ LLM_CONFIG_PATH = Path("config/llm-config.yaml")
 PLUGINS_DIR = Path("config/plugins")
 
 
-class HomeScreen(Static):
-    """Home 標籤頁 - 系統狀態檢查"""
+class AboutScreen(Static):
+    """About 標籤頁 - 系統狀態檢查"""
 
     def compose(self) -> ComposeResult:
         yield Static("系統狀態檢查", id="status-title")
@@ -87,6 +92,92 @@ class HomeScreen(Static):
         """處理按鈕點擊事件"""
         if event.button.id == "refresh-check":
             self.run_check()
+
+
+class HomeScreen(Static):
+    """Home 標籤頁 - 執行 Jobs"""
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="home-actions"):
+            yield Button("▶️ 執行", id="run-jobs", variant="primary")
+            yield Button("🔄 重新整理", id="refresh-jobs")
+        yield Static("📋 Jobs 列表", id="jobs-title")
+        yield DataTable(id="jobs-table")
+        yield Static("📝 執行日誌", id="log-title")
+        yield TextArea("", id="log-output", read_only=True)
+
+    def on_mount(self) -> None:
+        self._load_jobs()
+
+    def _load_jobs(self) -> None:
+        table = self.query_one("#jobs-table", DataTable)
+
+        if not CONFIG_PATH.exists():
+            table.add_row("❌ config.yaml 不存在", "", "")
+            return
+
+        try:
+            config = load_config(CONFIG_PATH)
+            table.clear()
+            table.add_columns("#", "名稱", "帳號", "來源", "目標", "Plugins")
+
+            for idx, job in enumerate(config.get("jobs", []), 1):
+                plugins = ", ".join(job.get("plugins", [])) or "-"
+                table.add_row(
+                    str(idx),
+                    job.get("name", ""),
+                    job.get("account", ""),
+                    job.get("source", ""),
+                    job.get("destination", "") or "-",
+                    plugins,
+                )
+        except Exception as e:
+            table.add_row(f"❌ 載入失敗: {e}", "", "")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "refresh-jobs":
+            self._load_jobs()
+        elif event.button.id == "run-jobs":
+            self._run_jobs_async()
+
+    def _run_jobs_async(self) -> None:
+        log_widget = self.query_one("#log-output", TextArea)
+        log_widget.load_text("🔄 執行中...\n")
+
+        run_button = self.query_one("#run-jobs", Button)
+        run_button.disabled = True
+
+        async def run_jobs():
+            try:
+                results = await asyncio.to_thread(
+                    process_config_file, CONFIG_PATH, False
+                )
+                lines = ["✅ 執行完成\n"]
+                if results:
+                    for job_name, job_results in results.items():
+                        lines.append(f"\n--- {job_name} ---")
+                        lines.append(f"處理郵件數: {len(job_results)}")
+                        for result in job_results:
+                            status = "✅" if result.success else "❌"
+                            lines.append(f"{status} {result.email_subject}")
+                            if result.plugin_results:
+                                for pr in result.plugin_results:
+                                    lines.append(f"   - {pr.plugin_name}: {pr.message}")
+                self.call_later(self._update_log, "\n".join(lines))
+            except Exception as e:
+                self.call_later(self._update_log, f"❌ 執行失敗: {e}")
+            finally:
+                self.call_later(self._enable_button)
+
+        asyncio.create_task(run_jobs())
+
+    def _update_log(self, text: str) -> None:
+        log_widget = self.query_one("#log-output", TextArea)
+        log_widget.load_text(text)
+
+    def _enable_button(self) -> None:
+        run_button = self.query_one("#run-jobs", Button)
+        run_button.disabled = False
 
 
 class MainConfigTab(Static):
