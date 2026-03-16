@@ -28,7 +28,8 @@ outlook-mail-extractor/
         ├── base.py
         ├── move.py
         ├── category.py
-        └── calendar.py
+        ├── calendar.py
+        └── write_file.py
 ```
 
 ## 技術棧
@@ -45,7 +46,7 @@ outlook-mail-extractor/
 
 ```bash
 # TUI 應用程式
-uv run python app.py
+uv run app.py
 
 # CLI 模式
 uv run outlook-extract --config config/config.yaml
@@ -106,6 +107,8 @@ def process_job(
 
 ## 新增插件
 
+### 基本結構
+
 1. 在 `outlook_mail_extractor/plugins/` 建立新檔案
 2. 繼承 `BasePlugin` 類別
 3. 使用 `@register_plugin` 裝飾器註冊
@@ -121,6 +124,82 @@ class MyPlugin(BasePlugin):
     async def execute(self, email_data, llm_response, outlook_client) -> bool:
         # 處理邏輯
         return True
+```
+
+### LLM 與非 LLM 插件
+
+插件透過 `default_system_prompt` 是否為空來區分是否需要 LLM：
+
+| 類型 | `default_system_prompt` | 執行時機 |
+|------|------------------------|----------|
+| **需要 LLM** | 非空字串 | 先執行非 LLM 插件，再呼叫 LLM，最後執行 LLM 插件 |
+| **不需要 LLM** | 空字串 `""` | 在 LLM 呼叫前先執行，傳入空的 `llm_response` |
+
+**不需要 LLM 的插件示例** (`write_file.py`)：
+```python
+@register_plugin
+class WriteFilePlugin(BasePlugin):
+    name = "write_file"
+    default_system_prompt = ""  # 空字串 = 不需要 LLM
+
+    async def execute(self, email_data, llm_response, outlook_client=None) -> bool:
+        # 直接使用 email_data，不依賴 LLM 回覆
+        ...
+```
+
+**需要 LLM 的插件示例** (`category.py`)：
+```python
+@register_plugin
+class AddCategoryPlugin(BasePlugin):
+    name = "add_category"
+    default_system_prompt = """你是一個郵件分類助手..."""
+
+    async def execute(self, email_data, llm_response, outlook_client) -> bool:
+        response_data = self._parse_response(llm_response)
+        # 解析 LLM 回覆並執行動作
+        ...
+```
+
+### PluginConfig 配置選項
+
+| 選項 | 類型 | 預設值 | 說明 |
+|------|------|--------|------|
+| `enabled` | `bool` | `True` | 是否啟用插件 |
+| `system_prompt` | `str` | `default_system_prompt` | System prompt |
+| `response_format` | `str` | `"json"` | LLM 回覆格式 |
+| `override_prompt` | `str \| None` | `None` | 覆蓋 system prompt |
+| `response_json_format` | `dict \| None` | `None` | JSON 格式範例 |
+
+### response_json_format 使用方式
+
+用於定義 LLM 回覆的 JSON 格式範例，自動附加到 system prompt：
+
+```python
+default_response_json_format = {
+    "has_category": '{"action": "category", "categories": ["分類1"]}',
+    "no_category": '{"action": "category", "categories": []}',
+    "move": '{"action": "move", "folder": "資料夾名稱"}',
+    "no_move": '{"action": "move", "folder": ""}',
+    "create_true": '{"action": "appointment", "create": true, "subject": "主題", "start": "2024-01-15T14:00:00", "end": "2024-01-15T15:00:00"}',
+    "create_false": '{"action": "appointment", "create": false}',
+}
+```
+
+### 插件配置檔
+
+在 `config/plugins/` 目錄下建立 `{plugin_name}.yaml`：
+
+```yaml
+# config/plugins/write_file.yaml
+enabled: true
+output_dir: "output"
+filename_format: "{subject}_{timestamp}"
+include_fields:
+  - subject
+  - sender
+  - received
+  - body
+  - tables
 ```
 
 ## 日誌系統
