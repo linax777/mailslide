@@ -7,11 +7,13 @@ from pathlib import Path
 
 import pycron
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import (
     Button,
     DataTable,
     Log,
+    Markdown,
+    MarkdownViewer,
     Static,
     Switch,
     TabbedContent,
@@ -39,11 +41,80 @@ PLUGINS_DIR = Path(__file__).parent.parent / "config" / "plugins"
 LEVEL_PRIORITY = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
 
 
-class AboutScreen(Static):
+class UsageScreen(Static):
+    """使用說明分頁"""
+
+    def compose(self) -> ComposeResult:
+        content = self._get_usage_content()
+        yield MarkdownViewer(content, show_table_of_contents=False)
+
+    def _get_usage_content(self) -> str:
+        readme_path = Path(__file__).parent.parent / "README.md"
+        try:
+            if readme_path.exists():
+                content = readme_path.read_text(encoding="utf-8")
+                return self._extract_usage_section(content)
+        except Exception:
+            pass
+        return self._get_fallback_content()
+
+    def _extract_usage_section(self, content: str) -> str:
+        lines = content.split("\n")
+        result = []
+        in_section = False
+        target_headers = ["快速開始", "功能特色"]
+
+        for line in lines:
+            if line.startswith("## "):
+                header = line[3:].strip()
+                if header in target_headers:
+                    in_section = True
+                    result.append(line)
+                elif in_section and line.startswith("## "):
+                    break
+                else:
+                    in_section = False
+
+            if in_section:
+                result.append(line)
+
+        if result:
+            return "\n".join(result)
+        return self._get_fallback_content()
+
+    def _get_fallback_content(self) -> str:
+        return """# 📌 快速開始
+
+```bash
+uv pip install -e .
+uv run python app.py
+```
+
+# 📌 功能特色
+
+- 郵件提取：從 Outlook Classic 提取郵件內容
+- LLM 分析：整合 OpenAI 相容 API 分析郵件
+- 插件系統：可擴充的自動化處理插件
+- 排程執行：支援 cron 表達式定期執行
+- 圖形介面：直覺的 Textual TUI 介面
+
+# 📌 UI 分頁
+
+| 分頁 | 功能 |
+|------|------|
+| Home | Jobs 列表、執行按鈕、日誌輸出 |
+| schedule | 排程開關、Cron 表達式設定 |
+| Usage | 使用說明 |
+| About | 系統狀態檢查 |
+| Configuration | 設定檔檢視 |
+"""
+
+
+class AboutScreen(Container):
     """About 標籤頁 - 系統狀態檢查"""
 
     def compose(self) -> ComposeResult:
-        yield Static("系統狀態檢查", id="status-title")
+        yield Static("🔧 系統狀態", id="status-title")
         yield Static("", id="status-content")
         yield Button("重新檢查", id="refresh-check", variant="primary")
 
@@ -51,18 +122,15 @@ class AboutScreen(Static):
         self.run_check()
 
     def run_check(self) -> None:
-        """執行系統檢查"""
         status = self._perform_check()
         self._display_status(status)
 
     def _perform_check(self) -> SystemStatus:
-        """執行各項檢查"""
         config_status = self._check_config()
         outlook_status = self._check_outlook()
         return SystemStatus(config=config_status, outlook=outlook_status)
 
     def _check_config(self) -> ConfigStatus:
-        """檢查設定檔"""
         config_path = CONFIG_PATH
         if not config_path.exists():
             return ConfigStatus(
@@ -77,7 +145,6 @@ class AboutScreen(Static):
             return ConfigStatus(status=CheckStatus.ERROR, message=f"格式錯誤 - {e}")
 
     def _check_outlook(self) -> OutlookStatus:
-        """檢查 Outlook 連線"""
         try:
             client = OutlookClient()
             client.connect()
@@ -94,7 +161,6 @@ class AboutScreen(Static):
             return OutlookStatus(status=CheckStatus.ERROR, message=f"連線失敗 - {e}")
 
     def _display_status(self, status: SystemStatus) -> None:
-        """顯示狀態結果"""
         lines = []
         config_icon = "✅" if status.config.status == CheckStatus.OK else "❌"
         outlook_icon = "✅" if status.outlook.status == CheckStatus.OK else "❌"
@@ -106,7 +172,6 @@ class AboutScreen(Static):
         status_content.update("\n".join(lines))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """處理按鈕點擊事件"""
         if event.button.id == "refresh-check":
             self.run_check()
 
@@ -117,7 +182,7 @@ class HomeScreen(Static):
     def __init__(self):
         super().__init__()
         self._scheduler_enabled = False
-        self._cron_expression = "0 * * * *"  # Default: every hour
+        self._cron_expression = "0 * * * *"
         self._last_run_time = None
         self._polling = False
 

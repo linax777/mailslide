@@ -11,6 +11,7 @@ from outlook_mail_extractor.screens import (
     ConfigScreen,
     HomeScreen,
     ScheduleScreen,
+    UsageScreen,
 )
 
 
@@ -41,6 +42,8 @@ class OutlookMailExtractor(App):
                 yield HomeScreen()
             with TabPane("schedule", id="schedule"):
                 yield ScheduleScreen()
+            with TabPane("Usage", id="usage"):
+                yield UsageScreen()
             with TabPane("Configuration", id="config"):
                 yield ConfigScreen()
             with TabPane("About", id="about"):
