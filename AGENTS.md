@@ -197,3 +197,68 @@ config.yaml           # Runtime configuration
 - Use pytest as test runner
 - Mock Outlook COM objects when possible
 - Test error cases (missing config, connection failures)
+
+## Lessons Learned
+
+### Real-time Logging with Textual + Loguru
+
+When implementing real-time log display in Textual UI, there are several important considerations:
+
+#### 1. Use `thread=True` in `run_worker`
+
+By default, Textual workers run in the same event loop as the main thread. To use `call_from_thread` for UI updates, you need to run the worker in a separate thread:
+
+```python
+# ❌ Wrong - shares same thread, call_from_thread won't work
+self.run_worker(self._execute_jobs(), exclusive=True)
+
+# ✅ Correct - runs in separate thread
+self.run_worker(self._execute_jobs(), exclusive=True, thread=True)
+```
+
+#### 2. Use `call_from_thread` for UI updates from worker
+
+When updating UI from a worker, use `call_from_thread` instead of direct widget access:
+
+```python
+def ui_sink(message: str) -> None:
+    self.app.call_from_thread(log_widget.write_line, message)
+```
+
+#### 3. Loguru Multiple Sinks
+
+Use loguru's multiple sinks to write to both file and UI simultaneously:
+
+```python
+# File sink (detailed logging)
+logger.add(log_file, level="DEBUG", format="...")
+
+# UI sink (only important info)
+logger.add(ui_sink_callback, level="INFO", format="...")
+```
+
+#### 4. Avoid Re-creating Logger Session
+
+When using UI sink in screens.py, don't let core.py re-create the session (which would overwrite the UI sink):
+
+```python
+# screens.py - create session with UI sink
+LoggerManager.start_session(enable_ui_sink=True)
+
+# core.py - reuse existing session
+existing = LoggerManager.get_current_log_path()
+if existing:
+    logger.info("Using existing session")
+else:
+    LoggerManager.start_session(enable_ui_sink=False)
+```
+
+#### 5. Why Polling Didn't Work
+
+Polling the log file from a timer didn't work because:
+- Timer callbacks run in the main thread
+- The worker runs in the same event loop (without `thread=True`)
+- Textual batches UI updates at the end of the event loop
+- All log updates were queued and only rendered after the worker finished
+
+The solution is to use loguru's sink mechanism with `call_from_thread`, which bypasses the event loop batching.
