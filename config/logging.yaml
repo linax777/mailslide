@@ -1,4 +1,0 @@
-# 日誌配置
-logging:
-  # UI 顯示的最低級別 (DEBUG, INFO, WARNING, ERROR)
-  display_level: "DEBUG"

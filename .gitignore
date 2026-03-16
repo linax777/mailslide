@@ -10,7 +10,8 @@ wheels/
 .venv
 
 # config
-plugins/*.yaml
+config/plugins/*.yaml
+config/*.yaml
 
 
 # log
