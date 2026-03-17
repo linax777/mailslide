@@ -181,12 +181,14 @@ class EmailProcessor:
         # Get messages up to limit
         msg_list = []
         msg = messages.GetFirst()
-        count = 0
-        while msg and count < limit:
-            if msg.Class == 43:  # Mail item
+        while msg and len(msg_list) < limit:
+            if getattr(msg, "Class", None) == 43:  # Mail item
                 msg_list.append(msg)
-            count += 1
             msg = messages.GetNext()
+
+        logger = get_logger()
+        if not msg_list:
+            logger.info(f"Job {job_config.get('name', 'Unnamed Job')} 沒有可處理的郵件")
 
         # Initialize plugins (optional, for backward compatibility)
         plugin_names = job_config.get("plugins", [])
