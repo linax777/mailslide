@@ -14,3 +14,9 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Fixed calendar creation to resolve the default Calendar folder from the configured Outlook account instead of the global default mailbox.
 - Fixed the scheduler lifecycle in the Textual UI to stop duplicate interval timers from accumulating and to shut them down cleanly on unmount.
 - Fixed the scheduler shutdown crash caused by `_schedule_timer` being initialized on the wrong screen class.
+- Fixed job message limiting so `limit` now counts actual mail items only, while folders with no mail items complete normally without raising errors.
+
+### Changed
+
+- Improved email body extraction to prefer cleaned HTML content when available, preserve paragraph structure, and trim quoted reply history before sending content to the LLM pipeline.
+- Improved parser cleanup with high-confidence signature and newsletter footer stripping to reduce noise in extracted email bodies.
