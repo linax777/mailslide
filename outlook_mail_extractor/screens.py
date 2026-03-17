@@ -237,12 +237,22 @@ class AboutScreen(Container):
 class HomeScreen(Static):
     """Home 標籤頁 - 執行 Jobs"""
 
+    CSS = """
+    #home-actions {
+        height: auto;
+    }
+    #toggle-preserve-reply-thread {
+        margin: 0 0 0 2;
+    }
+    """
+
     def __init__(self):
         super().__init__()
         self._scheduler_enabled = False
         self._cron_expression = "0 * * * *"
         self._last_run_time = None
         self._polling = False
+        self._preserve_reply_thread = True
 
     def compose(self) -> ComposeResult:
         with Vertical(id="home-container"):
@@ -254,12 +264,18 @@ class HomeScreen(Static):
             with Horizontal(id="home-actions"):
                 yield Button("▶️ 執行", id="run-jobs", variant="primary")
                 yield Button("🔄 重新整理", id="refresh-jobs")
+                yield Button(
+                    "保留 RE/FW: ON",
+                    id="toggle-preserve-reply-thread",
+                    variant="default",
+                )
             yield Static("📋 Jobs 列表", id="jobs-title")
             yield DataTable(id="jobs-table")
             yield Static("📝 執行日誌", id="log-title")
             yield Log(id="log-output", auto_scroll=True)
 
     def on_mount(self) -> None:
+        self._update_preserve_reply_button()
         self._load_jobs()
 
     def _load_jobs(self) -> None:
@@ -304,6 +320,18 @@ class HomeScreen(Static):
             self._load_jobs()
         elif event.button.id == "run-jobs":
             self.run_jobs()
+        elif event.button.id == "toggle-preserve-reply-thread":
+            self._preserve_reply_thread = not self._preserve_reply_thread
+            self._update_preserve_reply_button()
+            status = "啟用" if self._preserve_reply_thread else "停用"
+            self.app.notify(f"RE/FW 內文保留：{status}", severity="information")
+
+    def _update_preserve_reply_button(self) -> None:
+        """Update preserve-reply-thread toggle button label."""
+        button = self.query_one("#toggle-preserve-reply-thread", Button)
+        button.label = (
+            "保留 RE/FW: ON" if self._preserve_reply_thread else "保留 RE/FW: OFF"
+        )
 
     def run_jobs(self) -> None:
         if not self._validate_jobs_before_run():
@@ -369,7 +397,11 @@ class HomeScreen(Static):
 
     async def _execute_jobs(self) -> None:
         try:
-            results = await process_config_file(CONFIG_PATH, False)
+            results = await process_config_file(
+                CONFIG_PATH,
+                False,
+                preserve_reply_thread=self._preserve_reply_thread,
+            )
             self.call_later(self._update_log, "✅ 執行完成")
         except Exception as e:
             import traceback

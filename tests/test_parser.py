@@ -25,8 +25,8 @@ Here are the meeting notes.
     assert "Item 1" in result
 
 
-def test_clean_content_drops_reply_history_for_regular_reply() -> None:
-    """Keep only the latest reply for non-forwarded conversations."""
+def test_clean_content_keeps_reply_history_by_default() -> None:
+    """Preserve reply history by default to avoid dropping useful context."""
     text = """
 Looks good to me.
 
@@ -40,7 +40,9 @@ Here are the meeting notes.
 
     result = clean_content(text, subject="Re: Meeting notes")
 
-    assert result == "Looks good to me."
+    assert "Looks good to me." in result
+    assert "From: Alice <alice@example.com>" in result
+    assert "Here are the meeting notes." in result
 
 
 def test_extract_main_content_uses_subject_for_forward_detection() -> None:

@@ -128,9 +128,10 @@ class OutlookClient:
 class EmailProcessor:
     """Email processing logic"""
 
-    def __init__(self, client: OutlookClient):
-        """Initialize email processor"""
+    def __init__(self, client: OutlookClient, preserve_reply_thread: bool = True):
+        """Initialize email processor."""
         self._client = client
+        self._preserve_reply_thread = preserve_reply_thread
 
     def extract_email_data(self, message) -> dict:
         """Extract data from single email"""
@@ -140,6 +141,7 @@ class EmailProcessor:
             raw_body,
             html_body,
             subject=str(message.Subject) if getattr(message, "Subject", None) else "",
+            preserve_reply_thread=self._preserve_reply_thread,
         )
 
         return {
@@ -306,11 +308,18 @@ class EmailProcessor:
 
         # If no plugins need LLM, return early
         if not system_prompts:
+            if dst_folder and not dry_run and not no_move:
+                try:
+                    message.Move(dst_folder)
+                except Exception as e:
+                    error_msg = f"Move failed: {e}"
+                    logger.error(error_msg)
             return EmailAnalysisResult(
                 email_subject=subject,
                 llm_response="",
                 plugin_results=plugin_results,
                 success=True,
+                error_message=error_msg,
             )
 
         # Combine system prompts
@@ -441,6 +450,7 @@ async def process_config_file(
     config_file: Path | str = "config/config.yaml",
     dry_run: bool = False,
     no_move: bool = False,
+    preserve_reply_thread: bool = True,
 ) -> dict:
     """
     Process config file with LLM analysis and plugins.
@@ -448,6 +458,8 @@ async def process_config_file(
     Args:
         config_file: Config file path
         dry_run: Test mode
+        no_move: Skip moving emails to destination folder
+        preserve_reply_thread: Keep RE/FW thread content when parsing bodies
 
     Returns:
         All job results
@@ -462,7 +474,10 @@ async def process_config_file(
     else:
         log_path = LoggerManager.start_session(enable_ui_sink=False)
         logger.info(f"開始執行，日誌文件: {log_path}")
-    logger.info(f"Config: {config_file}, Dry-run: {dry_run}, No-move: {no_move}")
+    logger.info(
+        f"Config: {config_file}, Dry-run: {dry_run}, No-move: {no_move}, "
+        f"Preserve-reply-thread: {preserve_reply_thread}"
+    )
 
     try:
         from .config import load_config
@@ -481,7 +496,10 @@ async def process_config_file(
         plugin_configs = load_plugin_configs()
         logger.info(f"已載入 {len(plugin_configs)} 個插件配置")
 
-        processor = EmailProcessor(client)
+        processor = EmailProcessor(
+            client,
+            preserve_reply_thread=preserve_reply_thread,
+        )
         all_results = {}
 
         for job in config.get("jobs", []):

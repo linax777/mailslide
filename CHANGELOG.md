@@ -16,6 +16,7 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Fixed the scheduler shutdown crash caused by `_schedule_timer` being initialized on the wrong screen class.
 - Fixed job message limiting so `limit` now counts actual mail items only, while folders with no mail items complete normally without raising errors.
 - Fixed Outlook account resolution to use strict store-name matching, so invalid account names are detected reliably instead of being accepted by ambiguous COM lookup behavior.
+- Fixed the no-LLM plugin execution path (e.g., `write_file`) so processed messages are still moved to the configured destination folder.
 
 ### Changed
 
@@ -26,3 +27,6 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Improved first-run onboarding in the TUI so missing `config/config.yaml` now redirects users to the `About` tab, shows initialization guidance, and disables job execution until setup is completed.
 - Improved validation in the `About` tab so system checks now verify enabled jobs' `account` and `source` settings before execution.
 - Improved job execution so configured `destination` folders are created automatically when missing, which helps first-time runs on new hosts.
+- Changed parser defaults to preserve RE/FW thread content unless explicitly disabled via `preserve_reply_thread=False`.
+- Added a Home-tab toggle control for preserving RE/FW content during parsing and wired it through to the processing pipeline.
+- Replaced the Home-tab switch widget with a visible ON/OFF toggle button to avoid terminal layout visibility issues.

@@ -322,7 +322,12 @@ def strip_footer(text: str) -> str:
     return text
 
 
-def clean_content(text: str, max_length: int = 800, subject: str = "") -> str:
+def clean_content(
+    text: str,
+    max_length: int = 800,
+    subject: str = "",
+    preserve_reply_thread: bool = True,
+) -> str:
     """
     清理郵件雜訊並保留段落結構。
 
@@ -330,6 +335,7 @@ def clean_content(text: str, max_length: int = 800, subject: str = "") -> str:
         text: 原始文字內容
         max_length: 最大輸出長度，預設 800
         subject: 郵件主旨，用於判斷是否為轉寄郵件
+        preserve_reply_thread: 是否保留 RE/FW 原始對話內容，預設 True
 
     Returns:
         清理後的文字
@@ -338,7 +344,8 @@ def clean_content(text: str, max_length: int = 800, subject: str = "") -> str:
         return ""
 
     text = normalize_text(text)
-    text = strip_reply_thread_with_subject(text, subject=subject)
+    if not preserve_reply_thread:
+        text = strip_reply_thread_with_subject(text, subject=subject)
     text = strip_signature(text)
     text = strip_footer(text)
 
@@ -358,6 +365,7 @@ def extract_main_content(
     html: str = "",
     max_length: int = 800,
     subject: str = "",
+    preserve_reply_thread: bool = True,
 ) -> str:
     """
     Extract the best available email body for downstream LLM processing.
@@ -367,12 +375,23 @@ def extract_main_content(
         html: Outlook HTML body
         max_length: Maximum output length
         subject: Email subject
+        preserve_reply_thread: Whether to keep RE/FW thread content
 
     Returns:
         Cleaned email body text
     """
-    html_text = clean_content(html_to_text(html), max_length=max_length, subject=subject)
-    plain = clean_content(plain_text, max_length=max_length, subject=subject)
+    html_text = clean_content(
+        html_to_text(html),
+        max_length=max_length,
+        subject=subject,
+        preserve_reply_thread=preserve_reply_thread,
+    )
+    plain = clean_content(
+        plain_text,
+        max_length=max_length,
+        subject=subject,
+        preserve_reply_thread=preserve_reply_thread,
+    )
 
     if len(html_text) >= len(plain):
         return html_text
