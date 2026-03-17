@@ -13,7 +13,7 @@ from .models import (
     LLMConfigStatus,
     PluginResult,
 )
-from .parser import clean_content, clean_invisible_chars, parse_tables
+from .parser import clean_invisible_chars, extract_main_content, parse_tables
 from .plugins import get_plugin, load_plugin_configs
 
 
@@ -125,7 +125,8 @@ class EmailProcessor:
     def extract_email_data(self, message) -> dict:
         """Extract data from single email"""
         raw_body = str(message.Body) if getattr(message, "Body", None) else ""
-        clean_body = clean_content(raw_body)
+        html_body = str(message.HTMLBody) if getattr(message, "HTMLBody", None) else ""
+        clean_body = extract_main_content(raw_body, html_body)
 
         return {
             "subject": message.Subject,
@@ -136,7 +137,7 @@ class EmailProcessor:
             ),
             "received": str(message.ReceivedTime),
             "body": clean_body,
-            "tables": parse_tables(message.HTMLBody),
+            "tables": parse_tables(html_body),
             "_message": message,  # Keep reference for actions
             "_account": None,  # Will be set by caller
         }

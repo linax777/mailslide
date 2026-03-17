@@ -5,6 +5,51 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+REPLY_SEPARATOR_PATTERNS = [
+    r"^\s*-{2,}\s*Original Message\s*-{2,}\s*$",
+    r"^\s*From:\s.+$",
+    r"^\s*Sent:\s.+$",
+    r"^\s*To:\s.+$",
+    r"^\s*Subject:\s.+$",
+    r"^\s*On .+ wrote:\s*$",
+    r"^\s*寄件者[:：]\s*.+$",
+    r"^\s*收件者[:：]\s*.+$",
+    r"^\s*副本[:：]\s*.+$",
+    r"^\s*主旨[:：]\s*.+$",
+]
+
+BLOCK_TAGS = {"p", "div", "section", "article", "br", "li", "tr", "ul", "ol"}
+
+SIGNATURE_START_PATTERNS = [
+    r"^\s*--\s*$",
+    r"^\s*best regards[,]?\s*$",
+    r"^\s*regards[,]?\s*$",
+    r"^\s*kind regards[,]?\s*$",
+    r"^\s*thanks[,]?\s*$",
+    r"^\s*thank you[,]?\s*$",
+    r"^\s*cheers[,]?\s*$",
+    r"^\s*sent from my iphone\s*$",
+    r"^\s*sent from my ipad\s*$",
+    r"^\s*sent from outlook for (ios|android)\s*$",
+]
+
+FOOTER_KEYWORDS = [
+    "unsubscribe",
+    "view in browser",
+    "manage preferences",
+    "privacy policy",
+    "terms of use",
+    "all rights reserved",
+    "copyright",
+    "email preferences",
+    "update your preferences",
+    "mailing address",
+    "本郵件",
+    "取消訂閱",
+    "隱私權政策",
+    "版權所有",
+]
+
 
 def clean_invisible_chars(obj: Any) -> Any:
     """
@@ -27,9 +72,167 @@ def clean_invisible_chars(obj: Any) -> Any:
     return obj
 
 
+def html_to_text(html: str) -> str:
+    """
+    Convert HTML email content into readable text while preserving paragraphs.
+
+    Args:
+        html: HTML body content
+
+    Returns:
+        Extracted plain text
+    """
+    if not html:
+        return ""
+
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+
+        for tag in soup(["script", "style", "head", "title", "meta", "noscript"]):
+            tag.decompose()
+
+        for tag in soup.find_all(style=True):
+            style = tag.get("style", "").replace(" ", "").lower()
+            if "display:none" in style or "visibility:hidden" in style:
+                tag.decompose()
+
+        for tag in soup.find_all(attrs={"aria-hidden": "true"}):
+            tag.decompose()
+
+        for tag_name in BLOCK_TAGS:
+            for tag in soup.find_all(tag_name):
+                if tag_name == "br":
+                    tag.replace_with("\n")
+                elif tag_name == "li":
+                    tag.insert_before("\n- ")
+                elif tag_name == "tr":
+                    tag.insert_before("\n")
+                    cells = tag.find_all(["th", "td"])
+                    if cells:
+                        row_text = " | ".join(cell.get_text(" ", strip=True) for cell in cells)
+                        tag.replace_with(f"{row_text}\n")
+                else:
+                    tag.insert_before("\n")
+                    tag.insert_after("\n")
+
+        return soup.get_text(" ", strip=False)
+    except Exception:
+        return ""
+
+
+def normalize_text(text: str) -> str:
+    """
+    Normalize whitespace while preserving paragraphs.
+
+    Args:
+        text: Raw extracted text
+
+    Returns:
+        Normalized text
+    """
+    if not text:
+        return ""
+
+    text = clean_invisible_chars(text)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"[ \t\f\v]+", " ", text)
+    text = re.sub(r"\n[ \t]+", "\n", text)
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def strip_reply_thread(text: str) -> str:
+    """
+    Remove quoted reply / forward history from email text.
+
+    Args:
+        text: Normalized email text
+
+    Returns:
+        Current-message focused text
+    """
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    kept_lines: list[str] = []
+
+    for line in lines:
+        if any(re.match(pattern, line, re.IGNORECASE) for pattern in REPLY_SEPARATOR_PATTERNS):
+            break
+        kept_lines.append(line)
+
+    return "\n".join(kept_lines).strip()
+
+
+def strip_signature(text: str) -> str:
+    """
+    Remove high-confidence signature blocks from the tail of an email.
+
+    Args:
+        text: Email text without reply history
+
+    Returns:
+        Text with signature block removed when detected
+    """
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if any(re.match(pattern, line, re.IGNORECASE) for pattern in SIGNATURE_START_PATTERNS):
+            remaining = [value for value in lines[index:] if value.strip()]
+            if 1 <= len(remaining) <= 12:
+                return "\n".join(lines[:index]).strip()
+
+    return text
+
+
+def _is_footer_line(line: str) -> bool:
+    candidate = line.strip().lower()
+    if not candidate:
+        return False
+    return any(keyword in candidate for keyword in FOOTER_KEYWORDS)
+
+
+def strip_footer(text: str) -> str:
+    """
+    Remove high-confidence newsletter or legal footer blocks.
+
+    Args:
+        text: Email text after reply/signature cleanup
+
+    Returns:
+        Text with footer-like tail removed when detected
+    """
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    footer_start: int | None = None
+
+    for index, line in enumerate(lines):
+        if _is_footer_line(line):
+            footer_start = index
+            break
+
+    if footer_start is None:
+        return text
+
+    tail_lines = lines[footer_start:]
+    keyword_hits = sum(1 for line in tail_lines if _is_footer_line(line))
+    non_empty_tail = sum(1 for line in tail_lines if line.strip())
+
+    if keyword_hits >= 2 or (keyword_hits >= 1 and non_empty_tail <= 8):
+        return "\n".join(lines[:footer_start]).strip()
+
+    return text
+
+
 def clean_content(text: str, max_length: int = 800) -> str:
     """
-    清理郵件雜訊：移除網址、長串隨機字元及 Base64 編碼
+    清理郵件雜訊並保留段落結構。
 
     Args:
         text: 原始文字內容
@@ -40,15 +243,45 @@ def clean_content(text: str, max_length: int = 800) -> str:
     """
     if not text:
         return ""
-    # 0. 移除隱藏字元
-    text = re.sub(r"[\u200b-\u200f\ufeff\u202a-\u202e\r]", "", text)
-    # 1. 移除網址
+
+    text = normalize_text(text)
+    text = strip_reply_thread(text)
+    text = strip_signature(text)
+    text = strip_footer(text)
+
+    # 移除網址
     text = re.sub(r"http[s]?://\S+", "[URL]", text)
-    # 2. 移除長度超過 20 的純隨機英數字串 (常見於追蹤碼或加密片段)
+
+    # 移除長度超過 20 的純隨機英數字串 (常見於追蹤碼或加密片段)
     text = re.sub(r"\b\w{20,}\b", "", text)
-    # 3. 清理多餘換行與空白
-    text = " ".join(text.split())
+
+    # 重新整理清理後的段落與空白
+    text = normalize_text(text)
     return text[:max_length]
+
+
+def extract_main_content(
+    plain_text: str = "",
+    html: str = "",
+    max_length: int = 800,
+) -> str:
+    """
+    Extract the best available email body for downstream LLM processing.
+
+    Args:
+        plain_text: Outlook plain text body
+        html: Outlook HTML body
+        max_length: Maximum output length
+
+    Returns:
+        Cleaned email body text
+    """
+    html_text = clean_content(html_to_text(html), max_length=max_length)
+    plain = clean_content(plain_text, max_length=max_length)
+
+    if len(html_text) >= len(plain):
+        return html_text
+    return plain
 
 
 def parse_tables(html: str) -> list[list[dict]]:
