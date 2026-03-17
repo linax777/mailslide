@@ -22,6 +22,7 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 ### Changed
 
 - Improved email body extraction to prefer cleaned HTML content when available, preserve paragraph structure, and trim quoted reply history before sending content to the LLM pipeline.
+- Updated parser body cleanup to remove reply/forward metadata header lines from content (`From/Sent/To/Cc/Subject` and `寄件者/已傳送/收件者/副本/主旨`) to reduce body noise and length.
 - Improved parser cleanup with high-confidence signature and newsletter footer stripping to reduce noise in extracted email bodies.
 - Improved forwarded-message parsing so short `FW:`/`Fwd:`/`轉寄` comments keep the forwarded body instead of truncating everything after the first forwarded header block.
 - Added parser coverage for forwarded-message extraction and standard reply-thread trimming behavior.
