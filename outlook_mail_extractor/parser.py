@@ -18,6 +18,20 @@ REPLY_SEPARATOR_PATTERNS = [
     r"^\s*主旨[:：]\s*.+$",
 ]
 
+REPLY_HEADER_PATTERNS = [
+    r"^\s*-{2,}\s*Original Message\s*-{2,}\s*$",
+    r"^\s*From:\s.+$",
+    r"^\s*Sent:\s.+$",
+    r"^\s*To:\s.+$",
+    r"^\s*Cc:\s.+$",
+    r"^\s*Subject:\s.+$",
+    r"^\s*On .+ wrote:\s*$",
+    r"^\s*寄件者[:：]\s*.+$",
+    r"^\s*收件者[:：]\s*.+$",
+    r"^\s*副本[:：]\s*.+$",
+    r"^\s*主旨[:：]\s*.+$",
+]
+
 FORWARD_SUBJECT_PATTERNS = [
     r"^\s*fw\s*:",
     r"^\s*fwd\s*:",
@@ -281,6 +295,29 @@ def strip_signature(text: str) -> str:
     return text
 
 
+def strip_reply_headers(text: str) -> str:
+    """
+    Remove reply/forward metadata header lines from body text.
+
+    Args:
+        text: Email text after optional thread trimming
+
+    Returns:
+        Text with reply header lines removed
+    """
+    if not text:
+        return ""
+
+    cleaned_lines = [
+        line
+        for line in text.splitlines()
+        if not any(
+            re.match(pattern, line, re.IGNORECASE) for pattern in REPLY_HEADER_PATTERNS
+        )
+    ]
+    return "\n".join(cleaned_lines).strip()
+
+
 def _is_footer_line(line: str) -> bool:
     candidate = line.strip().lower()
     if not candidate:
@@ -346,6 +383,7 @@ def clean_content(
     text = normalize_text(text)
     if not preserve_reply_thread:
         text = strip_reply_thread_with_subject(text, subject=subject)
+    text = strip_reply_headers(text)
     text = strip_signature(text)
     text = strip_footer(text)
 
