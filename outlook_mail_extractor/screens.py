@@ -9,6 +9,7 @@ from pathlib import Path
 import pycron
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.timer import Timer
 from textual.widgets import (
     Button,
     DataTable,
@@ -315,6 +316,7 @@ class ScheduleScreen(Static):
         self._scheduler_enabled = False
         self._cron_expression = "0 * * * *"
         self._last_run_time = None
+        self._schedule_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="schedule-container"):
@@ -418,11 +420,19 @@ class ScheduleScreen(Static):
 
     def _start_scheduler(self) -> None:
         self._last_run_time = datetime.now()
-        self.set_interval(60, self._check_schedule)
+        if self._schedule_timer is not None:
+            self._schedule_timer.stop()
+        self._schedule_timer = self.set_interval(60, self._check_schedule)
         self._log(f"🔄 排程已啟用: {self._cron_expression}")
 
     def _stop_scheduler(self) -> None:
+        if self._schedule_timer is not None:
+            self._schedule_timer.stop()
+            self._schedule_timer = None
         self._log("⏹️ 排程已停用")
+
+    def on_unmount(self) -> None:
+        self._stop_scheduler()
 
     def _check_schedule(self) -> None:
         now = datetime.now()

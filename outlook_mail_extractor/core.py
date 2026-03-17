@@ -109,7 +109,8 @@ class OutlookClient:
 
         OL_FOLDER_CALENDAR = 9
         try:
-            return self._mapi.GetDefaultFolder(OL_FOLDER_CALENDAR)
+            store = self._mapi.Folders[account].Store
+            return store.GetDefaultFolder(OL_FOLDER_CALENDAR)
         except Exception as e:
             raise FolderNotFoundError(f"GetDefaultFolder failed: {e}") from e
 
@@ -146,6 +147,7 @@ class EmailProcessor:
         llm_client: LLMClient | None = None,
         plugin_configs: dict | None = None,
         dry_run: bool = False,
+        no_move: bool = False,
     ) -> list[EmailAnalysisResult]:
         """
         Process single job with LLM analysis and plugins.
@@ -204,6 +206,7 @@ class EmailProcessor:
                 llm_client,
                 plugins,
                 dry_run,
+                no_move,
                 dst_folder,
             )
             results.append(result)
@@ -217,6 +220,7 @@ class EmailProcessor:
         llm_client: LLMClient | None,
         plugins: list,
         dry_run: bool,
+        no_move: bool,
         dst_folder=None,
     ) -> EmailAnalysisResult:
         """Process single email with LLM and plugins"""
@@ -362,7 +366,7 @@ class EmailProcessor:
                         )
 
         # Move email to destination folder if specified
-        if dst_folder and success and not dry_run:
+        if dst_folder and success and not dry_run and not no_move:
             try:
                 message.Move(dst_folder)
             except Exception as e:
@@ -415,6 +419,7 @@ def check_llm_config(config_file: str | None = None) -> LLMConfigStatus:
 async def process_config_file(
     config_file: Path | str = "config/config.yaml",
     dry_run: bool = False,
+    no_move: bool = False,
 ) -> dict:
     """
     Process config file with LLM analysis and plugins.
@@ -427,6 +432,8 @@ async def process_config_file(
         All job results
     """
     logger = get_logger()
+    client: OutlookClient | None = None
+    llm_client: LLMClient | None = None
 
     existing_log_path = LoggerManager.get_current_log_path()
     if existing_log_path:
@@ -434,7 +441,7 @@ async def process_config_file(
     else:
         log_path = LoggerManager.start_session(enable_ui_sink=False)
         logger.info(f"開始執行，日誌文件: {log_path}")
-    logger.info(f"Config: {config_file}, Dry-run: {dry_run}")
+    logger.info(f"Config: {config_file}, Dry-run: {dry_run}, No-move: {no_move}")
 
     try:
         from .config import load_config
@@ -445,7 +452,6 @@ async def process_config_file(
 
         # Try to load LLM config
         llm_config = load_llm_config()
-        llm_client = None
         if llm_config.api_base:
             llm_client = LLMClient(llm_config)
             logger.info(f"LLM 客戶端已初始化: {llm_config.model}")
@@ -469,6 +475,7 @@ async def process_config_file(
                 llm_client=llm_client,
                 plugin_configs=plugin_configs,
                 dry_run=dry_run,
+                no_move=no_move,
             )
             all_results[job_name] = results
             logger.info(f"Job {job_name} 完成，處理 {len(results)} 封郵件")
@@ -481,7 +488,6 @@ async def process_config_file(
     finally:
         if llm_client:
             llm_client.close()
-        client.disconnect()
-        logger.info("已斷開 Outlook 連接")
-        if llm_client:
-            llm_client.close()
+        if client and client.is_connected:
+            client.disconnect()
+            logger.info("已斷開 Outlook 連接")

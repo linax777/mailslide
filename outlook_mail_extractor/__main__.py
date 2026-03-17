@@ -10,7 +10,7 @@ from . import process_config_file
 from .logger import LoggerManager, get_logger
 
 
-async def main():
+async def async_main() -> int:
     """CLI 主函式"""
     LoggerManager.start_session()
     logger = get_logger()
@@ -49,12 +49,13 @@ async def main():
     if not args.config.exists():
         print(f"錯誤: 找不到設定檔 {args.config}", file=sys.stderr)
         logger.error(f"找不到設定檔: {args.config}")
-        sys.exit(1)
+        return 1
 
     try:
         results = await process_config_file(
             config_file=args.config,
             dry_run=args.dry_run,
+            no_move=args.no_move,
         )
 
         json_str = json.dumps(results, ensure_ascii=False, indent=2)
@@ -68,12 +69,18 @@ async def main():
             print(json_str)
 
         logger.info("命令列執行完成")
+        return 0
 
     except Exception as e:
         logger.exception(f"執行失敗: {e}")
         print(f"錯誤: {e}", file=sys.stderr)
-        sys.exit(1)
+        return 1
+
+
+def main() -> int:
+    """同步包裝函式，提供 console script 使用。"""
+    return asyncio.run(async_main())
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(main())
