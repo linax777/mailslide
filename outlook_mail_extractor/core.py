@@ -136,7 +136,11 @@ class EmailProcessor:
         """Extract data from single email"""
         raw_body = str(message.Body) if getattr(message, "Body", None) else ""
         html_body = str(message.HTMLBody) if getattr(message, "HTMLBody", None) else ""
-        clean_body = extract_main_content(raw_body, html_body)
+        clean_body = extract_main_content(
+            raw_body,
+            html_body,
+            subject=str(message.Subject) if getattr(message, "Subject", None) else "",
+        )
 
         return {
             "subject": message.Subject,

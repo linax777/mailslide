@@ -18,6 +18,13 @@ REPLY_SEPARATOR_PATTERNS = [
     r"^\s*主旨[:：]\s*.+$",
 ]
 
+FORWARD_SUBJECT_PATTERNS = [
+    r"^\s*fw\s*:",
+    r"^\s*fwd\s*:",
+    r"^\s*轉寄\s*[:：]",
+    r"^\s*轉發\s*[:：]",
+]
+
 BLOCK_TAGS = {"p", "div", "section", "article", "br", "li", "tr", "ul", "ol"}
 
 SIGNATURE_START_PATTERNS = [
@@ -166,6 +173,91 @@ def strip_reply_thread(text: str) -> str:
     return "\n".join(kept_lines).strip()
 
 
+def is_forward_subject(subject: str) -> bool:
+    """
+    Check whether the email subject indicates a forwarded message.
+
+    Args:
+        subject: Email subject
+
+    Returns:
+        True when subject starts with a forward prefix
+    """
+    if not subject:
+        return False
+
+    return any(
+        re.match(pattern, subject, re.IGNORECASE)
+        for pattern in FORWARD_SUBJECT_PATTERNS
+    )
+
+
+def _find_reply_separator_index(lines: list[str]) -> int | None:
+    """Find the first reply or forward separator line index."""
+    for index, line in enumerate(lines):
+        if any(re.match(pattern, line, re.IGNORECASE) for pattern in REPLY_SEPARATOR_PATTERNS):
+            return index
+    return None
+
+
+def _is_short_forward_comment(text: str) -> bool:
+    """Heuristically identify a short forwarded-message comment."""
+    if not text:
+        return False
+
+    non_empty_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not non_empty_lines:
+        return False
+
+    if len(non_empty_lines) > 2:
+        return False
+
+    return len(" ".join(non_empty_lines)) <= 40
+
+
+def _extract_forwarded_body(lines: list[str], separator_index: int) -> str:
+    """Extract the body after a forwarded-message header block."""
+    body_start = separator_index
+
+    while body_start < len(lines) and lines[body_start].strip():
+        body_start += 1
+
+    while body_start < len(lines) and not lines[body_start].strip():
+        body_start += 1
+
+    return "\n".join(lines[body_start:]).strip()
+
+
+def strip_reply_thread_with_subject(text: str, subject: str = "") -> str:
+    """
+    Remove reply history while preserving forwarded content when appropriate.
+
+    Args:
+        text: Normalized email text
+        subject: Email subject used to detect forwarded messages
+
+    Returns:
+        Current-message focused text
+    """
+    if not text:
+        return ""
+
+    lines = text.splitlines()
+    separator_index = _find_reply_separator_index(lines)
+    if separator_index is None:
+        return text.strip()
+
+    comment = "\n".join(lines[:separator_index]).strip()
+    if is_forward_subject(subject) and _is_short_forward_comment(comment):
+        forwarded_body = _extract_forwarded_body(lines, separator_index)
+        if forwarded_body:
+            if comment:
+                return f"{comment}\n\n{forwarded_body}".strip()
+            return forwarded_body
+
+    return comment
+
+
 def strip_signature(text: str) -> str:
     """
     Remove high-confidence signature blocks from the tail of an email.
@@ -230,13 +322,14 @@ def strip_footer(text: str) -> str:
     return text
 
 
-def clean_content(text: str, max_length: int = 800) -> str:
+def clean_content(text: str, max_length: int = 800, subject: str = "") -> str:
     """
     清理郵件雜訊並保留段落結構。
 
     Args:
         text: 原始文字內容
         max_length: 最大輸出長度，預設 800
+        subject: 郵件主旨，用於判斷是否為轉寄郵件
 
     Returns:
         清理後的文字
@@ -245,7 +338,7 @@ def clean_content(text: str, max_length: int = 800) -> str:
         return ""
 
     text = normalize_text(text)
-    text = strip_reply_thread(text)
+    text = strip_reply_thread_with_subject(text, subject=subject)
     text = strip_signature(text)
     text = strip_footer(text)
 
@@ -264,6 +357,7 @@ def extract_main_content(
     plain_text: str = "",
     html: str = "",
     max_length: int = 800,
+    subject: str = "",
 ) -> str:
     """
     Extract the best available email body for downstream LLM processing.
@@ -272,12 +366,13 @@ def extract_main_content(
         plain_text: Outlook plain text body
         html: Outlook HTML body
         max_length: Maximum output length
+        subject: Email subject
 
     Returns:
         Cleaned email body text
     """
-    html_text = clean_content(html_to_text(html), max_length=max_length)
-    plain = clean_content(plain_text, max_length=max_length)
+    html_text = clean_content(html_to_text(html), max_length=max_length, subject=subject)
+    plain = clean_content(plain_text, max_length=max_length, subject=subject)
 
     if len(html_text) >= len(plain):
         return html_text
