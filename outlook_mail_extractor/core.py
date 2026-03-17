@@ -75,6 +75,19 @@ class OutlookClient:
             raise OutlookConnectionError("Not connected, call connect() first")
         return [store.Name for store in self._mapi.Folders]
 
+    def _normalize_account_name(self, value: str) -> str:
+        """Normalize account/store names for exact matching."""
+        return value.strip().casefold()
+
+    def _resolve_account_root(self, account: str):
+        """Resolve an Outlook account/store root with strict matching."""
+        requested = self._normalize_account_name(account)
+        for store in self._mapi.Folders:
+            store_name = getattr(store, "Name", "")
+            if self._normalize_account_name(store_name) == requested:
+                return store
+        raise FolderNotFoundError(f"Account not found: {account}")
+
     def get_folder(
         self, account: str, folder_path: str, create_if_missing: bool = False
     ):
@@ -82,10 +95,7 @@ class OutlookClient:
         if not self._connected:
             raise OutlookConnectionError("Not connected, call connect() first")
 
-        try:
-            acc_root = self._mapi.Folders[account]
-        except Exception as e:
-            raise FolderNotFoundError(f"Account not found: {account}") from e
+        acc_root = self._resolve_account_root(account)
 
         current_folder = acc_root
         parts = folder_path.replace("\\", "/").split("/")
@@ -109,7 +119,7 @@ class OutlookClient:
 
         OL_FOLDER_CALENDAR = 9
         try:
-            store = self._mapi.Folders[account].Store
+            store = self._resolve_account_root(account).Store
             return store.GetDefaultFolder(OL_FOLDER_CALENDAR)
         except Exception as e:
             raise FolderNotFoundError(f"GetDefaultFolder failed: {e}") from e

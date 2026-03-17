@@ -15,9 +15,11 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Fixed the scheduler lifecycle in the Textual UI to stop duplicate interval timers from accumulating and to shut them down cleanly on unmount.
 - Fixed the scheduler shutdown crash caused by `_schedule_timer` being initialized on the wrong screen class.
 - Fixed job message limiting so `limit` now counts actual mail items only, while folders with no mail items complete normally without raising errors.
+- Fixed Outlook account resolution to use strict store-name matching, so invalid account names are detected reliably instead of being accepted by ambiguous COM lookup behavior.
 
 ### Changed
 
 - Improved email body extraction to prefer cleaned HTML content when available, preserve paragraph structure, and trim quoted reply history before sending content to the LLM pipeline.
 - Improved parser cleanup with high-confidence signature and newsletter footer stripping to reduce noise in extracted email bodies.
 - Improved first-run onboarding in the TUI so missing `config/config.yaml` now redirects users to the `About` tab, shows initialization guidance, and disables job execution until setup is completed.
+- Improved validation in the `About` tab so system checks now verify enabled jobs' `account` and `source` settings before execution.

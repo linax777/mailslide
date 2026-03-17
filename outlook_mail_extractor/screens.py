@@ -27,6 +27,7 @@ from textual.worker import Worker, WorkerState
 
 from outlook_mail_extractor.config import load_config
 from outlook_mail_extractor.core import (
+    FolderNotFoundError,
     OutlookClient,
     OutlookConnectionError,
     process_config_file,
@@ -52,6 +53,34 @@ LLM_CONFIG_PATH = Path(__file__).parent.parent / "config" / "llm-config.yaml"
 PLUGINS_DIR = Path(__file__).parent.parent / "config" / "plugins"
 
 LEVEL_PRIORITY = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
+
+
+def validate_enabled_jobs_with_client(
+    client: OutlookClient,
+    config: dict,
+) -> list[str]:
+    """Validate account/source settings for enabled jobs."""
+    issues: list[str] = []
+    available_accounts = set(client.list_accounts())
+
+    for job in config.get("jobs", []):
+        if job.get("enable", True) is False:
+            continue
+
+        job_name = job.get("name", "Unnamed Job")
+        account = job.get("account", "")
+        source = job.get("source", "")
+
+        if account not in available_accounts:
+            issues.append(f"{job_name}: Account not found: {account}")
+            continue
+
+        try:
+            client.get_folder(account, source)
+        except FolderNotFoundError as e:
+            issues.append(f"{job_name}: {e}")
+
+    return issues
 
 
 class UsageScreen(Static):
@@ -156,10 +185,23 @@ class AboutScreen(Container):
 
     def _check_outlook(self) -> OutlookStatus:
         try:
+            config = load_config(CONFIG_PATH) if CONFIG_PATH.exists() else None
             client = OutlookClient()
             client.connect()
             accounts = client.list_accounts()
+            issues = validate_enabled_jobs_with_client(client, config) if config else []
             client.disconnect()
+
+            if issues:
+                issue_preview = "；".join(issues[:2])
+                if len(issues) > 2:
+                    issue_preview += f"；另有 {len(issues) - 2} 個 jobs 設定有誤"
+                return OutlookStatus(
+                    status=CheckStatus.ERROR,
+                    message=f"設定檢查失敗 - {issue_preview}",
+                    account_count=len(accounts),
+                )
+
             return OutlookStatus(
                 status=CheckStatus.OK,
                 message=f"已連線 ({len(accounts)} 個帳號)",
@@ -264,6 +306,9 @@ class HomeScreen(Static):
             self.run_jobs()
 
     def run_jobs(self) -> None:
+        if not self._validate_jobs_before_run():
+            return
+
         log_widget = self.query_one("#log-output", Log)
         log_widget.clear()
 
@@ -278,6 +323,49 @@ class HomeScreen(Static):
         run_button.disabled = True
 
         self.run_worker(self._execute_jobs(), exclusive=True, thread=True)
+
+    def _validate_jobs_before_run(self) -> bool:
+        """Validate enabled jobs before starting execution."""
+        try:
+            config = load_config(CONFIG_PATH)
+        except Exception as e:
+            self.app.notify(f"❌ 無法載入設定檔: {e}", severity="error")
+            return False
+
+        enabled_jobs = [job for job in config.get("jobs", []) if job.get("enable", True)]
+        if not enabled_jobs:
+            self.app.notify("⚠️ 沒有可執行的啟用 jobs", severity="warning")
+            return False
+
+        client = OutlookClient()
+        issues: list[str] = []
+
+        try:
+            client.connect()
+            issues = validate_enabled_jobs_with_client(
+                client,
+                {"jobs": enabled_jobs},
+            )
+        except OutlookConnectionError as e:
+            self.app.notify(f"❌ Outlook 連線失敗: {e}", severity="error")
+            return False
+        except Exception as e:
+            self.app.notify(f"❌ 執行前檢查失敗: {e}", severity="error")
+            return False
+        finally:
+            client.disconnect()
+
+        if issues:
+            for issue in issues[:3]:
+                self.app.notify(f"⚠️ {issue}", severity="error")
+            if len(issues) > 3:
+                self.app.notify(
+                    f"⚠️ 另有 {len(issues) - 3} 個 job 的 account/source 設定有誤",
+                    severity="error",
+                )
+            return False
+
+        return True
 
     async def _execute_jobs(self) -> None:
         try:
