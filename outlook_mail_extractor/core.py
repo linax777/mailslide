@@ -284,6 +284,7 @@ class EmailProcessor:
 
         # Execute plugins that don't need LLM first
         plugin_results = []
+        error_msg = ""
         if not dry_run:
             for plugin in plugins_no_llm:
                 logger.info(f"執行 Plugin (無需 LLM): {plugin.name}")
@@ -330,7 +331,6 @@ class EmailProcessor:
         # Call LLM
         llm_response = ""
         success = True
-        error_msg = ""
 
         try:
             llm_response = llm_client.chat(combined_system, user_prompt)

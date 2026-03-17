@@ -17,6 +17,7 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Fixed job message limiting so `limit` now counts actual mail items only, while folders with no mail items complete normally without raising errors.
 - Fixed Outlook account resolution to use strict store-name matching, so invalid account names are detected reliably instead of being accepted by ambiguous COM lookup behavior.
 - Fixed the no-LLM plugin execution path (e.g., `write_file`) so processed messages are still moved to the configured destination folder.
+- Fixed an `UnboundLocalError` in the no-LLM path by initializing `error_msg` before early return branches.
 
 ### Changed
 
