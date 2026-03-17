@@ -1,5 +1,7 @@
 """Outlook Mail Extractor - 應用程式入口"""
 
+from pathlib import Path
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Horizontal, Middle
@@ -13,6 +15,8 @@ from outlook_mail_extractor.screens import (
     ScheduleScreen,
     UsageScreen,
 )
+
+CONFIG_PATH = Path(__file__).parent / "config" / "config.yaml"
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -60,6 +64,12 @@ class OutlookMailExtractor(App):
     def on_mount(self) -> None:
         self.title = "Outlook Mail Extractor"
         self.sub_title = "提取郵件內文"
+        if not CONFIG_PATH.exists():
+            self.call_after_refresh(self._show_first_run_guidance)
+
+    def _show_first_run_guidance(self) -> None:
+        self.action_show_tab("about")
+        self.notify("尚未初始化設定，請到 About 分頁按「初始化設定」", severity="warning")
 
     def action_toggle_dark(self) -> None:
         self.theme = (

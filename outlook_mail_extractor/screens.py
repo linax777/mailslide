@@ -208,6 +208,7 @@ class HomeScreen(Static):
                 "⌨️ Tab/方向鍵: 選擇 | Enter: 執行 | 🖱️ 可使用滑鼠操作點擊元件",
                 id="help-text",
             )
+            yield Static("", id="home-status")
             with Horizontal(id="home-actions"):
                 yield Button("▶️ 執行", id="run-jobs", variant="primary")
                 yield Button("🔄 重新整理", id="refresh-jobs")
@@ -221,15 +222,22 @@ class HomeScreen(Static):
 
     def _load_jobs(self) -> None:
         table = self.query_one("#jobs-table", DataTable)
+        status = self.query_one("#home-status", Static)
+        run_button = self.query_one("#run-jobs", Button)
+        table.clear(columns=True)
 
         if not CONFIG_PATH.exists():
-            table.add_row("❌ config.yaml 不存在", "", "")
+            status.update("⚠️ 尚未初始化設定，請到 About 分頁按「初始化設定」。")
+            table.add_columns("狀態", "說明")
+            table.add_row("未初始化", "找不到 config/config.yaml")
+            run_button.disabled = True
             return
 
         try:
             config = load_config(CONFIG_PATH)
-            table.clear()
+            status.update("")
             table.add_columns("#", "啟用", "名稱", "帳號", "來源", "目標", "Plugins")
+            run_button.disabled = False
 
             for idx, job in enumerate(config.get("jobs", []), 1):
                 plugins = ", ".join(job.get("plugins", [])) or "-"
@@ -244,7 +252,10 @@ class HomeScreen(Static):
                     truncate(plugins),
                 )
         except Exception as e:
-            table.add_row(f"❌ 載入失敗: {e}", "", "")
+            status.update("⚠️ 設定檔存在，但格式異常，請先修正後再執行。")
+            table.add_columns("狀態", "說明")
+            table.add_row("載入失敗", str(e))
+            run_button.disabled = True
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "refresh-jobs":
@@ -478,9 +489,15 @@ class MainConfigTab(Static):
     def _load_config(self) -> None:
         content_widget = self.query_one("#main-config-content", TextArea)
         table = self.query_one("#jobs-table", DataTable)
+        table.clear(columns=True)
 
         if not CONFIG_PATH.exists():
-            content_widget.load_text("❌ 檔案不存在")
+            content_widget.load_text(
+                "⚠️ 找不到 config/config.yaml\n\n請先到 About 分頁按「初始化設定」。"
+            )
+            self.query_one("#main-config-title", Static).update(
+                "📄 主設定檔 (config/config.yaml) ⚠️ 尚未初始化"
+            )
             return
 
         try:

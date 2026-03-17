@@ -20,3 +20,4 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 
 - Improved email body extraction to prefer cleaned HTML content when available, preserve paragraph structure, and trim quoted reply history before sending content to the LLM pipeline.
 - Improved parser cleanup with high-confidence signature and newsletter footer stripping to reduce noise in extracted email bodies.
+- Improved first-run onboarding in the TUI so missing `config/config.yaml` now redirects users to the `About` tab, shows initialization guidance, and disables job execution until setup is completed.
