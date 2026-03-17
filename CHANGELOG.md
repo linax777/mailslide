@@ -31,3 +31,7 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Changed parser defaults to preserve RE/FW thread content unless explicitly disabled via `preserve_reply_thread=False`.
 - Added a Home-tab toggle control for preserving RE/FW content during parsing and wired it through to the processing pipeline.
 - Replaced the Home-tab switch widget with a visible ON/OFF toggle button to avoid terminal layout visibility issues.
+- Added configurable `body_max_length` support in `config.yaml` (global default plus per-job override) so body truncation length can be tuned by environment.
+- Updated config validation to enforce positive-integer `body_max_length` values.
+- Updated `config/config.yaml.sample` with documented `body_max_length` examples.
+- Updated `.gitignore` to ignore local `tests/` and `tasks/` directories.

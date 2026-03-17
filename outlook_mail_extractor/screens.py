@@ -103,7 +103,7 @@ class AboutScreen(Container):
 
     CONFIG_DIR = Path("config")
     SAMPLE_SUFFIX = ".yaml.sample"
-    VERSION = "0.1.0"
+    VERSION = "0.1.4"
     AUTHOR = "linax777"
     REPO_URL = "https://github.com/linax777/outlook-mail-extractor"
 
@@ -360,7 +360,9 @@ class HomeScreen(Static):
             self.app.notify(f"❌ 無法載入設定檔: {e}", severity="error")
             return False
 
-        enabled_jobs = [job for job in config.get("jobs", []) if job.get("enable", True)]
+        enabled_jobs = [
+            job for job in config.get("jobs", []) if job.get("enable", True)
+        ]
         if not enabled_jobs:
             self.app.notify("⚠️ 沒有可執行的啟用 jobs", severity="warning")
             return False

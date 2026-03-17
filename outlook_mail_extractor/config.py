@@ -5,6 +5,14 @@ from pathlib import Path
 import yaml
 
 
+def _validate_body_max_length(value: int, location: str) -> None:
+    """Validate body_max_length value."""
+    if not isinstance(value, int):
+        raise ValueError(f"{location}.body_max_length must be an integer")
+    if value <= 0:
+        raise ValueError(f"{location}.body_max_length must be > 0")
+
+
 def validate_job(job: dict, idx: int) -> None:
     """
     Validate a single job configuration.
@@ -21,6 +29,9 @@ def validate_job(job: dict, idx: int) -> None:
         if field not in job:
             raise ValueError(f"Job #{idx + 1} missing required field: '{field}'")
 
+    if "body_max_length" in job:
+        _validate_body_max_length(job["body_max_length"], f"Job #{idx + 1}")
+
 
 def validate_config(config: dict) -> None:
     """
@@ -34,6 +45,9 @@ def validate_config(config: dict) -> None:
     """
     if "jobs" not in config:
         raise ValueError("Config missing 'jobs' field")
+
+    if "body_max_length" in config:
+        _validate_body_max_length(config["body_max_length"], "Config")
 
     for idx, job in enumerate(config["jobs"]):
         validate_job(job, idx)

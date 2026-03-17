@@ -128,18 +128,25 @@ class OutlookClient:
 class EmailProcessor:
     """Email processing logic"""
 
-    def __init__(self, client: OutlookClient, preserve_reply_thread: bool = True):
+    def __init__(
+        self,
+        client: OutlookClient,
+        preserve_reply_thread: bool = True,
+        max_length: int = 800,
+    ):
         """Initialize email processor."""
         self._client = client
         self._preserve_reply_thread = preserve_reply_thread
+        self._max_length = max_length
 
-    def extract_email_data(self, message) -> dict:
+    def extract_email_data(self, message, max_length: int | None = None) -> dict:
         """Extract data from single email"""
         raw_body = str(message.Body) if getattr(message, "Body", None) else ""
         html_body = str(message.HTMLBody) if getattr(message, "HTMLBody", None) else ""
         clean_body = extract_main_content(
             raw_body,
             html_body,
+            max_length=max_length or self._max_length,
             subject=str(message.Subject) if getattr(message, "Subject", None) else "",
             preserve_reply_thread=self._preserve_reply_thread,
         )
@@ -182,6 +189,7 @@ class EmailProcessor:
         source_folder = job_config.get("source", "Inbox")
         destination_folder = job_config.get("destination")
         limit = job_config.get("limit", 10)
+        body_max_length = job_config.get("body_max_length", self._max_length)
 
         # Get source folder
         src_folder = self._client.get_folder(account_name, source_folder)
@@ -231,6 +239,7 @@ class EmailProcessor:
                 dry_run,
                 no_move,
                 dst_folder,
+                body_max_length,
             )
             results.append(result)
 
@@ -245,12 +254,13 @@ class EmailProcessor:
         dry_run: bool,
         no_move: bool,
         dst_folder=None,
+        body_max_length: int | None = None,
     ) -> EmailAnalysisResult:
         """Process single email with LLM and plugins"""
         logger = get_logger()
 
         # Extract email data
-        email_data = self.extract_email_data(message)
+        email_data = self.extract_email_data(message, max_length=body_max_length)
         email_data["_account"] = account_name
 
         subject = email_data.get("subject", "Unknown")
@@ -451,6 +461,7 @@ async def process_config_file(
     dry_run: bool = False,
     no_move: bool = False,
     preserve_reply_thread: bool = True,
+    max_length: int = 800,
 ) -> dict:
     """
     Process config file with LLM analysis and plugins.
@@ -460,6 +471,7 @@ async def process_config_file(
         dry_run: Test mode
         no_move: Skip moving emails to destination folder
         preserve_reply_thread: Keep RE/FW thread content when parsing bodies
+        max_length: Fallback body max length when config does not override
 
     Returns:
         All job results
@@ -483,6 +495,7 @@ async def process_config_file(
         from .config import load_config
 
         config = load_config(config_file)
+        configured_max_length = config.get("body_max_length", max_length)
         client = OutlookClient()
         client.connect()
 
@@ -499,6 +512,7 @@ async def process_config_file(
         processor = EmailProcessor(
             client,
             preserve_reply_thread=preserve_reply_thread,
+            max_length=configured_max_length,
         )
         all_results = {}
 

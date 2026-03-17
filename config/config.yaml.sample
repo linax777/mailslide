@@ -8,6 +8,7 @@
 #   - source: Source folder path (e.g., "收件匣/microsoft")
 #   - destination: Destination folder for auto-move (optional)
 #   - limit: Max emails to process per job
+#   - body_max_length: Max cleaned body length for LLM/input (optional)
 #   - plugins: List of plugins to run (LLM analysis)
 #
 # IMPORTANT:
@@ -16,6 +17,8 @@
 #   - DO NOT use "move_to_folder" plugin together with "destination"
 #     (they both move emails and will conflict)
 
+body_max_length: 2500
+
 jobs:
   - name: "處理microsoft郵件"
     enable: true
@@ -23,6 +26,8 @@ jobs:
     source: "收件匣/microsoft"
     destination: "收件匣/microsoft/processed"
     limit: 10
+    # Optional per-job override (falls back to top-level body_max_length)
+    # body_max_length: 3000
     plugins:
       - add_category
 
