@@ -183,7 +183,11 @@ class EmailProcessor:
         # Get destination folder if specified
         dst_folder = None
         if destination_folder:
-            dst_folder = self._client.get_folder(account_name, destination_folder)
+            dst_folder = self._client.get_folder(
+                account_name,
+                destination_folder,
+                create_if_missing=True,
+            )
 
         # Get messages from source folder (sorted by date, newest first)
         messages = src_folder.Items
