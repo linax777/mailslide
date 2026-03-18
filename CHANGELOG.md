@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed config file initialization to correctly handle `.yaml.sample` files, producing proper `.yaml` output files instead of incorrectly named ones.
+
 ## [2026-03-18]
 
 ### Fixed

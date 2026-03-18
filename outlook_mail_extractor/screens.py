@@ -139,7 +139,7 @@ class AboutScreen(Container):
             return False
         sample_files = list(self.CONFIG_DIR.rglob(f"*{self.SAMPLE_SUFFIX}"))
         for sample in sample_files:
-            yaml_path = sample.with_suffix("")
+            yaml_path = sample.with_name(sample.stem + ".yaml")
             if not yaml_path.exists():
                 return False
         return True
@@ -151,7 +151,7 @@ class AboutScreen(Container):
             return (copied, skipped)
         sample_files = list(self.CONFIG_DIR.rglob(f"*{self.SAMPLE_SUFFIX}"))
         for sample in sample_files:
-            yaml_path = sample.with_suffix("")
+            yaml_path = sample.with_name(sample.stem + ".yaml")
             if yaml_path.exists():
                 skipped += 1
             else:
