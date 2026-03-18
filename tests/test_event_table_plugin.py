@@ -74,3 +74,33 @@ def test_event_table_appends_without_duplicate_header(tmp_path) -> None:
         rows = list(csv.reader(f))
 
     assert len(rows) == 3
+
+
+def test_event_table_ignores_custom_fields_config(tmp_path) -> None:
+    output_file = tmp_path / "events.csv"
+    plugin = EventTablePlugin(
+        config={
+            "output_file": str(output_file),
+            "fields": ["custom_a", "custom_b"],
+        }
+    )
+    llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
+
+    success = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+
+    assert success is True
+
+    with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+
+    assert rows[0] == [
+        "email_subject",
+        "email_sender",
+        "email_received",
+        "event_subject",
+        "start",
+        "end",
+        "location",
+        "body",
+        "logged_at",
+    ]

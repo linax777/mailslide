@@ -147,17 +147,11 @@ include_fields:                # 要包含的欄位
 ```yaml
 enabled: true
 output_file: "output/events.csv"   # 單一 CSV，逐筆 append
-fields:
-  - email_subject
-  - email_sender
-  - email_received
-  - event_subject
-  - start
-  - end
-  - location
-  - body
-  - logged_at
 ```
+
+CSV 欄位由程式固定，順序為：
+`email_subject`, `email_sender`, `email_received`, `event_subject`,
+`start`, `end`, `location`, `body`, `logged_at`。
 
 ## 圖形介面
 

@@ -4,6 +4,8 @@ import csv
 from datetime import datetime
 from pathlib import Path
 
+from loguru import logger
+
 from . import BasePlugin, PluginConfig, register_plugin
 
 
@@ -36,7 +38,11 @@ class EventTablePlugin(BasePlugin):
         config = config or {}
         self.config = self._load_config(config)
         self.output_file = config.get("output_file", self.default_output_file)
-        self.fields = config.get("fields", self.default_fields)
+        self.fields = list(self.default_fields)
+        if "fields" in config:
+            logger.warning(
+                "[event_table] 'fields' config is ignored; CSV schema is fixed"
+            )
 
     def _load_config(self, config: dict) -> PluginConfig:
         return PluginConfig(

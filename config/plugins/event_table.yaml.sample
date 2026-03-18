@@ -18,17 +18,9 @@ response_json_format:
 # Output CSV file (single file, append mode)
 output_file: "output/events.csv"
 
-# CSV column order
-fields:
-  - email_subject
-  - email_sender
-  - email_received
-  - event_subject
-  - start
-  - end
-  - location
-  - body
-  - logged_at
+# CSV schema is fixed in code:
+# email_subject, email_sender, email_received, event_subject,
+# start, end, location, body, logged_at
 
 # Response format (json, text)
 response_format: "json"
