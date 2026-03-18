@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [2026-03-18]
+
+### Fixed
+
+- Fixed OpenAI-compatible endpoint joining in the LLM client by using a relative `chat/completions` path, so configured `api_base` paths (for example `/v1`) are no longer dropped.
+- Fixed LLM API base handling by normalizing `api_base` (trim + single trailing slash), preventing malformed URL joins across local providers such as LM Studio.
+- Fixed LLM HTTP error reporting to include server-side error details and request URL context, making `400` and upstream timeout (`504`) diagnosis actionable in UI/CLI logs.
+
 ## [2026-03-17]
 
 ### Fixed

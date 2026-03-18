@@ -1,6 +1,7 @@
 """LLM API Integration Module"""
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
@@ -27,8 +28,9 @@ class LLMClient:
 
     def __init__(self, config: LLMConfig):
         self.config = config
+        normalized_base = self._normalize_api_base(config.api_base)
         self._client = httpx.Client(
-            base_url=config.api_base,
+            base_url=normalized_base,
             timeout=config.timeout,
             headers=self._build_headers(),
         )
@@ -38,6 +40,38 @@ class LLMClient:
         if self.config.api_key:
             headers["Authorization"] = f"Bearer {self.config.api_key}"
         return headers
+
+    def _normalize_api_base(self, api_base: str) -> str:
+        """
+        Normalize API base URL for stable endpoint joining.
+
+        Args:
+            api_base: Raw API base from config
+
+        Returns:
+            Normalized base URL ending with '/'
+
+        Raises:
+            LLMError: When api_base is empty
+        """
+        normalized = api_base.strip()
+        if not normalized:
+            raise LLMError("api_base is empty")
+        return normalized.rstrip("/") + "/"
+
+    def _extract_error_detail(self, payload: Any) -> str:
+        """Extract best-effort error detail from OpenAI-compatible payload."""
+        if not isinstance(payload, dict):
+            return ""
+
+        error_field = payload.get("error")
+        if isinstance(error_field, str):
+            return error_field
+        if isinstance(error_field, dict):
+            message = error_field.get("message")
+            if isinstance(message, str):
+                return message
+        return ""
 
     def chat(
         self,
@@ -69,14 +103,29 @@ class LLMClient:
         }
 
         try:
-            response = self._client.post("/chat/completions", json=payload)
+            # Keep endpoint relative so base_url path (e.g. /v1/) is preserved.
+            response = self._client.post("chat/completions", json=payload)
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"]
         except httpx.HTTPStatusError as e:
-            raise LLMError(f"HTTP error: {e.response.status_code}") from e
+            detail = ""
+            try:
+                payload = e.response.json()
+                detail = self._extract_error_detail(payload)
+            except Exception:
+                detail = e.response.text.strip()
+
+            detail = detail or "no response body"
+            if len(detail) > 300:
+                detail = detail[:300] + "..."
+
+            raise LLMError(
+                f"HTTP error: {e.response.status_code} - {detail}"
+            ) from e
         except httpx.RequestError as e:
-            raise LLMError(f"Request failed: {e}") from e
+            request_url = str(e.request.url) if e.request else "(unknown URL)"
+            raise LLMError(f"Request failed ({request_url}): {e}") from e
         except KeyError as e:
             raise LLMError(f"Invalid response format: {e}") from e
 
