@@ -9,13 +9,14 @@ wheels/
 # Virtual environments
 .venv
 
-# IDE
+# Dev
 .vscode/
+AGENTS.md
+DEVELOPER.md
 
 # config
 config/*.yaml
 config/plugins/*.yaml
-
 
 # log
 logs/
@@ -23,3 +24,4 @@ output/
 
 # test
 tasks/
+
