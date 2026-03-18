@@ -21,6 +21,10 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 ### Changed
 
 - Added `pytest` to the dev dependency group and lockfile so `uv run pytest` works without temporary dependency flags.
+- Added a new `event_table` plugin that reuses appointment-style LLM extraction and appends event rows to a single CSV table (`output/events.csv`) instead of creating Outlook calendar items.
+- Added `config/plugins/event_table.yaml.sample` and README documentation for configuring CSV output path and column order.
+- Updated the About screen version label to `0.1.7`.
+- Updated `.gitignore` to keep user-local `config/*.yaml` and `config/plugins/*.yaml` ignored while allowing `tests/` to be tracked in git.
 
 ## [2026-03-17]
 

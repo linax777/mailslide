@@ -103,7 +103,7 @@ class AboutScreen(Container):
 
     CONFIG_DIR = Path("config")
     SAMPLE_SUFFIX = ".yaml.sample"
-    VERSION = "0.1.4"
+    VERSION = "0.1.7"
     AUTHOR = "linax777"
     REPO_URL = "https://github.com/linax777/outlook-mail-extractor"
 

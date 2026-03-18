@@ -11,7 +11,7 @@ from .base import (
 from ..parser import clean_invisible_chars
 
 # Import all plugins to register them
-from . import category, calendar, move, write_file  # noqa: F401, E402
+from . import category, calendar, event_table, move, write_file  # noqa: F401, E402
 
 __all__ = [
     "BasePlugin",

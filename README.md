@@ -121,6 +121,7 @@ model: "llama3"
 | add_category | AI 分析郵件並自動加上分類標籤 |
 | move_to_folder | AI 判斷應該移動到哪個資料夾 |
 | create_appointment | AI 分析郵件內容建立行事曆約會 |
+| event_table | AI 分析郵件內容並將活動資訊追加到 CSV 表格 |
 | write_file | 將郵件資料儲存為 JSON 檔案 |
 
 ### write_file 插件設定
@@ -137,6 +138,25 @@ include_fields:                # 要包含的欄位
   - received
   - body
   - tables
+```
+
+### event_table 插件設定
+
+編輯 `config/plugins/event_table.yaml`：
+
+```yaml
+enabled: true
+output_file: "output/events.csv"   # 單一 CSV，逐筆 append
+fields:
+  - email_subject
+  - email_sender
+  - email_received
+  - event_subject
+  - start
+  - end
+  - location
+  - body
+  - logged_at
 ```
 
 ## 圖形介面
