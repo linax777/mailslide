@@ -253,6 +253,7 @@ class HomeScreen(Static):
         self._last_run_time = None
         self._polling = False
         self._preserve_reply_thread = True
+        self._job_worker: Worker | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="home-container"):
@@ -263,6 +264,7 @@ class HomeScreen(Static):
             yield Static("", id="home-status")
             with Horizontal(id="home-actions"):
                 yield Button("▶️ 執行", id="run-jobs", variant="primary")
+                yield Button("⏹️ 終止", id="stop-jobs", variant="error", disabled=True)
                 yield Button("🔄 重新整理", id="refresh-jobs")
                 yield Button(
                     "保留 RE/FW: ON",
@@ -320,6 +322,8 @@ class HomeScreen(Static):
             self._load_jobs()
         elif event.button.id == "run-jobs":
             self.run_jobs()
+        elif event.button.id == "stop-jobs":
+            self.stop_jobs()
         elif event.button.id == "toggle-preserve-reply-thread":
             self._preserve_reply_thread = not self._preserve_reply_thread
             self._update_preserve_reply_button()
@@ -334,6 +338,10 @@ class HomeScreen(Static):
         )
 
     def run_jobs(self) -> None:
+        if self._job_worker and self._job_worker.is_running:
+            self.app.notify("⚠️ 作業正在執行中", severity="warning")
+            return
+
         if not self._validate_jobs_before_run():
             return
 
@@ -347,10 +355,27 @@ class HomeScreen(Static):
         LoggerManager.set_ui_sink(ui_sink)
         LoggerManager.start_session(enable_ui_sink=True)
 
-        run_button = self.query_one("#run-jobs", Button)
-        run_button.disabled = True
+        self._set_job_running_state(True)
+        self._job_worker = self.run_worker(
+            self._execute_jobs(),
+            exclusive=True,
+            thread=True,
+        )
 
-        self.run_worker(self._execute_jobs(), exclusive=True, thread=True)
+    def stop_jobs(self) -> None:
+        """Request cancellation for the current job worker."""
+        if not self._job_worker or not self._job_worker.is_running:
+            self.app.notify("ℹ️ 目前沒有執行中的作業", severity="information")
+            self._set_job_running_state(False)
+            return
+
+        self._job_worker.cancel()
+        self._update_log("⏹️ 已送出終止要求，正在停止作業...")
+        self.app.notify("⏹️ 已送出終止要求", severity="warning")
+
+        # Keep stop disabled while waiting for worker teardown.
+        stop_button = self.query_one("#stop-jobs", Button)
+        stop_button.disabled = True
 
     def _validate_jobs_before_run(self) -> bool:
         """Validate enabled jobs before starting execution."""
@@ -405,14 +430,17 @@ class HomeScreen(Static):
                 preserve_reply_thread=self._preserve_reply_thread,
             )
             self.call_later(self._update_log, "✅ 執行完成")
+        except asyncio.CancelledError:
+            self.call_later(self._update_log, "⏹️ 作業已終止")
         except Exception as e:
             import traceback
 
             error_msg = f"❌ 執行失敗: {e}\n{traceback.format_exc()}"
             self.call_later(self._update_log, error_msg)
         finally:
+            self._job_worker = None
             LoggerManager.set_ui_sink(None)
-            self.call_later(self._enable_button)
+            self.call_later(self._set_job_running_state, False)
 
     def _update_log(self, text: str) -> None:
         try:
@@ -421,9 +449,12 @@ class HomeScreen(Static):
         except Exception:
             pass
 
-    def _enable_button(self) -> None:
+    def _set_job_running_state(self, is_running: bool) -> None:
+        """Toggle Home action buttons based on execution state."""
         run_button = self.query_one("#run-jobs", Button)
-        run_button.disabled = False
+        stop_button = self.query_one("#stop-jobs", Button)
+        run_button.disabled = is_running
+        stop_button.disabled = not is_running
 
 
 class ScheduleScreen(Static):
