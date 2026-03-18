@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [2026-03-19]
+
+### Fixed
+
+- Fixed `event_table` CSV schema handling by making column definitions code-fixed and ignoring user-provided `fields` overrides, with a warning log for deprecated config keys.
+- Fixed `event_table` datetime parsing to accept ISO8601 timestamps with timezone offsets (for example `+08:00`) and UTC `Z` suffixes.
+- Fixed `create_appointment` datetime parsing to accept ISO8601 timezone timestamps and normalize them to Outlook-COM-safe naive datetimes before appointment creation.
+
+### Changed
+
+- Added plugin tests covering timezone datetime handling in both `event_table` CSV export and `create_appointment` calendar creation flows.
+- Removed the legacy `outlook_worker.py` compatibility script because the project now uses `outlook_mail_extractor.__main__` as the single CLI entry point.
+- Updated `.gitignore` and git tracking so local workflow notes (`AGENTS.md`, `DEVELOPER.md`, `tasks/`) stay untracked.
+
 ## [2026-03-18]
 
 ### Fixed

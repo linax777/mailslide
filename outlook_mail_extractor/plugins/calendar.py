@@ -50,16 +50,16 @@ class CreateAppointmentPlugin(BasePlugin):
             logger.info(f"[create_appointment] Parsed: {response_data}")
 
             if response_data.get("action") != "appointment":
-                logger.info(f"[create_appointment] Action is not appointment")
+                logger.info("[create_appointment] Action is not appointment")
                 return False
 
             if not response_data.get("create", False):
-                logger.info(f"[create_appointment] create is false")
+                logger.info("[create_appointment] create is false")
                 return False
 
             subject = response_data.get("subject", "")
             if not subject:
-                logger.info(f"[create_appointment] subject is empty")
+                logger.info("[create_appointment] subject is empty")
                 return False
 
             start_str = response_data.get("start", "")
@@ -80,7 +80,7 @@ class CreateAppointmentPlugin(BasePlugin):
 
             account = email_data.get("_account")
             if not account:
-                logger.info(f"[create_appointment] account is missing in email_data")
+                logger.info("[create_appointment] account is missing in email_data")
                 return False
             logger.info(f"[create_appointment] Using account: {account}")
 
@@ -117,6 +117,18 @@ class CreateAppointmentPlugin(BasePlugin):
 
     def _parse_datetime(self, dt_str: str) -> datetime | None:
         """Parse ISO format datetime string"""
+        normalized = dt_str.strip()
+        if normalized.endswith("Z"):
+            normalized = f"{normalized[:-1]}+00:00"
+
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is not None:
+                return parsed.astimezone().replace(tzinfo=None)
+            return parsed
+        except ValueError:
+            pass
+
         formats = [
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%d %H:%M:%S",
@@ -126,7 +138,7 @@ class CreateAppointmentPlugin(BasePlugin):
         ]
         for fmt in formats:
             try:
-                return datetime.strptime(dt_str, fmt)
+                return datetime.strptime(normalized, fmt)
             except ValueError:
                 continue
         return None

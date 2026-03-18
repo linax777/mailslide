@@ -112,6 +112,15 @@ class EventTablePlugin(BasePlugin):
 
     def _parse_datetime(self, dt_str: str) -> datetime | None:
         """Parse ISO-like datetime string."""
+        normalized = dt_str.strip()
+        if normalized.endswith("Z"):
+            normalized = f"{normalized[:-1]}+00:00"
+
+        try:
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            pass
+
         formats = [
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%d %H:%M:%S",
@@ -121,7 +130,7 @@ class EventTablePlugin(BasePlugin):
         ]
         for fmt in formats:
             try:
-                return datetime.strptime(dt_str, fmt)
+                return datetime.strptime(normalized, fmt)
             except ValueError:
                 continue
         return None

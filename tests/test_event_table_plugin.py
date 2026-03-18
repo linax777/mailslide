@@ -48,6 +48,35 @@ def test_event_table_writes_csv_row(tmp_path) -> None:
     assert row["logged_at"]
 
 
+def test_event_table_accepts_timezone_datetimes(tmp_path) -> None:
+    output_file = tmp_path / "events.csv"
+    plugin = EventTablePlugin(config={"output_file": str(output_file)})
+
+    llm_response = json.dumps(
+        {
+            "action": "appointment",
+            "create": True,
+            "subject": "跨時區會議",
+            "start": "2026-03-25T12:00:00+08:00",
+            "end": "2026-03-25T13:30:00+08:00",
+            "location": "Teams",
+            "body": "含時區時間",
+        }
+    )
+
+    success = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+
+    assert success is True
+
+    with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.DictReader(f))
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["start"] == "2026-03-25T12:00:00+08:00"
+    assert row["end"] == "2026-03-25T13:30:00+08:00"
+
+
 def test_event_table_noop_when_create_false(tmp_path) -> None:
     output_file = tmp_path / "events.csv"
     plugin = EventTablePlugin(config={"output_file": str(output_file)})
