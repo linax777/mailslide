@@ -12,6 +12,15 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Fixed LLM API base handling by normalizing `api_base` (trim + single trailing slash), preventing malformed URL joins across local providers such as LM Studio.
 - Fixed LLM HTTP error reporting to include server-side error details and request URL context, making `400` and upstream timeout (`504`) diagnosis actionable in UI/CLI logs.
 - Fixed Home-tab execution controls by adding a dedicated stop button that cancels the running worker and restores run/stop button states cleanly after cancellation or completion.
+- Fixed job execution flow so `destination` moving still works when no LLM client is available and no-LLM plugins (such as `write_file`) still execute instead of exiting early.
+- Fixed duplicate move behavior by skipping final `destination` moving when `move_to_folder` has already moved the message.
+- Fixed config-relative loading by resolving `llm-config.yaml` and `plugins/` from the provided `--config` directory first, with fallback to default `config/` paths.
+- Fixed parser reply-history behavior so `preserve_reply_thread=True` now keeps reply metadata lines instead of removing them unconditionally.
+- Fixed parser style handling for tags with non-string `style` attributes to avoid attribute access/type-check issues during HTML cleanup.
+
+### Changed
+
+- Added `pytest` to the dev dependency group and lockfile so `uv run pytest` works without temporary dependency flags.
 
 ## [2026-03-17]
 

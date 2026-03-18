@@ -222,11 +222,11 @@ class EmailProcessor:
         # Initialize plugins (optional, for backward compatibility)
         plugin_names = job_config.get("plugins", [])
         plugins = []
-        if plugin_configs:
-            for plugin_name in plugin_names:
-                plugin = get_plugin(plugin_name, plugin_configs.get(plugin_name))
-                if plugin:
-                    plugins.append(plugin)
+        plugin_configs = plugin_configs or {}
+        for plugin_name in plugin_names:
+            plugin = get_plugin(plugin_name, plugin_configs.get(plugin_name))
+            if plugin:
+                plugins.append(plugin)
 
         # Process each email
         results = []
@@ -266,18 +266,6 @@ class EmailProcessor:
         subject = email_data.get("subject", "Unknown")
         logger.info(f"處理郵件: {subject}")
 
-        # If no LLM or plugins, just return basic data
-        if not llm_client or not plugins:
-            return EmailAnalysisResult(
-                email_subject=subject,
-                llm_response="",
-                plugin_results=[],
-                success=True,
-            )
-
-        # Build user prompt with email content
-        user_prompt = self._build_email_prompt(email_data)
-
         # Collect system prompts from all plugins
         system_prompts = []
         plugins_needing_llm = []
@@ -295,6 +283,7 @@ class EmailProcessor:
         # Execute plugins that don't need LLM first
         plugin_results = []
         error_msg = ""
+        moved_by_plugin = False
         if not dry_run:
             for plugin in plugins_no_llm:
                 logger.info(f"執行 Plugin (無需 LLM): {plugin.name}")
@@ -307,6 +296,8 @@ class EmailProcessor:
                             message="Success" if plugin_success else "Failed",
                         )
                     )
+                    if plugin.name == "move_to_folder" and plugin_success:
+                        moved_by_plugin = True
                 except Exception as e:
                     logger.exception(f"Plugin {plugin.name} error: {e}")
                     plugin_results.append(
@@ -317,100 +308,104 @@ class EmailProcessor:
                         )
                     )
 
-        # If no plugins need LLM, return early
-        if not system_prompts:
-            if dst_folder and not dry_run and not no_move:
-                try:
-                    message.Move(dst_folder)
-                except Exception as e:
-                    error_msg = f"Move failed: {e}"
-                    logger.error(error_msg)
-            return EmailAnalysisResult(
-                email_subject=subject,
-                llm_response="",
-                plugin_results=plugin_results,
-                success=True,
-                error_message=error_msg,
-            )
-
-        # Combine system prompts
-        combined_system = "\n\n---\n\n".join(system_prompts)
-
-        logger = get_logger()
-
-        # Call LLM
+        # Call LLM when there are plugins that require it.
         llm_response = ""
         success = True
 
-        try:
-            llm_response = llm_client.chat(combined_system, user_prompt)
-            logger.debug(f"LLM 回覆: {llm_response}")
-        except Exception as e:
-            success = False
-            error_msg = str(e)
-            logger.error(f"LLM 呼叫失敗: {e}")
+        if plugins_needing_llm:
+            if not llm_client:
+                success = False
+                error_msg = "LLM client not available"
+                logger.warning("略過需 LLM 的插件：LLM client not available")
+                for plugin in plugins_needing_llm:
+                    plugin_results.append(
+                        PluginResult(
+                            plugin_name=plugin.name,
+                            success=False,
+                            message="LLM client not available",
+                        )
+                    )
+            else:
+                user_prompt = self._build_email_prompt(email_data)
+                combined_system = "\n\n---\n\n".join(system_prompts)
 
-        # Execute plugins that need LLM
-        if success and not dry_run:
-            for plugin in plugins_needing_llm:
-                if plugin.config.enabled:
-                    # Check if plugin should be skipped based on LLM response
-                    if plugin.name == "create_appointment":
+                try:
+                    llm_response = llm_client.chat(combined_system, user_prompt)
+                    logger.debug(f"LLM 回覆: {llm_response}")
+                except Exception as e:
+                    success = False
+                    error_msg = str(e)
+                    logger.error(f"LLM 呼叫失敗: {e}")
+
+                if success and not dry_run:
+                    for plugin in plugins_needing_llm:
+                        # Check if plugin should be skipped based on LLM response
+                        if plugin.name == "create_appointment":
+                            try:
+                                import json
+                                import re
+
+                                clean = re.sub(r"^```json\s*", "", llm_response.strip())
+                                clean = re.sub(r"\s*```$", "", clean)
+                                json_match = re.search(r"\{[^}]+\}", clean, re.DOTALL)
+                                if json_match:
+                                    resp_data = json.loads(json_match.group())
+                                    if resp_data.get(
+                                        "action"
+                                    ) == "appointment" and not resp_data.get(
+                                        "create", False
+                                    ):
+                                        logger.info(
+                                            f"跳過 Plugin {plugin.name}: create 為 false"
+                                        )
+                                        continue
+                            except Exception:
+                                pass
+
+                        logger.info(f"執行 Plugin: {plugin.name}")
                         try:
-                            import json
-                            import re
+                            plugin_success = await plugin.execute(
+                                email_data, llm_response, self._client
+                            )
+                            plugin_results.append(
+                                PluginResult(
+                                    plugin_name=plugin.name,
+                                    success=plugin_success,
+                                    message="Success" if plugin_success else "Failed",
+                                )
+                            )
+                            if plugin.name == "move_to_folder" and plugin_success:
+                                moved_by_plugin = True
 
-                            clean = re.sub(r"^```json\s*", "", llm_response.strip())
-                            clean = re.sub(r"\s*```$", "", clean)
-                            json_match = re.search(r"\{[^}]+\}", clean, re.DOTALL)
-                            if json_match:
-                                resp_data = json.loads(json_match.group())
-                                if resp_data.get(
-                                    "action"
-                                ) == "appointment" and not resp_data.get(
-                                    "create", False
-                                ):
-                                    logger.info(
-                                        f"跳過 Plugin {plugin.name}: create 為 false"
-                                    )
-                                    continue
-                        except Exception:
-                            pass
-
-                    logger.info(f"執行 Plugin: {plugin.name}")
-                    try:
-                        plugin_success = await plugin.execute(
-                            email_data, llm_response, self._client
-                        )
-                        plugin_results.append(
-                            PluginResult(
-                                plugin_name=plugin.name,
-                                success=plugin_success,
-                                message="Success" if plugin_success else "Failed",
+                            if plugin_success:
+                                logger.info(f"Plugin {plugin.name}: Success")
+                            else:
+                                logger.warning(
+                                    f"Plugin {plugin.name}: Failed (回覆非預期格式)"
+                                )
+                        except Exception as e:
+                            logger.exception(f"Plugin {plugin.name} error: {e}")
+                            plugin_results.append(
+                                PluginResult(
+                                    plugin_name=plugin.name,
+                                    success=False,
+                                    message=f"Error: {e}",
+                                )
                             )
-                        )
-                        if plugin_success:
-                            logger.info(f"Plugin {plugin.name}: Success")
-                        else:
-                            logger.warning(
-                                f"Plugin {plugin.name}: Failed (回覆非預期格式)"
-                            )
-                    except Exception as e:
-                        logger.exception(f"Plugin {plugin.name} error: {e}")
-                        plugin_results.append(
-                            PluginResult(
-                                plugin_name=plugin.name,
-                                success=False,
-                                message=f"Error: {e}",
-                            )
-                        )
 
         # Move email to destination folder if specified
-        if dst_folder and success and not dry_run and not no_move:
+        if (
+            dst_folder
+            and success
+            and not dry_run
+            and not no_move
+            and not moved_by_plugin
+        ):
             try:
                 message.Move(dst_folder)
             except Exception as e:
                 error_msg = f"Move failed: {e}"
+                logger.error(error_msg)
 
         return EmailAnalysisResult(
             email_subject=subject,
@@ -491,6 +486,24 @@ async def process_config_file(
         f"Preserve-reply-thread: {preserve_reply_thread}"
     )
 
+    config_path = Path(config_file)
+    config_dir = config_path.parent
+
+    llm_config_path = config_dir / "llm-config.yaml"
+    if llm_config_path.exists():
+        resolved_llm_config = llm_config_path
+    else:
+        resolved_llm_config = None
+
+    plugin_config_dir = config_dir / "plugins"
+    if plugin_config_dir.exists():
+        resolved_plugin_dir = plugin_config_dir
+    else:
+        resolved_plugin_dir = Path("config/plugins")
+
+    logger.info(f"LLM config path: {resolved_llm_config or 'config/llm-config.yaml'}")
+    logger.info(f"Plugin config dir: {resolved_plugin_dir}")
+
     try:
         from .config import load_config
 
@@ -500,13 +513,15 @@ async def process_config_file(
         client.connect()
 
         # Try to load LLM config
-        llm_config = load_llm_config()
+        llm_config = load_llm_config(
+            str(resolved_llm_config) if resolved_llm_config else None
+        )
         if llm_config.api_base:
             llm_client = LLMClient(llm_config)
             logger.info(f"LLM 客戶端已初始化: {llm_config.model}")
 
         # Load plugin configs
-        plugin_configs = load_plugin_configs()
+        plugin_configs = load_plugin_configs(resolved_plugin_dir)
         logger.info(f"已載入 {len(plugin_configs)} 個插件配置")
 
         processor = EmailProcessor(

@@ -114,7 +114,14 @@ def html_to_text(html: str) -> str:
             tag.decompose()
 
         for tag in soup.find_all(style=True):
-            style = tag.get("style", "").replace(" ", "").lower()
+            raw_style = tag.get("style")
+            if isinstance(raw_style, list):
+                style = " ".join(str(value) for value in raw_style)
+            elif isinstance(raw_style, str):
+                style = raw_style
+            else:
+                style = ""
+            style = style.replace(" ", "").lower()
             if "display:none" in style or "visibility:hidden" in style:
                 tag.decompose()
 
@@ -131,7 +138,9 @@ def html_to_text(html: str) -> str:
                     tag.insert_before("\n")
                     cells = tag.find_all(["th", "td"])
                     if cells:
-                        row_text = " | ".join(cell.get_text(" ", strip=True) for cell in cells)
+                        row_text = " | ".join(
+                            cell.get_text(" ", strip=True) for cell in cells
+                        )
                         tag.replace_with(f"{row_text}\n")
                 else:
                     tag.insert_before("\n")
@@ -181,7 +190,10 @@ def strip_reply_thread(text: str) -> str:
     kept_lines: list[str] = []
 
     for line in lines:
-        if any(re.match(pattern, line, re.IGNORECASE) for pattern in REPLY_SEPARATOR_PATTERNS):
+        if any(
+            re.match(pattern, line, re.IGNORECASE)
+            for pattern in REPLY_SEPARATOR_PATTERNS
+        ):
             break
         kept_lines.append(line)
 
@@ -210,7 +222,10 @@ def is_forward_subject(subject: str) -> bool:
 def _find_reply_separator_index(lines: list[str]) -> int | None:
     """Find the first reply or forward separator line index."""
     for index, line in enumerate(lines):
-        if any(re.match(pattern, line, re.IGNORECASE) for pattern in REPLY_SEPARATOR_PATTERNS):
+        if any(
+            re.match(pattern, line, re.IGNORECASE)
+            for pattern in REPLY_SEPARATOR_PATTERNS
+        ):
             return index
     return None
 
@@ -288,7 +303,10 @@ def strip_signature(text: str) -> str:
 
     lines = text.splitlines()
     for index, line in enumerate(lines):
-        if any(re.match(pattern, line, re.IGNORECASE) for pattern in SIGNATURE_START_PATTERNS):
+        if any(
+            re.match(pattern, line, re.IGNORECASE)
+            for pattern in SIGNATURE_START_PATTERNS
+        ):
             remaining = [value for value in lines[index:] if value.strip()]
             if 1 <= len(remaining) <= 12:
                 return "\n".join(lines[:index]).strip()
@@ -384,7 +402,7 @@ def clean_content(
     text = normalize_text(text)
     if not preserve_reply_thread:
         text = strip_reply_thread_with_subject(text, subject=subject)
-    text = strip_reply_headers(text)
+        text = strip_reply_headers(text)
     text = strip_signature(text)
     text = strip_footer(text)
 
