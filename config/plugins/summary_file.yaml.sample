@@ -1,36 +1,32 @@
-# Add Category Plugin Configuration
-# Action: Add categories/labels to email based on LLM response
+# Summary File Plugin Configuration
+# Action: Summarize email content and append result rows to CSV
 
 enabled: true
 
 # Default system prompt for this plugin
 # The JSON format will be automatically appended to this prompt
 system_prompt: |
-  你是一個郵件分類助手。分析以下郵件內容，選擇適當的分類標籤。
-
-  可用的分類：
-  - Meeting (會議)
-  - Bill (帳單)
-  - Important (重要)
-  - Urgent (緊急)
-  - Personal (個人)
-  - Work (工作)
-  - Newsletter (電子報)
+  你是郵件摘要助手。請根據郵件內容輸出精簡摘要。
 
   回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
 
 # JSON response format (automatically appended to system prompt)
-# This format is fixed and should not be modified by users
 response_json_format:
-  has_category: '{"action": "category", "categories": ["分類1", "分類2"]}'
-  no_category: '{"action": "category", "categories": []}'
+  has_summary: '{"action": "summary", "summary": "2-5 句重點摘要", "priority": "high"}'
+
+# Output CSV file (single file, append mode)
+output_file: "output/email_summaries.csv"
+
+# CSV schema is fixed in code:
+# email_subject, email_sender, email_received, summary, priority, logged_at
+# priority is optional; recommended values: high, medium, low
 
 # Response format (json, text)
 response_format: "json"
 
 _ui:
   schema_version: 1
-  title: "Plugin: add_category"
+  title: "Plugin: summary_file"
   buttons:
     - id: validate
       label: "驗證"
@@ -48,7 +44,12 @@ _ui:
       type: textarea
       label: "System Prompt"
       required: false
-      rows: 10
+      rows: 8
+    output_file:
+      type: path
+      label: "CSV 檔案"
+      required: true
+      placeholder: "output/email_summaries.csv"
     response_format:
       type: select
       label: "Response Format"
@@ -58,6 +59,10 @@ _ui:
         - json
         - text
   validation_rules:
+    - id: output_file_csv
+      level: warning
+      message: "建議 output_file 使用 .csv 副檔名"
+      check: "ends_with(lower(config.output_file),'.csv')"
     - id: response_format_enum
       level: error
       message: "response_format 僅支援 json/text"

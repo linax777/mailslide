@@ -21,3 +21,49 @@ include_fields:
 
 # Note: This plugin does not require LLM response and can run independently
 # Place it first in the plugins list to save email data before any modifications
+
+_ui:
+  schema_version: 1
+  title: "Plugin: write_file"
+  buttons:
+    - id: validate
+      label: "驗證"
+      action: validate
+    - id: save
+      label: "儲存"
+      action: save
+      variant: success
+  fields:
+    enabled:
+      type: bool
+      label: "啟用"
+      required: true
+    output_dir:
+      type: path
+      label: "輸出目錄"
+      required: true
+      placeholder: "output"
+    filename_format:
+      type: str
+      label: "檔名格式"
+      required: true
+      help: "可用 placeholder: {subject}, {timestamp}"
+    include_fields:
+      type: list[str]
+      label: "輸出欄位"
+      required: true
+      default:
+        - subject
+        - sender
+        - received
+        - body
+        - tables
+  validation_rules:
+    - id: required_placeholders
+      level: warning
+      message: "建議 filename_format 至少包含 {timestamp} 以避免覆蓋"
+      check: "contains(config.filename_format,'{timestamp}')"
+    - id: include_fields_not_empty
+      level: error
+      message: "include_fields 不可為空"
+      check: "count(config.include_fields) > 0"

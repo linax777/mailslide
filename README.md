@@ -53,6 +53,14 @@ copy config\plugins\*.yaml.sample config\plugins\
 
 > ⚠️ 初始化完成後，請務必打開各項設定檔，根據您的需求修改內容（如帳號、資料夾名稱、插件參數等）。
 
+### 關於 `_ui` 區塊
+
+`*.yaml.sample` 內含 `_ui` 區塊，描述未來 TUI 設定頁可用的欄位、按鈕與驗證規則（schema-driven UI）。
+
+- `_ui` / `_meta` 為保留鍵，執行流程會忽略這些 UI 描述。
+- 一般使用者只需要修改業務設定欄位（例如 `jobs`、`api_base`、`plugins`）。
+- 進階開發可調整 `_ui` 來統一表單行為與驗證規格。
+
 ## 命令列模式（CLI）
 
 單次任務可直接使用 CLI 執行：
@@ -123,6 +131,7 @@ model: "llama3"
 | create_appointment | AI 分析郵件內容建立行事曆約會 |
 | event_table | AI 分析郵件內容並將活動資訊追加到 CSV 表格 |
 | write_file | 將郵件資料儲存為 JSON 檔案 |
+| summary_file | AI 產生郵件摘要並追加到 CSV 表格 |
 
 ### write_file 插件設定
 
@@ -152,6 +161,31 @@ output_file: "output/events.csv"   # 單一 CSV，逐筆 append
 CSV 欄位由程式固定，順序為：
 `email_subject`, `email_sender`, `email_received`, `event_subject`,
 `start`, `end`, `location`, `body`, `logged_at`。
+
+### summary_file 插件設定
+
+編輯 `config/plugins/summary_file.yaml`：
+
+```yaml
+enabled: true
+output_file: "output/email_summaries.csv"   # 單一 CSV，逐筆 append
+```
+
+CSV 欄位由程式固定，順序為：
+`email_subject`, `email_sender`, `email_received`, `summary`, `priority`,
+`logged_at`。
+
+`summary_file` 的 LLM 回覆格式範例（不需要 `create` 欄位）：
+
+```json
+{
+  "action": "summary",
+  "summary": "這封信主要是確認合約版本與簽署時程，對方希望於本週五前回覆。",
+  "priority": "high"
+}
+```
+
+`priority` 欄位可省略；若提供，建議使用 `high`、`medium`、`low`。
 
 ## 圖形介面
 

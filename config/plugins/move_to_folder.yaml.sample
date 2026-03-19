@@ -25,3 +25,38 @@ response_json_format:
 
 # Response format (json, text)
 response_format: "json"
+
+_ui:
+  schema_version: 1
+  title: "Plugin: move_to_folder"
+  buttons:
+    - id: validate
+      label: "驗證"
+      action: validate
+    - id: save
+      label: "儲存"
+      action: save
+      variant: success
+  fields:
+    enabled:
+      type: bool
+      label: "啟用"
+      required: true
+    system_prompt:
+      type: textarea
+      label: "System Prompt"
+      required: false
+      rows: 10
+    response_format:
+      type: select
+      label: "Response Format"
+      required: true
+      default: json
+      options:
+        - json
+        - text
+  validation_rules:
+    - id: response_format_enum
+      level: error
+      message: "response_format 僅支援 json/text"
+      check: "in(config.response_format,['json','text'])"

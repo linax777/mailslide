@@ -24,3 +24,47 @@ output_file: "output/events.csv"
 
 # Response format (json, text)
 response_format: "json"
+
+_ui:
+  schema_version: 1
+  title: "Plugin: event_table"
+  buttons:
+    - id: validate
+      label: "驗證"
+      action: validate
+    - id: save
+      label: "儲存"
+      action: save
+      variant: success
+  fields:
+    enabled:
+      type: bool
+      label: "啟用"
+      required: true
+    system_prompt:
+      type: textarea
+      label: "System Prompt"
+      required: false
+      rows: 8
+    output_file:
+      type: path
+      label: "CSV 檔案"
+      required: true
+      placeholder: "output/events.csv"
+    response_format:
+      type: select
+      label: "Response Format"
+      required: true
+      default: json
+      options:
+        - json
+        - text
+  validation_rules:
+    - id: output_file_csv
+      level: warning
+      message: "建議 output_file 使用 .csv 副檔名"
+      check: "ends_with(lower(config.output_file),'.csv')"
+    - id: response_format_enum
+      level: error
+      message: "response_format 僅支援 json/text"
+      check: "in(config.response_format,['json','text'])"

@@ -40,3 +40,120 @@ jobs:
     plugins:
       - add_category
       - create_appointment
+
+# UI schema metadata for future TUI form builder.
+# Reserved key prefix: _ui / _meta (ignored by runtime execution logic).
+_ui:
+  schema_version: 1
+  title: "主設定"
+  description: "設定 jobs、資料夾、plugins 與處理上限"
+  buttons:
+    - id: add_job
+      label: "新增 Job"
+      action: add_list_item
+      target: jobs
+      variant: primary
+    - id: remove_job
+      label: "刪除 Job"
+      action: remove_list_item
+      target: jobs
+      variant: warning
+    - id: validate
+      label: "驗證設定"
+      action: validate
+      variant: default
+    - id: save
+      label: "儲存"
+      action: save
+      variant: success
+    - id: reset
+      label: "回復範本"
+      action: reset_from_sample
+      variant: error
+      confirm: true
+  fields:
+    body_max_length:
+      type: int
+      label: "內文長度上限"
+      required: false
+      min: 1
+      help: "全域預設值；可被 job.body_max_length 覆蓋"
+    jobs:
+      type: list
+      label: "工作清單"
+      min_items: 1
+      item_label_field: name
+      item_fields:
+        name:
+          type: str
+          label: "工作名稱"
+          required: true
+          max_length: 100
+        enable:
+          type: bool
+          label: "啟用"
+          required: false
+          default: true
+        account:
+          type: str
+          label: "Outlook 帳號"
+          required: true
+          placeholder: "your@email.com"
+        source:
+          type: str
+          label: "來源資料夾"
+          required: true
+          placeholder: "收件匣/分類"
+        destination:
+          type: str
+          label: "目標資料夾"
+          required: false
+          placeholder: "收件匣/分類/processed"
+        limit:
+          type: int
+          label: "處理上限"
+          required: false
+          default: 10
+          min: 1
+          max: 1000
+        body_max_length:
+          type: int
+          label: "內文長度上限（Job 覆蓋）"
+          required: false
+          min: 1
+        plugins:
+          type: multiselect
+          label: "Plugins"
+          required: false
+          options:
+            - add_category
+            - create_appointment
+            - move_to_folder
+            - write_file
+            - event_table
+            - summary_file
+  validation_rules:
+    - id: required_name_account_source
+      level: error
+      message: "每個 Job 必須包含 name/account/source"
+      check: "job.name && job.account && job.source"
+    - id: limit_positive
+      level: error
+      message: "limit 必須是正整數"
+      check: "!job.limit || (is_int(job.limit) && job.limit > 0)"
+    - id: body_max_length_positive
+      level: error
+      message: "body_max_length 必須是正整數"
+      check: "!job.body_max_length || (is_int(job.body_max_length) && job.body_max_length > 0)"
+    - id: destination_move_conflict
+      level: error
+      message: "使用 move_to_folder 時，請不要同時設定 destination"
+      check: "!(includes(job.plugins,'move_to_folder') && has_text(job.destination))"
+    - id: unique_job_name
+      level: warning
+      message: "建議 Job 名稱不要重複，方便追蹤"
+      check: "unique(config.jobs[].name)"
+    - id: at_least_one_enabled
+      level: warning
+      message: "目前沒有啟用的 Job"
+      check: "count(config.jobs[?enable!=false]) > 0"

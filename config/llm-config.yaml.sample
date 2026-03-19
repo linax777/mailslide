@@ -16,3 +16,68 @@ model: "llama3"
 
 # Request timeout in seconds
 timeout: 30
+
+# UI schema metadata for future TUI form builder.
+_ui:
+  schema_version: 1
+  title: "LLM 設定"
+  description: "設定 OpenAI 相容 API 的連線參數"
+  buttons:
+    - id: test_connection
+      label: "測試連線"
+      action: test_llm_connection
+      variant: primary
+    - id: validate
+      label: "驗證"
+      action: validate
+      variant: default
+    - id: save
+      label: "儲存"
+      action: save
+      variant: success
+  fields:
+    provider:
+      type: select
+      label: "Provider"
+      required: true
+      default: openai
+      options:
+        - openai
+        - ollama
+        - lmstudio
+        - llama.cpp
+    api_base:
+      type: str
+      label: "API Base"
+      required: true
+      placeholder: "http://localhost:11434/v1"
+    api_key:
+      type: secret
+      label: "API Key"
+      required: false
+      allow_empty: true
+    model:
+      type: str
+      label: "Model"
+      required: true
+      placeholder: "llama3"
+    timeout:
+      type: int
+      label: "Timeout (sec)"
+      required: false
+      default: 30
+      min: 1
+      max: 300
+  validation_rules:
+    - id: api_base_required
+      level: error
+      message: "api_base 不可空白"
+      check: "has_text(config.api_base)"
+    - id: api_base_url_like
+      level: warning
+      message: "api_base 建議為 http(s):// 開頭"
+      check: "starts_with(config.api_base,'http://') || starts_with(config.api_base,'https://')"
+    - id: timeout_range
+      level: error
+      message: "timeout 必須介於 1~300 秒"
+      check: "is_int(config.timeout) && config.timeout >= 1 && config.timeout <= 300"

@@ -12,7 +12,14 @@ from .base import (
 from ..parser import clean_invisible_chars
 
 # Import all plugins to register them
-from . import category, calendar, event_table, move, write_file  # noqa: F401, E402
+from . import (  # noqa: F401, E402
+    calendar,
+    category,
+    event_table,
+    move,
+    summary_file,
+    write_file,
+)
 
 __all__ = [
     "BasePlugin",

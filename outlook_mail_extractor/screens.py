@@ -3,10 +3,13 @@
 import asyncio
 import re
 from datetime import datetime
+from typing import Literal
 
 import pycron
+import yaml
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import (
     Button,
@@ -14,6 +17,7 @@ from textual.widgets import (
     Input,
     Log,
     MarkdownViewer,
+    SelectionList,
     Static,
     Switch,
     TabbedContent,
@@ -28,6 +32,13 @@ from outlook_mail_extractor.llm import load_llm_config
 from outlook_mail_extractor.runtime import RuntimeContext, get_runtime_context
 from outlook_mail_extractor.services.job_execution import JobExecutionService
 from outlook_mail_extractor.services.preflight import PreflightCheckService
+from outlook_mail_extractor.ui_schema import (
+    build_default_list_item,
+    evaluate_rules,
+    load_ui_schema,
+    strip_reserved_metadata,
+    validate_ui_schema,
+)
 
 from .models import CheckStatus, ConfigStatus, OutlookStatus, SystemStatus
 
@@ -602,25 +613,551 @@ class ScheduleScreen(Static):
             pass
 
 
+class AddJobScreen(ModalScreen[dict | None]):
+    """Modal screen for collecting a new job before writing config."""
+
+    CSS = """
+    AddJobScreen {
+        align: center middle;
+    }
+    #add-job-dialog {
+        width: 70;
+        max-width: 90;
+        height: auto;
+        border: round $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+    #add-job-actions {
+        height: auto;
+        margin-top: 1;
+    }
+    #add-job-error {
+        color: $error;
+        min-height: 2;
+    }
+    #add-job-plugins {
+        height: 7;
+    }
+    """
+
+    def __init__(
+        self,
+        plugin_options: list[str],
+        defaults: dict | None = None,
+    ):
+        super().__init__()
+        self._plugin_options = plugin_options
+        self._defaults = defaults or {}
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="add-job-dialog"):
+            yield Static("➕ 新增 Job", id="add-job-title")
+            yield Static("工作名稱", classes="add-job-label")
+            yield Input(self._default_text("name"), id="add-job-name")
+            yield Static("啟用", classes="add-job-label")
+            yield Switch(value=self._default_bool("enable", True), id="add-job-enable")
+            yield Static("Outlook 帳號", classes="add-job-label")
+            yield Input(self._default_text("account"), id="add-job-account")
+            yield Static("來源資料夾", classes="add-job-label")
+            yield Input(self._default_text("source"), id="add-job-source")
+            yield Static("目標資料夾（可留空）", classes="add-job-label")
+            yield Input(self._default_text("destination"), id="add-job-destination")
+            yield Static("處理上限", classes="add-job-label")
+            yield Input(str(self._default_limit()), id="add-job-limit")
+            yield Static("Plugins（可多選）", classes="add-job-label")
+            default_plugins = set(self._default_plugins())
+            yield SelectionList(
+                *[
+                    (
+                        option,
+                        option,
+                        option in default_plugins,
+                    )
+                    for option in self._plugin_options
+                ],
+                id="add-job-plugins",
+            )
+            yield Static("", id="add-job-error")
+            with Horizontal(id="add-job-actions"):
+                yield Button("取消", id="add-job-cancel")
+                yield Button("儲存 Job", id="add-job-save", variant="primary")
+
+    def on_mount(self) -> None:
+        self.query_one("#add-job-name", Input).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "add-job-cancel":
+            self.dismiss(None)
+            return
+        if event.button.id == "add-job-save":
+            self._submit()
+
+    def _default_text(self, key: str) -> str:
+        value = self._defaults.get(key, "")
+        return str(value) if value is not None else ""
+
+    def _default_bool(self, key: str, fallback: bool) -> bool:
+        value = self._defaults.get(key)
+        return bool(value) if isinstance(value, bool) else fallback
+
+    def _default_limit(self) -> int:
+        value = self._defaults.get("limit", 10)
+        if isinstance(value, int) and value > 0:
+            return value
+        return 10
+
+    def _default_plugins(self) -> list[str]:
+        plugins = self._defaults.get("plugins", [])
+        if isinstance(plugins, list):
+            return [str(plugin).strip() for plugin in plugins if str(plugin).strip()]
+        return []
+
+    def _show_error(self, message: str) -> None:
+        self.query_one("#add-job-error", Static).update(message)
+
+    def _submit(self) -> None:
+        name = self.query_one("#add-job-name", Input).value.strip()
+        account = self.query_one("#add-job-account", Input).value.strip()
+        source = self.query_one("#add-job-source", Input).value.strip()
+        destination = self.query_one("#add-job-destination", Input).value.strip()
+        limit_text = self.query_one("#add-job-limit", Input).value.strip()
+        plugin_selector = self.query_one("#add-job-plugins", SelectionList)
+        enable = self.query_one("#add-job-enable", Switch).value
+
+        if not name:
+            self._show_error("name 為必填")
+            return
+        if not account:
+            self._show_error("account 為必填")
+            return
+        if not source:
+            self._show_error("source 為必填")
+            return
+
+        try:
+            limit = int(limit_text)
+            if limit <= 0:
+                raise ValueError
+        except ValueError:
+            self._show_error("limit 必須是正整數")
+            return
+
+        selected_plugins = set(plugin_selector.selected)
+        plugins = [
+            option for option in self._plugin_options if option in selected_plugins
+        ]
+
+        if "move_to_folder" in plugins and destination:
+            self._show_error("使用 move_to_folder 時，請不要設定 destination")
+            return
+
+        job: dict[str, object] = {
+            "name": name,
+            "enable": enable,
+            "account": account,
+            "source": source,
+            "limit": limit,
+            "plugins": plugins,
+        }
+        if destination:
+            job["destination"] = destination
+
+        self.dismiss(job)
+
+
 class MainConfigTab(Static):
     """一般設定分頁"""
+
+    CSS = """
+    #main-config-split {
+        height: 100%;
+    }
+    #main-jobs-pane {
+        height: auto;
+        min-height: 3;
+    }
+    #main-jobs-table {
+        height: auto;
+    }
+    #main-schema-pane {
+        layout: vertical;
+        height: 1fr;
+        border-top: solid $accent;
+        padding-top: 0;
+    }
+    #main-schema-actions {
+        height: auto;
+        min-height: 4;
+        margin-bottom: 0;
+        padding: 0 0 1 0;
+    }
+    #main-schema-actions Button {
+        height: auto;
+        min-height: 3;
+    }
+    #main-config-title {
+        margin-top: 0;
+    }
+    #main-config-content {
+        height: 1fr;
+    }
+    """
 
     def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
         self._runtime = runtime_context or get_runtime_context()
+        self._sample_path = self._runtime.paths.config_dir / "config.yaml.sample"
+        self._ui_schema = load_ui_schema(self._sample_path)
+        self._schema_errors = validate_ui_schema(self._ui_schema)
+        self._reset_armed = False
 
     def compose(self) -> ComposeResult:
-        yield Static("📄 主設定檔 (config/config.yaml)", id="main-config-title")
-        yield TextArea("", id="main-config-content", read_only=True)
-        yield Static("📋 Jobs 列表", id="jobs-title")
-        yield DataTable(id="jobs-table")
+        with Vertical(id="main-config-split"):
+            with Vertical(id="main-jobs-pane"):
+                yield Static("📋 Jobs 清單", id="main-jobs-title")
+                yield DataTable(id="main-jobs-table")
+
+            with Vertical(id="main-schema-pane"):
+                with Horizontal(id="main-schema-actions"):
+                    for button in self._ui_schema.get("buttons", []):
+                        if not isinstance(button, dict):
+                            continue
+                        btn = Button(
+                            str(button.get("label", "未命名按鈕")),
+                            id=f"schema-btn-{button.get('id', 'unknown')}",
+                            variant=self._resolve_button_variant(
+                                str(button.get("variant", "default"))
+                            ),
+                        )
+                        btn.styles.min_height = 5
+                        btn.styles.height = "auto"
+                        yield btn
+                yield Static("📄 主設定檔 (config/config.yaml)", id="main-config-title")
+                yield TextArea("", id="main-config-content", read_only=False)
 
     def on_mount(self) -> None:
+        actions = self.query_one("#main-schema-actions", Horizontal)
+        actions.styles.min_height = 6
+        actions.styles.height = "auto"
         self._load_config()
+
+    def _resolve_button_variant(
+        self,
+        variant: str,
+    ) -> Literal["default", "primary", "success", "warning", "error"]:
+        mapping: dict[
+            str,
+            Literal["default", "primary", "success", "warning", "error"],
+        ] = {
+            "primary": "primary",
+            "success": "success",
+            "warning": "warning",
+            "error": "error",
+            "default": "default",
+        }
+        return mapping.get(variant, "default")
+
+    def _render_jobs_table(self, config: dict) -> None:
+        jobs_pane = self.query_one("#main-jobs-pane", Vertical)
+        table = self.query_one("#main-jobs-table", DataTable)
+        table.clear(columns=True)
+        table.add_columns("啟用", "名稱", "帳號", "來源", "目標", "Plugins", "Limit")
+
+        jobs = config.get("jobs", [])
+        if not isinstance(jobs, list):
+            table.styles.height = 4
+            jobs_pane.styles.height = 6
+            return
+
+        rendered_rows = 0
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            plugins = ", ".join(job.get("plugins", [])) or "-"
+            enable = "✓" if job.get("enable", True) else "✗"
+            table.add_row(
+                enable,
+                truncate(job.get("name", "")),
+                truncate(job.get("account", "")),
+                truncate(job.get("source", "")),
+                truncate(job.get("destination", "")) or "-",
+                truncate(plugins),
+                str(job.get("limit", "")),
+            )
+            rendered_rows += 1
+
+        visible_rows = max(2, min(rendered_rows + 1, 6))
+        table.styles.height = visible_rows
+        jobs_pane.styles.height = visible_rows + 2
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if not event.button.id or not event.button.id.startswith("schema-btn-"):
+            return
+
+        action = event.button.id.removeprefix("schema-btn-")
+        if action == "validate":
+            self._run_schema_validation()
+            return
+        if action == "save":
+            self._save_from_editor()
+            return
+        if action == "add_job":
+            self._add_job()
+            return
+        if action == "remove_job":
+            self._remove_job()
+            return
+        if action == "reset":
+            self._reset_from_sample()
+            return
+
+        self.app.notify(
+            f"此按鈕尚未接上編輯流程: {action} (目前提供 schema 預覽與驗證)",
+            severity="warning",
+        )
+
+    def _load_raw_config(self) -> dict:
+        config_path = self._runtime.paths.config_file
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        if not isinstance(data, dict):
+            raise ValueError("config.yaml 內容必須是物件")
+        return data
+
+    def _load_editor_config(self) -> dict:
+        content_widget = self.query_one("#main-config-content", TextArea)
+        data = yaml.safe_load(content_widget.text) or {}
+        if not isinstance(data, dict):
+            raise ValueError("設定內容必須是 YAML 物件")
+        return data
+
+    def _dump_editor_config(self, data: dict) -> None:
+        content_widget = self.query_one("#main-config-content", TextArea)
+        content_widget.load_text(
+            yaml.safe_dump(
+                data,
+                allow_unicode=True,
+                sort_keys=False,
+                default_flow_style=False,
+            )
+        )
+
+    def _write_config_file(self, data: dict) -> None:
+        config_path = self._runtime.paths.config_file
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(
+            yaml.safe_dump(
+                data,
+                allow_unicode=True,
+                sort_keys=False,
+                default_flow_style=False,
+            ),
+            encoding="utf-8",
+        )
+
+    def _save_from_editor(self) -> None:
+        try:
+            config = self._load_editor_config()
+            sanitized = strip_reserved_metadata(config)
+            self._write_config_file(sanitized)
+            self._dump_editor_config(sanitized)
+            self._load_config()
+            self._run_schema_validation()
+            self._reset_armed = False
+            self.app.notify("✅ 已儲存 config/config.yaml", severity="information")
+        except Exception as e:
+            self.app.notify(f"❌ 儲存失敗: {e}", severity="error")
+
+    def _next_job_name(self, jobs: list[dict]) -> str:
+        existing = {str(job.get("name", "")).strip() for job in jobs}
+        index = 1
+        while True:
+            candidate = f"新工作{index}"
+            if candidate not in existing:
+                return candidate
+            index += 1
+
+    def _plugin_options_from_schema(self) -> list[str]:
+        fields = self._ui_schema.get("fields", {})
+        if not isinstance(fields, dict):
+            return []
+
+        jobs = fields.get("jobs", {})
+        if not isinstance(jobs, dict):
+            return []
+
+        item_fields = jobs.get("item_fields", {})
+        if not isinstance(item_fields, dict):
+            return []
+
+        plugins = item_fields.get("plugins", {})
+        if not isinstance(plugins, dict):
+            return []
+
+        options = plugins.get("options", [])
+        if not isinstance(options, list):
+            return []
+
+        return [str(option) for option in options]
+
+    def _handle_add_job_result(self, result: dict | None) -> None:
+        if result is None:
+            return
+
+        try:
+            config = self._load_editor_config()
+            jobs = config.get("jobs", [])
+            if not isinstance(jobs, list):
+                raise ValueError("jobs 必須是陣列")
+
+            existing_names = {
+                str(job.get("name", "")).strip()
+                for job in jobs
+                if isinstance(job, dict)
+            }
+            new_name = str(result.get("name", "")).strip()
+            if new_name in existing_names:
+                raise ValueError(f"Job 名稱重複: {new_name}")
+
+            jobs.append(result)
+            config["jobs"] = jobs
+            self._dump_editor_config(config)
+            self._run_schema_validation()
+            self._render_jobs_table(config)
+            self._reset_armed = False
+            self.app.notify("✅ 已新增一筆 Job 到編輯器", severity="information")
+        except Exception as e:
+            self.app.notify(f"❌ 新增 Job 失敗: {e}", severity="error")
+
+    def _add_job(self) -> None:
+        defaults = build_default_list_item(self._ui_schema, "jobs")
+        plugin_options = self._plugin_options_from_schema()
+
+        try:
+            config = self._load_editor_config()
+            jobs = config.get("jobs", [])
+            if isinstance(jobs, list) and jobs:
+                if not str(defaults.get("name", "")).strip():
+                    defaults["name"] = self._next_job_name(
+                        [j for j in jobs if isinstance(j, dict)]
+                    )
+        except Exception:
+            defaults.setdefault("name", "新工作1")
+
+        self.app.push_screen(
+            AddJobScreen(plugin_options=plugin_options, defaults=defaults),
+            self._handle_add_job_result,
+        )
+
+    def _remove_job(self) -> None:
+        try:
+            config = self._load_editor_config()
+            jobs = config.get("jobs", [])
+            if not isinstance(jobs, list):
+                raise ValueError("jobs 必須是陣列")
+            if not jobs:
+                self.app.notify("⚠️ 沒有可刪除的 Job", severity="warning")
+                return
+
+            removed = jobs.pop()
+            config["jobs"] = jobs
+            self._dump_editor_config(config)
+            self._run_schema_validation()
+            self._render_jobs_table(config)
+            self._reset_armed = False
+            name = (
+                str(removed.get("name", "(未命名)"))
+                if isinstance(removed, dict)
+                else "(未知)"
+            )
+            self.app.notify(f"✅ 已刪除最後一筆 Job: {name}", severity="information")
+        except Exception as e:
+            self.app.notify(f"❌ 刪除 Job 失敗: {e}", severity="error")
+
+    def _reset_from_sample(self) -> None:
+        if not self._reset_armed:
+            self._reset_armed = True
+            self.app.notify(
+                "⚠️ 再按一次「回復範本」以確認覆蓋目前編輯內容",
+                severity="warning",
+            )
+            return
+
+        try:
+            with open(self._sample_path, encoding="utf-8") as f:
+                sample = yaml.safe_load(f) or {}
+            if not isinstance(sample, dict):
+                raise ValueError("sample 內容格式錯誤")
+
+            sanitized = strip_reserved_metadata(sample)
+            self._dump_editor_config(sanitized)
+            self._write_config_file(sanitized)
+            self._load_config()
+            self._run_schema_validation()
+            self.app.notify("✅ 已用 sample 回復設定", severity="information")
+        except Exception as e:
+            self.app.notify(f"❌ 回復失敗: {e}", severity="error")
+        finally:
+            self._reset_armed = False
+
+    def _run_schema_validation(self, use_editor: bool = True) -> None:
+        if self._schema_errors:
+            preview = " | ".join(self._schema_errors[:2])
+            self.app.notify(
+                f"❌ _ui schema 結構錯誤: {preview}",
+                severity="error",
+            )
+            return
+
+        try:
+            if use_editor:
+                config = self._load_editor_config()
+            else:
+                config_path = self._runtime.paths.config_file
+                if not config_path.exists():
+                    self.app.notify("❌ 找不到 config/config.yaml", severity="error")
+                    return
+                config = self._load_raw_config()
+            results = evaluate_rules(
+                config,
+                self._ui_schema.get("validation_rules", []),
+            )
+        except Exception as e:
+            self.app.notify(f"❌ YAML 解析失敗: {e}", severity="error")
+            return
+
+        has_error = False
+        has_warning = False
+        failed_errors: list[str] = []
+        failed_warnings: list[str] = []
+        for result in results:
+            if not result.passed:
+                if result.level == "error":
+                    has_error = True
+                    failed_errors.append(result.message)
+                else:
+                    has_warning = True
+                    failed_warnings.append(result.message)
+
+        if has_error:
+            detail = "；".join(failed_errors[:2])
+            self.app.notify(
+                f"❌ 驗證失敗：{detail}",
+                severity="error",
+            )
+        elif has_warning:
+            detail = "；".join(failed_warnings[:2])
+            self.app.notify(
+                f"⚠️ 驗證完成：{detail}",
+                severity="warning",
+            )
+        else:
+            self.app.notify("✅ 驗證通過", severity="information")
 
     def _load_config(self) -> None:
         content_widget = self.query_one("#main-config-content", TextArea)
-        table = self.query_one("#jobs-table", DataTable)
+        table = self.query_one("#main-jobs-table", DataTable)
         table.clear(columns=True)
 
         config_path = self._runtime.paths.config_file
@@ -638,23 +1175,7 @@ class MainConfigTab(Static):
             content_widget.load_text(content)
 
             config = load_config(config_path)
-            table.clear()
-
-            table.add_columns(
-                "啟用", "名稱", "帳號", "來源", "目標", "Plugins", "Limit"
-            )
-            for job in config.get("jobs", []):
-                plugins = ", ".join(job.get("plugins", [])) or "-"
-                enable = "✓" if job.get("enable", True) else "✗"
-                table.add_row(
-                    enable,
-                    truncate(job.get("name", "")),
-                    truncate(job.get("account", "")),
-                    truncate(job.get("source", "")),
-                    truncate(job.get("destination", "")) or "-",
-                    truncate(plugins),
-                    str(job.get("limit", "")),
-                )
+            self._render_jobs_table(config)
 
             self.query_one("#main-config-title", Static).update(
                 "📄 主設定檔 (config/config.yaml) ✅"

@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.2.1] - 2026-03-19
+
+### Highlights
+
+- Added a schema-driven configuration editing workflow in the TUI so config samples can define action buttons, field metadata, and validation rules while runtime configs remain user-editable YAML.
+- Improved job authoring UX by replacing direct empty-row insertion with a modal add-job form that validates required fields before updating config content.
+- Added the new `summary_file` plugin to support LLM-generated summary rows appended to a CSV output file.
+
+### Changed
+
+- Extended `config/*.yaml.sample` and `config/plugins/*.yaml.sample` with `_ui` metadata blocks for future form generation and centralized validation behavior.
+- Updated the Configuration tab layout to prioritize the jobs list and editable config area, with schema action buttons for validate/save/add/remove/reset.
+- Switched add-job plugin selection to Textual `SelectionList` driven by plugin options declared in config schema.
+- Updated README with `_ui` metadata guidance and `summary_file` plugin usage examples.
+
+### Added
+
+- Added `outlook_mail_extractor/ui_schema.py` helpers for loading schema metadata, flattening field definitions, evaluating validation rules, generating list-item defaults, and stripping reserved keys.
+- Added `config/plugins/summary_file.yaml.sample`, `outlook_mail_extractor/plugins/summary_file.py`, and `tests/test_summary_file_plugin.py` for the summary CSV plugin workflow.
+- Added `tests/test_ui_schema.py` coverage for schema field flattening, rule evaluation, default list-item generation, and reserved-key stripping.
+
 ## [v0.2.0] - 2026-03-19
 
 ### Highlights

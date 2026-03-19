@@ -22,3 +22,47 @@ recipients: []
 
 # Response format (json, text)
 response_format: "json"
+
+_ui:
+  schema_version: 1
+  title: "Plugin: create_appointment"
+  buttons:
+    - id: validate
+      label: "驗證"
+      action: validate
+    - id: save
+      label: "儲存"
+      action: save
+      variant: success
+  fields:
+    enabled:
+      type: bool
+      label: "啟用"
+      required: true
+    system_prompt:
+      type: textarea
+      label: "System Prompt"
+      required: false
+      rows: 8
+    recipients:
+      type: list[str]
+      label: "邀請收件者"
+      required: false
+      placeholder: "name@example.com"
+    response_format:
+      type: select
+      label: "Response Format"
+      required: true
+      default: json
+      options:
+        - json
+        - text
+  validation_rules:
+    - id: recipients_email_like
+      level: warning
+      message: "recipients 建議為 email 格式"
+      check: "all(config.recipients, is_email_like)"
+    - id: response_format_enum
+      level: error
+      message: "response_format 僅支援 json/text"
+      check: "in(config.response_format,['json','text'])"
