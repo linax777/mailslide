@@ -12,13 +12,17 @@ from .core import (
 from .llm import LLMClient, LLMConfig, LLMError, load_llm_config
 from .logger import LoggerManager, get_logger
 from .models import (
+    AppError,
     CheckStatus,
     ConfigStatus,
+    DomainError,
     EmailAnalysisResult,
+    InfrastructureError,
     LLMConfigStatus,
     OutlookStatus,
     PluginResult,
     SystemStatus,
+    UserVisibleError,
 )
 from .parser import clean_content, clean_invisible_chars, parse_tables
 
@@ -29,6 +33,10 @@ __all__ = [
     "OutlookConnectionError",
     "FolderNotFoundError",
     "LLMError",
+    "AppError",
+    "DomainError",
+    "InfrastructureError",
+    "UserVisibleError",
     # Core classes
     "OutlookClient",
     "EmailProcessor",

@@ -17,6 +17,7 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Added plugin tests covering timezone datetime handling in both `event_table` CSV export and `create_appointment` calendar creation flows.
 - Removed the legacy `outlook_worker.py` compatibility script because the project now uses `outlook_mail_extractor.__main__` as the single CLI entry point.
 - Updated `.gitignore` and git tracking so local workflow notes (`AGENTS.md`, `DEVELOPER.md`, `tasks/`) stay untracked.
+- Introduced application-level error layering (`AppError`, `DomainError`, `InfrastructureError`, `UserVisibleError`) and aligned core processing error handling to preserve typed failures while wrapping unknown exceptions as infrastructure-level errors.
 
 ## [2026-03-18]
 

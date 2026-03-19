@@ -9,21 +9,24 @@ from .llm import LLMClient, load_llm_config
 from .logger import LoggerManager, get_logger
 from .models import (
     CheckStatus,
+    DomainError,
     EmailAnalysisResult,
+    InfrastructureError,
     LLMConfigStatus,
     PluginResult,
+    UserVisibleError,
 )
 from .parser import clean_invisible_chars, extract_main_content, parse_tables
 from .plugins import get_plugin, load_plugin_configs
 
 
-class OutlookConnectionError(Exception):
+class OutlookConnectionError(InfrastructureError):
     """Cannot connect to Outlook"""
 
     pass
 
 
-class FolderNotFoundError(Exception):
+class FolderNotFoundError(DomainError):
     """Folder not found"""
 
     pass
@@ -298,13 +301,25 @@ class EmailProcessor:
                     )
                     if plugin.name == "move_to_folder" and plugin_success:
                         moved_by_plugin = True
-                except Exception as e:
+                except (DomainError, InfrastructureError, UserVisibleError) as e:
                     logger.exception(f"Plugin {plugin.name} error: {e}")
                     plugin_results.append(
                         PluginResult(
                             plugin_name=plugin.name,
                             success=False,
                             message=f"Error: {e}",
+                        )
+                    )
+                except Exception as e:
+                    wrapped = InfrastructureError(
+                        f"Unhandled plugin error ({plugin.name}): {e}"
+                    )
+                    logger.exception(str(wrapped))
+                    plugin_results.append(
+                        PluginResult(
+                            plugin_name=plugin.name,
+                            success=False,
+                            message=f"Error: {wrapped}",
                         )
                     )
 
@@ -383,13 +398,29 @@ class EmailProcessor:
                                 logger.warning(
                                     f"Plugin {plugin.name}: Failed (回覆非預期格式)"
                                 )
-                        except Exception as e:
+                        except (
+                            DomainError,
+                            InfrastructureError,
+                            UserVisibleError,
+                        ) as e:
                             logger.exception(f"Plugin {plugin.name} error: {e}")
                             plugin_results.append(
                                 PluginResult(
                                     plugin_name=plugin.name,
                                     success=False,
                                     message=f"Error: {e}",
+                                )
+                            )
+                        except Exception as e:
+                            wrapped = InfrastructureError(
+                                f"Unhandled plugin error ({plugin.name}): {e}"
+                            )
+                            logger.exception(str(wrapped))
+                            plugin_results.append(
+                                PluginResult(
+                                    plugin_name=plugin.name,
+                                    success=False,
+                                    message=f"Error: {wrapped}",
                                 )
                             )
 
@@ -550,9 +581,12 @@ async def process_config_file(
 
         logger.info("執行完成")
         return clean_invisible_chars(all_results)
-    except Exception as e:
+    except (DomainError, InfrastructureError, UserVisibleError) as e:
         logger.exception(f"執行失敗: {e}")
         raise
+    except Exception as e:
+        logger.exception(f"執行失敗: {e}")
+        raise InfrastructureError(f"Unhandled processing failure: {e}") from e
     finally:
         if llm_client:
             llm_client.close()

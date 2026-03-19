@@ -4,6 +4,22 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+class AppError(Exception):
+    """Base class for all application-level exceptions."""
+
+
+class DomainError(AppError):
+    """Business/domain rule violation or invalid domain state."""
+
+
+class InfrastructureError(AppError):
+    """External dependency failure (Outlook, filesystem, network, etc.)."""
+
+
+class UserVisibleError(AppError):
+    """Expected error that can be shown to end users as-is."""
+
+
 class CheckStatus(str, Enum):
     """Check status enum"""
 

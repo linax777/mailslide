@@ -5,10 +5,9 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import Any
 
-if TYPE_CHECKING:
-    from pathlib import Path as PathType
+from ..models import DomainError, InfrastructureError
 
 
 @dataclass
@@ -52,6 +51,18 @@ class BasePlugin(ABC):
             override_prompt=config.get("override_prompt"),
             response_json_format=config.get("response_json_format"),
         )
+
+    def _wrap_unexpected_error(
+        self, context: str, error: Exception
+    ) -> InfrastructureError:
+        """Create a consistent infrastructure-level error for unknown failures."""
+        return InfrastructureError(
+            f"{self.name or self.__class__.__name__} {context}: {error}"
+        )
+
+    def _is_expected_error(self, error: Exception) -> bool:
+        """Check if an error is already an application-level typed error."""
+        return isinstance(error, (DomainError, InfrastructureError))
 
     @property
     def effective_prompt(self) -> str:
@@ -137,8 +148,6 @@ def load_plugin_configs(
     plugins_dir: Any = "config/plugins",
 ) -> dict[str, dict]:
     """Load all plugin configs from directory"""
-    from pathlib import Path
-
     import yaml
 
     configs = {}
