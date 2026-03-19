@@ -33,6 +33,19 @@ def load_ui_schema(sample_path: Path | str) -> dict[str, Any]:
     return schema if isinstance(schema, dict) else {}
 
 
+def load_plugin_ui_schema(
+    plugin_name: str,
+    plugins_dir: Path | str,
+) -> dict[str, Any]:
+    """Load plugin `_ui` schema from `<plugins_dir>/<plugin>.yaml.sample`."""
+    plugin_key = str(plugin_name).strip()
+    if not plugin_key:
+        return {}
+
+    sample_path = Path(plugins_dir) / f"{plugin_key}.yaml.sample"
+    return load_ui_schema(sample_path)
+
+
 def validate_ui_schema(schema: dict[str, Any]) -> list[str]:
     """Perform lightweight structural validation for UI schema."""
     errors: list[str] = []

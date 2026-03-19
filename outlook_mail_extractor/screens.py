@@ -1,9 +1,11 @@
 """UI 畫面 - TabbedContent 各標籤頁"""
 
 import asyncio
+import json
 import re
 from datetime import datetime
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 import pycron
 import yaml
@@ -35,6 +37,7 @@ from outlook_mail_extractor.services.preflight import PreflightCheckService
 from outlook_mail_extractor.ui_schema import (
     build_default_list_item,
     evaluate_rules,
+    load_plugin_ui_schema,
     load_ui_schema,
     strip_reserved_metadata,
     validate_ui_schema,
@@ -766,6 +769,483 @@ class AddJobScreen(ModalScreen[dict | None]):
         self.dismiss(job)
 
 
+class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
+    """Schema-driven plugin config editor modal."""
+
+    CSS = """
+    PluginConfigEditorModal {
+        align: center middle;
+    }
+    #plugin-editor-dialog {
+        width: 92;
+        max-width: 120;
+        height: 90%;
+        min-height: 24;
+        border: round $accent;
+        background: $surface;
+        padding: 1 2;
+    }
+    #plugin-editor-form {
+        height: 1fr;
+        min-height: 8;
+        margin-bottom: 1;
+    }
+    .plugin-field-label {
+        margin-top: 1;
+    }
+    #plugin-editor-error {
+        color: $error;
+        min-height: 2;
+    }
+    #plugin-editor-actions {
+        height: auto;
+        margin-top: 1;
+    }
+    .plugin-select-field {
+        height: 6;
+    }
+    .plugin-textarea-field {
+        height: 7;
+    }
+    """
+
+    def __init__(
+        self,
+        plugin_name: str,
+        schema: dict[str, Any],
+        current_config: dict[str, Any],
+    ):
+        super().__init__()
+        self._plugin_name = plugin_name
+        fields = schema.get("fields", {})
+        self._fields = fields if isinstance(fields, dict) else {}
+        buttons = schema.get("buttons", [])
+        self._buttons = buttons if isinstance(buttons, list) else []
+        rules = schema.get("validation_rules", [])
+        self._rules = rules if isinstance(rules, list) else []
+        self._current = current_config
+        self._json_format_raw = self._extract_json_format_raw(current_config)
+        self._json_format_examples, self._json_unparsed_keys = (
+            self._parse_json_format_examples(self._json_format_raw)
+        )
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="plugin-editor-dialog"):
+            yield Static(
+                f"🧩 編輯 Plugin: {self._plugin_name}", id="plugin-editor-title"
+            )
+            with VerticalScroll(id="plugin-editor-form"):
+                for field_name, spec in self._fields.items():
+                    if not isinstance(spec, dict):
+                        continue
+
+                    required = bool(spec.get("required", False))
+                    marker = " *" if required else ""
+                    label = str(spec.get("label", field_name))
+                    yield Static(f"{label}{marker}", classes="plugin-field-label")
+
+                    field_type = str(spec.get("type", "str")).lower()
+                    if field_type == "bool":
+                        yield Switch(
+                            value=self._resolve_initial_bool(field_name, spec),
+                            id=self._widget_id(field_name),
+                        )
+                    elif field_type in {"select", "multiselect"}:
+                        options = self._options(spec)
+                        selected = self._resolve_initial_selection(field_name, spec)
+                        yield SelectionList(
+                            *[
+                                (
+                                    option,
+                                    option,
+                                    option in selected,
+                                )
+                                for option in options
+                            ],
+                            id=self._widget_id(field_name),
+                            classes="plugin-select-field",
+                        )
+                    elif field_type in {"textarea", "list[str]", "list"}:
+                        rows = spec.get("rows", 7)
+                        try:
+                            rows_value = int(rows)
+                        except Exception:
+                            rows_value = 7
+                        textarea = TextArea(
+                            self._resolve_initial_text(field_name, spec),
+                            id=self._widget_id(field_name),
+                            classes="plugin-textarea-field",
+                        )
+                        textarea.styles.height = max(4, min(rows_value + 1, 12))
+                        yield textarea
+                    else:
+                        yield Input(
+                            self._resolve_initial_text(field_name, spec),
+                            placeholder=str(spec.get("placeholder", "")),
+                            id=self._widget_id(field_name),
+                        )
+
+                if self._json_format_examples or self._json_unparsed_keys:
+                    yield Static(
+                        "JSON 輸出格式（時間欄位固定，其餘可改）",
+                        classes="plugin-field-label",
+                    )
+                    for key, template in self._json_format_examples.items():
+                        yield Static(f"{key}", classes="plugin-field-label")
+                        for field_name, field_value in template.items():
+                            locked = self._is_locked_json_field(field_name)
+                            lock_suffix = " (固定)" if locked else ""
+                            yield Static(
+                                f"{field_name}{lock_suffix}",
+                                classes="plugin-field-label",
+                            )
+
+                            if locked:
+                                yield Static(str(field_value))
+                                continue
+
+                            widget_id = self._json_field_widget_id(key, field_name)
+                            if isinstance(field_value, bool):
+                                yield Switch(value=field_value, id=widget_id)
+                            elif isinstance(field_value, list):
+                                textarea = TextArea(
+                                    "\n".join(str(item) for item in field_value),
+                                    id=widget_id,
+                                    classes="plugin-textarea-field",
+                                )
+                                textarea.styles.height = 5
+                                yield textarea
+                            else:
+                                yield Input(str(field_value), id=widget_id)
+
+                    if self._json_unparsed_keys:
+                        names = ", ".join(self._json_unparsed_keys)
+                        yield Static(
+                            f"⚠️ 以下範例非 JSON 物件，保留原值: {names}",
+                            classes="plugin-field-label",
+                        )
+
+            yield Static("", id="plugin-editor-error")
+            with Horizontal(id="plugin-editor-actions"):
+                yield Button("取消", id="plugin-editor-cancel")
+                actions = self._schema_actions()
+                if "validate" in actions:
+                    yield Button(
+                        "驗證",
+                        id="plugin-editor-validate",
+                        variant="warning",
+                    )
+                if "save" in actions:
+                    yield Button("儲存", id="plugin-editor-save", variant="primary")
+
+    def on_mount(self) -> None:
+        first_field = next(iter(self._fields.keys()), None)
+        if first_field is None:
+            return
+
+        widget_id = self._widget_id(first_field)
+        try:
+            self.query_one(f"#{widget_id}").focus()
+        except Exception:
+            pass
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "plugin-editor-cancel":
+            self.dismiss(None)
+            return
+
+        try:
+            payload = self._collect_payload()
+        except ValueError as e:
+            self._show_error(str(e))
+            return
+
+        has_error, has_warning, preview = self._evaluate_rule_result(payload)
+        if event.button.id == "plugin-editor-validate":
+            if has_error:
+                self.app.notify(f"❌ 驗證失敗：{preview}", severity="error")
+            elif has_warning:
+                self.app.notify(f"⚠️ 驗證完成：{preview}", severity="warning")
+            else:
+                self.app.notify("✅ 驗證通過", severity="information")
+            return
+
+        if event.button.id == "plugin-editor-save":
+            if has_error:
+                self._show_error(preview)
+                return
+            if has_warning:
+                self.app.notify(f"⚠️ 已儲存，請留意：{preview}", severity="warning")
+            self.dismiss(payload)
+
+    def _widget_id(self, field_name: str) -> str:
+        return f"plugin-field-{field_name}"
+
+    def _json_widget_id(self, key: str) -> str:
+        safe_key = re.sub(r"[^a-zA-Z0-9_-]", "_", key)
+        return f"plugin-jsonfmt-{safe_key}"
+
+    def _json_field_widget_id(self, key: str, field_name: str) -> str:
+        safe_field = re.sub(r"[^a-zA-Z0-9_-]", "_", field_name)
+        return f"{self._json_widget_id(key)}-{safe_field}"
+
+    def _is_locked_json_field(self, field_name: str) -> bool:
+        return field_name in {"action", "start", "end"}
+
+    def _extract_json_format_raw(self, config: dict[str, Any]) -> dict[str, str]:
+        json_format = config.get("response_json_format")
+        if not isinstance(json_format, dict):
+            return {}
+        return {str(key): str(value) for key, value in json_format.items()}
+
+    def _parse_json_format_examples(
+        self,
+        raw: dict[str, str],
+    ) -> tuple[dict[str, dict[str, Any]], list[str]]:
+        parsed: dict[str, dict[str, Any]] = {}
+        unparsed: list[str] = []
+        for key, value in raw.items():
+            try:
+                payload = json.loads(value)
+            except json.JSONDecodeError:
+                unparsed.append(key)
+                continue
+            if not isinstance(payload, dict):
+                unparsed.append(key)
+                continue
+            parsed[key] = payload
+        return parsed, unparsed
+
+    def _schema_actions(self) -> set[str]:
+        actions: set[str] = set()
+        for button in self._buttons:
+            if not isinstance(button, dict):
+                continue
+            action = str(button.get("action", "")).strip().lower()
+            if action:
+                actions.add(action)
+        if not actions:
+            return {"validate", "save"}
+        return actions
+
+    def _show_error(self, message: str) -> None:
+        self.query_one("#plugin-editor-error", Static).update(message)
+
+    def _options(self, spec: dict[str, Any]) -> list[str]:
+        options = spec.get("options", [])
+        if not isinstance(options, list):
+            return []
+        return [str(option) for option in options]
+
+    def _resolve_default(self, field_name: str, spec: dict[str, Any]) -> Any:
+        if field_name in self._current:
+            return self._current[field_name]
+        if "default" in spec:
+            return spec["default"]
+
+        field_type = str(spec.get("type", "str")).lower()
+        if field_type == "bool":
+            return False
+        if field_type in {"int", "number"}:
+            return 0
+        if field_type in {"multiselect", "list", "list[str]"}:
+            return []
+        return ""
+
+    def _resolve_initial_bool(self, field_name: str, spec: dict[str, Any]) -> bool:
+        value = self._resolve_default(field_name, spec)
+        return value if isinstance(value, bool) else bool(value)
+
+    def _resolve_initial_text(self, field_name: str, spec: dict[str, Any]) -> str:
+        value = self._resolve_default(field_name, spec)
+        if isinstance(value, list):
+            return "\n".join(str(item) for item in value)
+        if value is None:
+            return ""
+        return str(value)
+
+    def _resolve_initial_selection(
+        self,
+        field_name: str,
+        spec: dict[str, Any],
+    ) -> set[str]:
+        value = self._resolve_default(field_name, spec)
+        field_type = str(spec.get("type", "select")).lower()
+        options = set(self._options(spec))
+        if field_type == "multiselect":
+            if not isinstance(value, list):
+                return set()
+            return {str(item) for item in value if str(item) in options}
+
+        selected = str(value) if value is not None else ""
+        return {selected} if selected in options else set()
+
+    def _collect_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        for field_name, spec in self._fields.items():
+            if not isinstance(spec, dict):
+                continue
+
+            field_type = str(spec.get("type", "str")).lower()
+            required = bool(spec.get("required", False))
+            options = self._options(spec)
+            field_label = str(spec.get("label", field_name))
+            value: Any = None
+
+            if field_type == "bool":
+                value = self.query_one(f"#{self._widget_id(field_name)}", Switch).value
+            elif field_type in {"select", "multiselect"}:
+                selector = self.query_one(
+                    f"#{self._widget_id(field_name)}",
+                    SelectionList,
+                )
+                selected = [
+                    option for option in options if option in set(selector.selected)
+                ]
+                if field_type == "select":
+                    if required and not selected:
+                        raise ValueError(f"{field_label} 為必填")
+                    if len(selected) > 1:
+                        raise ValueError(f"{field_label} 只能選一個選項")
+                    value = selected[0] if selected else ""
+                else:
+                    value = selected
+            elif field_type == "textarea":
+                textarea_widget = self.query_one(
+                    f"#{self._widget_id(field_name)}",
+                    TextArea,
+                )
+                value = str(textarea_widget.text).strip()
+            elif field_type in {"str", "path"}:
+                input_widget = self.query_one(
+                    f"#{self._widget_id(field_name)}",
+                    Input,
+                )
+                value = input_widget.value.strip()
+            elif field_type in {"list", "list[str]"}:
+                textarea_widget = self.query_one(
+                    f"#{self._widget_id(field_name)}",
+                    TextArea,
+                )
+                lines = [line.strip() for line in textarea_widget.text.splitlines()]
+                value = [line for line in lines if line]
+            elif field_type in {"int", "number"}:
+                input_widget = self.query_one(
+                    f"#{self._widget_id(field_name)}",
+                    Input,
+                )
+                text = input_widget.value.strip()
+                if not text:
+                    value = None
+                else:
+                    try:
+                        value = int(text)
+                    except ValueError as exc:
+                        raise ValueError(f"{field_label} 必須是整數") from exc
+            else:
+                input_widget = self.query_one(
+                    f"#{self._widget_id(field_name)}",
+                    Input,
+                )
+                value = input_widget.value.strip()
+
+            if required and (value is None or value == "" or value == []):
+                raise ValueError(f"{field_label} 為必填")
+
+            int_value = (
+                value
+                if isinstance(value, int) and not isinstance(value, bool)
+                else None
+            )
+            if field_type in {"int", "number"} and int_value is not None:
+                minimum = spec.get("min")
+                maximum = spec.get("max")
+                if isinstance(minimum, int) and int_value < minimum:
+                    raise ValueError(f"{field_label} 不能小於 {minimum}")
+                if isinstance(maximum, int) and int_value > maximum:
+                    raise ValueError(f"{field_label} 不能大於 {maximum}")
+
+            if field_type == "select" and value and value not in options:
+                raise ValueError(f"{field_label} 選項不合法")
+
+            if field_type == "multiselect" and isinstance(value, list):
+                illegal = [item for item in value if item not in options]
+                if illegal:
+                    raise ValueError(
+                        f"{field_label} 包含不合法選項: {', '.join(illegal)}"
+                    )
+
+            if value is not None:
+                payload[field_name] = value
+
+        if self._json_format_raw:
+            response_json_format = dict(self._json_format_raw)
+            for key, template in self._json_format_examples.items():
+                rebuilt: dict[str, Any] = {}
+                for field_name, original_value in template.items():
+                    if self._is_locked_json_field(field_name):
+                        rebuilt[field_name] = original_value
+                        continue
+
+                    widget_id = f"#{self._json_field_widget_id(key, field_name)}"
+                    if isinstance(original_value, bool):
+                        switch_widget = self.query_one(widget_id, Switch)
+                        rebuilt[field_name] = bool(switch_widget.value)
+                    elif isinstance(original_value, list):
+                        textarea_widget = self.query_one(widget_id, TextArea)
+                        lines = [
+                            line.strip() for line in textarea_widget.text.splitlines()
+                        ]
+                        rebuilt[field_name] = [line for line in lines if line]
+                    elif isinstance(original_value, int) and not isinstance(
+                        original_value, bool
+                    ):
+                        input_widget = self.query_one(widget_id, Input)
+                        text = input_widget.value.strip()
+                        if not text:
+                            raise ValueError(f"{key}.{field_name} 必須是整數")
+                        try:
+                            rebuilt[field_name] = int(text)
+                        except ValueError as exc:
+                            raise ValueError(f"{key}.{field_name} 必須是整數") from exc
+                    elif isinstance(original_value, float):
+                        input_widget = self.query_one(widget_id, Input)
+                        text = input_widget.value.strip()
+                        if not text:
+                            raise ValueError(f"{key}.{field_name} 必須是數字")
+                        try:
+                            rebuilt[field_name] = float(text)
+                        except ValueError as exc:
+                            raise ValueError(f"{key}.{field_name} 必須是數字") from exc
+                    else:
+                        input_widget = self.query_one(widget_id, Input)
+                        rebuilt[field_name] = input_widget.value.strip()
+
+                response_json_format[key] = json.dumps(rebuilt, ensure_ascii=False)
+
+            payload["response_json_format"] = response_json_format
+
+        return payload
+
+    def _evaluate_rule_result(self, payload: dict[str, Any]) -> tuple[bool, bool, str]:
+        results = evaluate_rules(payload, self._rules)
+        failed_errors: list[str] = []
+        failed_warnings: list[str] = []
+        for result in results:
+            if result.passed:
+                continue
+            if result.level == "error":
+                failed_errors.append(result.message)
+            else:
+                failed_warnings.append(result.message)
+
+        if failed_errors:
+            return True, bool(failed_warnings), "；".join(failed_errors[:2])
+        if failed_warnings:
+            return False, True, "；".join(failed_warnings[:2])
+        return False, False, ""
+
+
 class MainConfigTab(Static):
     """一般設定分頁"""
 
@@ -1321,15 +1801,25 @@ class LLMConfigTab(Static):
 class PluginsConfigTab(Static):
     """Plugin 設定分頁"""
 
+    CSS = """
+    #plugin-actions {
+        height: auto;
+        margin-bottom: 1;
+    }
+    """
+
     def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
         self._runtime = runtime_context or get_runtime_context()
+        self._selected_plugin: str | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="plugin-main"):
             yield Static("📦 Plugins", id="plugin-list-title")
             yield DataTable(id="plugin-list", show_cursor=True, cursor_type="row")
-            yield Button("🔄 重新整理", id="refresh-plugins", variant="primary")
+            with Horizontal(id="plugin-actions"):
+                yield Button("🔄 重新整理", id="refresh-plugins", variant="primary")
+                yield Button("🛠️ 編輯設定", id="edit-plugin", disabled=True)
             yield Static("📄 選取的 Plugin 設定", id="plugin-content-title")
             yield TextArea("", id="plugin-content", read_only=True)
 
@@ -1342,13 +1832,19 @@ class PluginsConfigTab(Static):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "refresh-plugins":
             self._load_plugins()
+            return
+        if event.button.id == "edit-plugin":
+            self._open_plugin_editor()
 
     def _load_plugins(self) -> None:
         title = self.query_one("#plugin-list-title", Static)
         table = self.query_one("#plugin-list", DataTable)
+        edit_button = self.query_one("#edit-plugin", Button)
 
         table.clear()
         table.add_columns("Plugin 名稱", "狀態")
+        self._selected_plugin = None
+        edit_button.disabled = True
 
         plugins_dir = self._runtime.paths.plugins_dir
         if not plugins_dir.exists():
@@ -1384,6 +1880,8 @@ class PluginsConfigTab(Static):
         row = table.get_row_at(event.cursor_row)
         if row:
             plugin_name = row[0]
+            self._selected_plugin = str(plugin_name)
+            self.query_one("#edit-plugin", Button).disabled = False
             self._load_plugin_content(plugin_name)
 
     def _load_plugin_content(self, plugin_name: str) -> None:
@@ -1410,6 +1908,108 @@ class PluginsConfigTab(Static):
             self.query_one("#plugin-content-title", Static).update(
                 f"📄 {plugin_name} 設定 ❌"
             )
+
+    def _plugin_paths(self, plugin_name: str) -> tuple[Path, Path]:
+        plugins_dir = self._runtime.paths.plugins_dir
+        sample_path = plugins_dir / f"{plugin_name}.yaml.sample"
+        normal_path = plugins_dir / f"{plugin_name}.yaml"
+        return sample_path, normal_path
+
+    def _load_plugin_payload(self, plugin_name: str) -> tuple[dict[str, Any], Path]:
+        sample_path, normal_path = self._plugin_paths(plugin_name)
+        file_path = normal_path if normal_path.exists() else sample_path
+        if not file_path.exists():
+            raise FileNotFoundError(f"找不到 {plugin_name}.yaml 或 sample")
+
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                payload = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            raise ValueError(f"{file_path.name} YAML 解析錯誤: {e}") from e
+
+        if not isinstance(payload, dict):
+            raise ValueError(f"{file_path.name} 內容必須是 YAML 物件")
+        return payload, file_path
+
+    def _open_plugin_editor(self) -> None:
+        plugin_name = self._selected_plugin
+        if not plugin_name:
+            self.app.notify("⚠️ 請先選擇一個 Plugin", severity="warning")
+            return
+
+        schema = load_plugin_ui_schema(plugin_name, self._runtime.paths.plugins_dir)
+        if not schema:
+            self.app.notify(
+                f"⚠️ {plugin_name}.yaml.sample 缺少 _ui，回退為唯讀模式",
+                severity="warning",
+            )
+            return
+
+        schema_errors = validate_ui_schema(schema)
+        if schema_errors:
+            preview = " | ".join(schema_errors[:2])
+            self.app.notify(f"❌ _ui schema 結構錯誤: {preview}", severity="error")
+            return
+
+        try:
+            payload, _ = self._load_plugin_payload(plugin_name)
+        except Exception as e:
+            self.app.notify(str(e), severity="error")
+            return
+
+        self.app.push_screen(
+            PluginConfigEditorModal(
+                plugin_name=plugin_name,
+                schema=schema,
+                current_config=strip_reserved_metadata(payload),
+            ),
+            self._handle_plugin_editor_result,
+        )
+
+    def _handle_plugin_editor_result(self, result: dict[str, Any] | None) -> None:
+        if result is None:
+            return
+
+        plugin_name = self._selected_plugin
+        if not plugin_name:
+            return
+
+        sanitized = strip_reserved_metadata(result)
+
+        try:
+            self._write_plugin_config_file(plugin_name, sanitized)
+            self._load_plugins()
+            self._selected_plugin = plugin_name
+            self._load_plugin_content(plugin_name)
+            self.query_one("#edit-plugin", Button).disabled = False
+            self.app.notify(f"✅ 已儲存 {plugin_name}.yaml", severity="information")
+        except Exception as e:
+            self.app.notify(f"❌ 儲存失敗: {e}", severity="error")
+
+    def _write_plugin_config_file(
+        self,
+        plugin_name: str,
+        payload: dict[str, Any],
+    ) -> Path:
+        """Write plugin config and create `.bak` when original exists."""
+        _, normal_path = self._plugin_paths(plugin_name)
+        normal_path.parent.mkdir(parents=True, exist_ok=True)
+        if normal_path.exists():
+            backup_path = normal_path.parent / f"{plugin_name}.yaml.bak"
+            backup_path.write_text(
+                normal_path.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+
+        normal_path.write_text(
+            yaml.safe_dump(
+                payload,
+                allow_unicode=True,
+                sort_keys=False,
+                default_flow_style=False,
+            ),
+            encoding="utf-8",
+        )
+        return normal_path
 
 
 class ConfigScreen(Static):

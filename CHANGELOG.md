@@ -17,13 +17,18 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Extended `config/*.yaml.sample` and `config/plugins/*.yaml.sample` with `_ui` metadata blocks for future form generation and centralized validation behavior.
 - Updated the Configuration tab layout to prioritize the jobs list and editable config area, with schema action buttons for validate/save/add/remove/reset.
 - Switched add-job plugin selection to Textual `SelectionList` driven by plugin options declared in config schema.
+- Updated the Plugin Configuration tab to support schema-driven modal editing (`str/int/bool/select/textarea/path/list[str]/multiselect`), with field-level validation and `_ui.validation_rules` execution before save.
+- Added plugin-config save safeguards: remove reserved metadata keys before write, and auto-create `<plugin>.yaml.bak` when overwriting an existing file.
+- Refined `response_json_format` editing UX: keep `action`/`start`/`end` locked as fixed template keys while allowing other JSON example fields to be edited safely as structured inputs.
 - Updated README with `_ui` metadata guidance and `summary_file` plugin usage examples.
 
 ### Added
 
 - Added `outlook_mail_extractor/ui_schema.py` helpers for loading schema metadata, flattening field definitions, evaluating validation rules, generating list-item defaults, and stripping reserved keys.
+- Added `load_plugin_ui_schema` and Plugin Configuration TUI wiring to load plugin `_ui` schemas from `config/plugins/*.yaml.sample` with read-only fallback when schema is missing.
 - Added `config/plugins/summary_file.yaml.sample`, `outlook_mail_extractor/plugins/summary_file.py`, and `tests/test_summary_file_plugin.py` for the summary CSV plugin workflow.
-- Added `tests/test_ui_schema.py` coverage for schema field flattening, rule evaluation, default list-item generation, and reserved-key stripping.
+- Added `tests/test_ui_schema.py` coverage for schema field flattening, rule evaluation, default list-item generation, reserved-key stripping, and plugin schema loading.
+- Added `tests/test_plugin_config_editor.py` coverage for modal payload mapping/validation and plugin config file backup-write behavior.
 
 ## [v0.2.0] - 2026-03-19
 

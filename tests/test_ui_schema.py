@@ -4,6 +4,7 @@ from outlook_mail_extractor.ui_schema import (
     build_default_list_item,
     evaluate_rules,
     flatten_ui_fields,
+    load_plugin_ui_schema,
     strip_reserved_metadata,
 )
 
@@ -93,3 +94,32 @@ def test_strip_reserved_metadata_removes_ui_keys_recursively() -> None:
     assert "_ui" not in sanitized
     assert "_note" not in sanitized["logging"]
     assert "_meta" not in sanitized["jobs"][0]
+
+
+def test_load_plugin_ui_schema_reads_schema_from_sample(tmp_path) -> None:
+    """Load plugin `_ui` schema from plugin sample file."""
+    plugins_dir = tmp_path / "plugins"
+    plugins_dir.mkdir(parents=True)
+    sample_path = plugins_dir / "demo.yaml.sample"
+    sample_path.write_text(
+        """
+enabled: true
+_ui:
+  schema_version: 1
+  fields:
+    enabled:
+      type: bool
+""".strip(),
+        encoding="utf-8",
+    )
+
+    schema = load_plugin_ui_schema("demo", plugins_dir)
+
+    assert schema["schema_version"] == 1
+    assert schema["fields"]["enabled"]["type"] == "bool"
+
+
+def test_load_plugin_ui_schema_returns_empty_when_missing_sample(tmp_path) -> None:
+    """Return empty dict when plugin sample file does not exist."""
+    schema = load_plugin_ui_schema("missing", tmp_path)
+    assert schema == {}

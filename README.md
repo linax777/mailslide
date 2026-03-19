@@ -207,8 +207,24 @@ CSV 欄位由程式固定，順序為：
 - **Configuration**：查看/編輯設定檔
   - 一般設定：查看主設定檔與 Jobs 列表
   - LLM 設定：查看 LLM 設定值，可測試連線
-  - Plugin 設定：查看各 Plugin 設定檔
+  - Plugin 設定：可表單化編輯各 Plugin 設定（由 `config/plugins/*.yaml.sample` 的 `_ui` 欄位驅動）
 - **About**：系統狀態檢查、初始化設定
+
+### Plugin 設定（TUI）
+
+在 **Configuration → Plugin 設定** 分頁中：
+
+1. 選取 plugin
+2. 點擊 **編輯設定**
+3. 在 modal 內調整欄位並按 **驗證** 或 **儲存**
+
+行為說明：
+
+- 讀取優先順序：若 `config/plugins/<name>.yaml` 存在，會優先載入；否則使用 sample 預設。
+- 驗證層級：先做欄位必填/型別/選項檢查，再套用 `_ui.validation_rules`。
+- 安全寫檔：儲存前會移除 `_ui/_meta` 等保留鍵，並在覆蓋既有檔案前建立 `<name>.yaml.bak`。
+- 回退機制：若 sample 缺少 `_ui`，此 plugin 會維持唯讀 YAML 檢視模式。
+- `response_json_format` 編輯規則：`start`/`end`（以及 `action`）固定不可修改，其餘欄位可調整 value。
 
 ## 需求
 
