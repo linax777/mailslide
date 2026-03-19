@@ -1,7 +1,7 @@
 """Add Category Plugin"""
 
-from ..models import PluginExecutionResult
-from . import BasePlugin, PluginCapability, PluginConfig, register_plugin
+from ..models import EmailDTO, MailActionPort, PluginExecutionResult
+from .base import BasePlugin, PluginCapability, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -61,12 +61,11 @@ class AddCategoryPlugin(BasePlugin):
 
     async def execute(
         self,
-        email_data: dict,
+        email_data: EmailDTO,
         llm_response: str,
-        outlook_client,
+        action_port: MailActionPort,
     ) -> PluginExecutionResult:
         """Add categories to email based on LLM response"""
-        del outlook_client
         try:
             response_data = self._parse_response(llm_response)
             if not response_data.get("action") == "category":
@@ -93,22 +92,7 @@ class AddCategoryPlugin(BasePlugin):
                     details={"categories": categories},
                 )
 
-            # Get the message from email data
-            message = email_data.get("_message")
-            if not message:
-                return self.failed_result(
-                    message="Missing _message in email_data",
-                    code="missing_message",
-                )
-
-            # Set categories (Outlook uses comma-separated string)
-            existing = getattr(message, "Categories", "") or ""
-            new_categories = ", ".join(valid_categories)
-            if existing:
-                message.Categories = f"{existing}, {new_categories}"
-            else:
-                message.Categories = new_categories
-            message.Save()
+            action_port.add_categories(valid_categories)
             return self.success_result(
                 message="Categories added",
                 details={"categories": valid_categories},

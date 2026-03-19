@@ -6,10 +6,13 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import TypeVar
 
 from ..models import (
     DomainError,
+    EmailDTO,
     InfrastructureError,
+    MailActionPort,
     PluginExecutionResult,
     PluginExecutionStatus,
 )
@@ -192,17 +195,17 @@ class BasePlugin(ABC):
     @abstractmethod
     async def execute(
         self,
-        email_data: dict,
+        email_data: EmailDTO,
         llm_response: str,
-        outlook_client,
+        action_port: MailActionPort,
     ) -> bool | PluginExecutionResult:
         """
         Execute the plugin action.
 
         Args:
-            email_data: Extracted email data
+            email_data: Extracted pure email data
             llm_response: LLM response text
-            outlook_client: OutlookClient instance
+            action_port: Side-effect action port for mail operations
 
         Returns:
             bool (legacy) or PluginExecutionResult
@@ -211,9 +214,10 @@ class BasePlugin(ABC):
 
 
 _plugin_registry: dict[str, type[BasePlugin]] = {}
+TPlugin = TypeVar("TPlugin", bound=BasePlugin)
 
 
-def register_plugin(cls: type[BasePlugin]) -> type[BasePlugin]:
+def register_plugin(cls: type[TPlugin]) -> type[TPlugin]:
     """Register a plugin class"""
     _plugin_registry[cls.name] = cls
     return cls

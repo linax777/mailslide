@@ -2,16 +2,35 @@ import asyncio
 import csv
 import json
 
-from outlook_mail_extractor.models import PluginExecutionResult, PluginExecutionStatus
+from outlook_mail_extractor.models import (
+    EmailDTO,
+    PluginExecutionResult,
+    PluginExecutionStatus,
+)
 from outlook_mail_extractor.plugins.event_table import EventTablePlugin
 
 
-def _build_email_data() -> dict:
-    return {
-        "subject": "原始郵件主旨",
-        "sender": "sender@example.com",
-        "received": "2026-03-18 10:30:00",
-    }
+class _FakeActionPort:
+    def move_to_folder(self, folder_name: str, create_if_missing: bool = True) -> None:
+        del folder_name
+        del create_if_missing
+
+    def add_categories(self, categories: list[str]) -> None:
+        del categories
+
+    def create_appointment(self, *args, **kwargs) -> None:
+        del args
+        del kwargs
+
+
+def _build_email_data() -> EmailDTO:
+    return EmailDTO(
+        subject="原始郵件主旨",
+        sender="sender@example.com",
+        received="2026-03-18 10:30:00",
+        body="",
+        tables=[],
+    )
 
 
 def test_event_table_writes_csv_row(tmp_path) -> None:
@@ -30,7 +49,9 @@ def test_event_table_writes_csv_row(tmp_path) -> None:
         }
     )
 
-    result = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+    result = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
 
     assert isinstance(result, PluginExecutionResult)
     assert result.status == PluginExecutionStatus.SUCCESS
@@ -67,7 +88,9 @@ def test_event_table_accepts_timezone_datetimes(tmp_path) -> None:
         }
     )
 
-    result = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+    result = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
 
     assert isinstance(result, PluginExecutionResult)
     assert result.status == PluginExecutionStatus.SUCCESS
@@ -86,7 +109,9 @@ def test_event_table_noop_when_create_false(tmp_path) -> None:
     plugin = EventTablePlugin(config={"output_file": str(output_file)})
     llm_response = '{"action":"appointment","create":false}'
 
-    result = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+    result = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
 
     assert isinstance(result, PluginExecutionResult)
     assert result.status == PluginExecutionStatus.SKIPPED
@@ -98,8 +123,12 @@ def test_event_table_appends_without_duplicate_header(tmp_path) -> None:
     plugin = EventTablePlugin(config={"output_file": str(output_file)})
     llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
 
-    first = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
-    second = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+    first = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
+    second = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
 
     assert isinstance(first, PluginExecutionResult)
     assert isinstance(second, PluginExecutionResult)
@@ -122,7 +151,9 @@ def test_event_table_ignores_custom_fields_config(tmp_path) -> None:
     )
     llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
 
-    result = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+    result = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
 
     assert isinstance(result, PluginExecutionResult)
     assert result.status == PluginExecutionStatus.SUCCESS

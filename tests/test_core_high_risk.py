@@ -8,6 +8,7 @@ from outlook_mail_extractor.core import (
     OutlookClient,
     process_config_file,
 )
+from outlook_mail_extractor.models import EmailDTO
 from outlook_mail_extractor.plugins import PluginCapability
 
 
@@ -50,30 +51,45 @@ class DummyPlugin:
         return None
 
     async def execute(
-        self, email_data: dict, llm_response: str, outlook_client
+        self, email_data: EmailDTO, llm_response: str, action_port
     ) -> bool:
+        del email_data
+        del llm_response
         self.execute_calls += 1
         if self._move_message:
-            email_data["_message"].Move("plugin-folder")
+            action_port.move_to_folder("plugin-folder")
         return self._execute_result
 
 
 def _build_processor_with_stubbed_extract(stub_message: DummyMessage) -> EmailProcessor:
+    class _FakeClient:
+        def get_folder(
+            self,
+            account_name: str,
+            folder_name: str,
+            create_if_missing: bool = False,
+        ) -> str:
+            del account_name
+            del create_if_missing
+            return folder_name
+
     class _TestEmailProcessor(EmailProcessor):
-        def extract_email_data(self, message, max_length: int | None = None) -> dict:
+        def extract_email_data(
+            self,
+            message,
+            max_length: int | None = None,
+        ) -> EmailDTO:
             del message
             del max_length
-            return {
-                "subject": "Test",
-                "sender": "sender@example.com",
-                "received": "now",
-                "body": "hello",
-                "tables": [],
-                "_message": stub_message,
-                "_account": None,
-            }
+            return EmailDTO(
+                subject="Test",
+                sender="sender@example.com",
+                received="now",
+                body="hello",
+                tables=[],
+            )
 
-    fake_client = cast(OutlookClient, object())
+    fake_client = cast(OutlookClient, _FakeClient())
     return _TestEmailProcessor(client=fake_client)
 
 
@@ -90,7 +106,7 @@ def test_no_llm_plugin_still_executes() -> None:
             plugins=[plugin],
             dry_run=False,
             no_move=False,
-            dst_folder=None,
+            destination_folder_name=None,
             body_max_length=500,
         )
     )
@@ -112,7 +128,7 @@ def test_destination_move_works_without_llm_and_plugins() -> None:
             plugins=[],
             dry_run=False,
             no_move=False,
-            dst_folder="destination-folder",
+            destination_folder_name="destination-folder",
             body_max_length=500,
         )
     )
@@ -139,7 +155,7 @@ def test_move_to_folder_plugin_prevents_destination_double_move() -> None:
             plugins=[plugin],
             dry_run=False,
             no_move=False,
-            dst_folder="destination-folder",
+            destination_folder_name="destination-folder",
             body_max_length=500,
         )
     )
@@ -163,7 +179,7 @@ def test_llm_required_plugin_reports_failure_when_llm_missing() -> None:
             plugins=[no_llm_plugin, llm_plugin],
             dry_run=False,
             no_move=False,
-            dst_folder=None,
+            destination_folder_name=None,
             body_max_length=500,
         )
     )

@@ -6,11 +6,13 @@ from typing import Any
 import pythoncom
 import win32com.client
 
+from .adapters import OutlookMailActionAdapter
 from .llm import LLMClient, load_llm_config
 from .logger import get_logger
 from .models import (
     CheckStatus,
     DomainError,
+    EmailDTO,
     EmailAnalysisResult,
     InfrastructureError,
     LLMConfigStatus,
@@ -145,7 +147,7 @@ class EmailProcessor:
         self._preserve_reply_thread = preserve_reply_thread
         self._max_length = max_length
 
-    def extract_email_data(self, message, max_length: int | None = None) -> dict:
+    def extract_email_data(self, message, max_length: int | None = None) -> EmailDTO:
         """Extract data from single email"""
         raw_body = str(message.Body) if getattr(message, "Body", None) else ""
         html_body = str(message.HTMLBody) if getattr(message, "HTMLBody", None) else ""
@@ -157,19 +159,17 @@ class EmailProcessor:
             preserve_reply_thread=self._preserve_reply_thread,
         )
 
-        return {
-            "subject": message.Subject,
-            "sender": (
+        return EmailDTO(
+            subject=str(getattr(message, "Subject", "")),
+            sender=str(
                 message.SenderEmailAddress
                 if hasattr(message, "SenderEmailAddress")
-                else message.SenderName
+                else getattr(message, "SenderName", "")
             ),
-            "received": str(message.ReceivedTime),
-            "body": clean_body,
-            "tables": parse_tables(html_body),
-            "_message": message,  # Keep reference for actions
-            "_account": None,  # Will be set by caller
-        }
+            received=str(getattr(message, "ReceivedTime", "")),
+            body=clean_body,
+            tables=parse_tables(html_body),
+        )
 
     def _normalize_plugin_execution_result(
         self,
@@ -243,13 +243,9 @@ class EmailProcessor:
         src_folder = self._client.get_folder(account_name, source_folder)
 
         # Get destination folder if specified
-        dst_folder = None
-        if destination_folder:
-            dst_folder = self._client.get_folder(
-                account_name,
-                destination_folder,
-                create_if_missing=True,
-            )
+        destination_folder_name = (
+            str(destination_folder) if destination_folder else None
+        )
 
         # Get messages from source folder (sorted by date, newest first)
         messages = src_folder.Items
@@ -286,7 +282,7 @@ class EmailProcessor:
                 plugins,
                 dry_run,
                 no_move,
-                dst_folder,
+                destination_folder_name,
                 body_max_length,
             )
             results.append(result)
@@ -301,7 +297,7 @@ class EmailProcessor:
         plugins: list,
         dry_run: bool,
         no_move: bool,
-        dst_folder=None,
+        destination_folder_name: str | None = None,
         body_max_length: int | None = None,
     ) -> EmailAnalysisResult:
         """Process single email with LLM and plugins"""
@@ -309,9 +305,13 @@ class EmailProcessor:
 
         # Extract email data
         email_data = self.extract_email_data(message, max_length=body_max_length)
-        email_data["_account"] = account_name
+        action_port = OutlookMailActionAdapter(
+            client=self._client,
+            message=message,
+            account_name=account_name,
+        )
 
-        subject = email_data.get("subject", "Unknown")
+        subject = email_data.subject or "Unknown"
         logger.info(f"處理郵件: {subject}")
 
         # Collect system prompts from all plugins
@@ -338,7 +338,7 @@ class EmailProcessor:
                 logger.info(f"執行 Plugin (無需 LLM): {plugin.name}")
                 try:
                     plugin_execute_result = await plugin.execute(
-                        email_data, "", self._client
+                        email_data, "", action_port
                     )
                     plugin_result = self._build_plugin_result(
                         plugin.name,
@@ -436,7 +436,7 @@ class EmailProcessor:
                         logger.info(f"執行 Plugin: {plugin.name}")
                         try:
                             plugin_execute_result = await plugin.execute(
-                                email_data, llm_response, self._client
+                                email_data, llm_response, action_port
                             )
                             plugin_result = self._build_plugin_result(
                                 plugin.name,
@@ -492,14 +492,14 @@ class EmailProcessor:
 
         # Move email to destination folder if specified
         if (
-            dst_folder
+            destination_folder_name
             and success
             and not dry_run
             and not no_move
             and not moved_by_plugin
         ):
             try:
-                message.Move(dst_folder)
+                action_port.move_to_folder(destination_folder_name)
             except Exception as e:
                 error_msg = f"Move failed: {e}"
                 logger.error(error_msg)
@@ -512,15 +512,15 @@ class EmailProcessor:
             error_message=error_msg,
         )
 
-    def _build_email_prompt(self, email_data: dict) -> str:
+    def _build_email_prompt(self, email_data: EmailDTO) -> str:
         """Build user prompt from email data"""
         parts = []
-        parts.append(f"Subject: {email_data.get('subject', '')}")
-        parts.append(f"From: {email_data.get('sender', '')}")
-        parts.append(f"Received: {email_data.get('received', '')}")
-        parts.append(f"\nBody:\n{email_data.get('body', '')}")
+        parts.append(f"Subject: {email_data.subject}")
+        parts.append(f"From: {email_data.sender}")
+        parts.append(f"Received: {email_data.received}")
+        parts.append(f"\nBody:\n{email_data.body}")
 
-        tables = email_data.get("tables", [])
+        tables = email_data.tables
         if tables:
             parts.append("\nTables found in email:")
             for i, table in enumerate(tables):

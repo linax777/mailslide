@@ -3,10 +3,12 @@
 import json
 import re
 from datetime import datetime
+from dataclasses import asdict
 from pathlib import Path
 
-from ..models import PluginExecutionResult
-from . import BasePlugin, PluginConfig, clean_invisible_chars, register_plugin
+from ..models import EmailDTO, MailActionPort, PluginExecutionResult
+from ..parser import clean_invisible_chars
+from .base import BasePlugin, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -47,12 +49,13 @@ class WriteFilePlugin(BasePlugin):
         filename = filename.rstrip(". ")
         return filename.strip("_") or "unnamed"
 
-    def _prepare_email_data(self, email_data: dict) -> dict:
+    def _prepare_email_data(self, email_data: EmailDTO) -> dict:
         """Filter and prepare email data for JSON output"""
+        email_dict = asdict(email_data)
         result = {}
         for key in self.include_fields:
-            if key in email_data and key not in ("_message", "_account"):
-                value = email_data[key]
+            if key in email_dict:
+                value = email_dict[key]
                 if isinstance(value, str):
                     value = value.strip()
                 result[key] = value
@@ -60,19 +63,19 @@ class WriteFilePlugin(BasePlugin):
 
     async def execute(
         self,
-        email_data: dict,
+        email_data: EmailDTO,
         llm_response: str,
-        outlook_client=None,
+        action_port: MailActionPort,
     ) -> PluginExecutionResult:
         """Write email data to JSON file"""
         del llm_response
-        del outlook_client
+        del action_port
         try:
             output_path = Path(self.output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            subject = email_data.get("subject", "unknown")
+            subject = email_data.subject or "unknown"
             safe_subject = self._sanitize_filename(subject)
 
             filename = self.filename_format.format(

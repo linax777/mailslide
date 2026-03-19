@@ -4,8 +4,8 @@ from datetime import datetime
 
 from loguru import logger
 
-from ..models import PluginExecutionResult
-from . import BasePlugin, PluginCapability, PluginConfig, register_plugin
+from ..models import EmailDTO, MailActionPort, PluginExecutionResult
+from .base import BasePlugin, PluginCapability, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -63,9 +63,9 @@ class CreateAppointmentPlugin(BasePlugin):
 
     async def execute(
         self,
-        email_data: dict,
+        email_data: EmailDTO,
         llm_response: str,
-        outlook_client,
+        action_port: MailActionPort,
     ) -> PluginExecutionResult:
         """Create calendar appointment from email based on LLM response"""
         try:
@@ -116,44 +116,22 @@ class CreateAppointmentPlugin(BasePlugin):
                     code="missing_datetime",
                 )
 
-            account = email_data.get("_account")
-            if not account:
-                logger.info("[create_appointment] account is missing in email_data")
-                return self.failed_result(
-                    message="Missing _account in email_data",
-                    code="missing_account",
-                )
-            logger.info(f"[create_appointment] Using account: {account}")
-
             try:
-                calendar = outlook_client.get_calendar_folder(account)
-                logger.info(f"[create_appointment] Got calendar folder: {calendar}")
+                action_port.create_appointment(
+                    subject=subject,
+                    start=start,
+                    end=end,
+                    location=response_data.get("location", ""),
+                    body=response_data.get("body", ""),
+                    recipients=self.recipients,
+                )
             except Exception as e:
-                logger.info(
-                    f"[create_appointment] Failed to get calendar folder: {type(e).__name__}: {e}"
-                )
+                logger.info(f"[create_appointment] Failed to create appointment: {e}")
                 return self.retriable_failed_result(
-                    message=f"Failed to get calendar folder: {e}",
-                    code="calendar_lookup_failed",
+                    message=f"Appointment creation failed: {e}",
+                    code="appointment_create_failed",
                 )
 
-            # Create appointment item
-            appointment = calendar.Items.Add(1)  # 1 = olAppointmentItem
-            appointment.Subject = subject
-            appointment.Start = start
-            appointment.End = end
-            appointment.Location = response_data.get("location", "")
-            appointment.Body = response_data.get("body", "")
-
-            # Add optional recipients from config (not from LLM response)
-            if self.recipients:
-                for recipient_email in self.recipients:
-                    if recipient_email:
-                        recipient = appointment.Recipients.Add(recipient_email)
-                        recipient.Type = 1  # 1 = olTo, 2 = olCC, 3 = olBCC
-                        recipient.Resolve()
-
-            appointment.Save()
             return self.success_result(message="Appointment created")
 
         except Exception as e:

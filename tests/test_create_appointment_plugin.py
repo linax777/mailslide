@@ -2,7 +2,11 @@ import asyncio
 import json
 from datetime import datetime
 
-from outlook_mail_extractor.models import PluginExecutionResult, PluginExecutionStatus
+from outlook_mail_extractor.models import (
+    EmailDTO,
+    PluginExecutionResult,
+    PluginExecutionStatus,
+)
 from outlook_mail_extractor.plugins.calendar import CreateAppointmentPlugin
 
 
@@ -53,12 +57,38 @@ class _FakeCalendar:
         self.Items = _FakeItems()
 
 
-class _FakeOutlookClient:
+class _FakeActionPort:
     def __init__(self, calendar: _FakeCalendar) -> None:
         self._calendar = calendar
 
-    def get_calendar_folder(self, _account: str) -> _FakeCalendar:
-        return self._calendar
+    def move_to_folder(self, folder_name: str, create_if_missing: bool = True) -> None:
+        del folder_name
+        del create_if_missing
+
+    def add_categories(self, categories: list[str]) -> None:
+        del categories
+
+    def create_appointment(
+        self,
+        subject: str,
+        start: datetime,
+        end: datetime,
+        location: str = "",
+        body: str = "",
+        recipients: list[str] | None = None,
+    ) -> None:
+        appointment = self._calendar.Items.Add(1)
+        appointment.Subject = subject
+        appointment.Start = start
+        appointment.End = end
+        appointment.Location = location
+        appointment.Body = body
+        if recipients:
+            for email in recipients:
+                recipient = appointment.Recipients.Add(email)
+                recipient.Type = 1
+                recipient.Resolve()
+        appointment.Save()
 
 
 def test_create_appointment_accepts_timezone_datetime() -> None:
@@ -74,8 +104,14 @@ def test_create_appointment_accepts_timezone_datetime() -> None:
 def test_create_appointment_execute_with_timezone_datetime() -> None:
     plugin = CreateAppointmentPlugin()
     calendar = _FakeCalendar()
-    outlook_client = _FakeOutlookClient(calendar)
-    email_data = {"_account": "user@example.com"}
+    action_port = _FakeActionPort(calendar)
+    email_data = EmailDTO(
+        subject="",
+        sender="",
+        received="",
+        body="",
+        tables=[],
+    )
 
     llm_response = json.dumps(
         {
@@ -89,7 +125,7 @@ def test_create_appointment_execute_with_timezone_datetime() -> None:
         }
     )
 
-    result = asyncio.run(plugin.execute(email_data, llm_response, outlook_client))
+    result = asyncio.run(plugin.execute(email_data, llm_response, action_port))
 
     assert isinstance(result, PluginExecutionResult)
     assert result.status == PluginExecutionStatus.SUCCESS

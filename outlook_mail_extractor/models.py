@@ -1,7 +1,9 @@
 """Data models - System status and LLM related"""
 
+from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Protocol
 
 
 class AppError(Exception):
@@ -86,6 +88,38 @@ class PluginExecutionStatus(str, Enum):
     SKIPPED = "skipped"
     FAILED = "failed"
     RETRIABLE_FAILED = "retriable_failed"
+
+
+@dataclass
+class EmailDTO:
+    """Pure email data used across domain/application layers."""
+
+    subject: str
+    sender: str
+    received: str
+    body: str
+    tables: list[list[Any]]
+
+
+class MailActionPort(Protocol):
+    """Action interface for mail side effects decoupled from COM types."""
+
+    def move_to_folder(self, folder_name: str, create_if_missing: bool = True) -> None:
+        """Move current mail item to a folder under current account."""
+
+    def add_categories(self, categories: list[str]) -> None:
+        """Append categories to current mail item and persist changes."""
+
+    def create_appointment(
+        self,
+        subject: str,
+        start: datetime,
+        end: datetime,
+        location: str = "",
+        body: str = "",
+        recipients: list[str] | None = None,
+    ) -> None:
+        """Create a calendar appointment under current account."""
 
 
 @dataclass

@@ -1,7 +1,7 @@
 """Move To Folder Plugin"""
 
-from ..models import PluginExecutionResult
-from . import BasePlugin, PluginCapability, PluginConfig, register_plugin
+from ..models import EmailDTO, MailActionPort, PluginExecutionResult
+from .base import BasePlugin, PluginCapability, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -58,9 +58,9 @@ class MoveToFolderPlugin(BasePlugin):
 
     async def execute(
         self,
-        email_data: dict,
+        email_data: EmailDTO,
         llm_response: str,
-        outlook_client,
+        action_port: MailActionPort,
     ) -> PluginExecutionResult:
         """Move email to folder based on LLM response"""
         try:
@@ -81,21 +81,8 @@ class MoveToFolderPlugin(BasePlugin):
             # Map folder name to canonical name
             canonical_folder = self._map_folder(folder_name)
 
-            # Get the message from email data
-            message = email_data.get("_message")
-            if not message:
-                return self.failed_result(
-                    message="Missing _message in email_data",
-                    code="missing_message",
-                )
-
-            # Get destination folder
-            account = email_data.get("_account")
             try:
-                dest_folder = outlook_client.get_folder(
-                    account, canonical_folder, create_if_missing=True
-                )
-                message.Move(dest_folder)
+                action_port.move_to_folder(canonical_folder, create_if_missing=True)
                 return self.success_result(message="Message moved")
             except Exception as e:
                 return self.retriable_failed_result(

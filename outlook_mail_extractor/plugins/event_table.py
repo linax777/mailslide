@@ -6,8 +6,8 @@ from pathlib import Path
 
 from loguru import logger
 
-from ..models import PluginExecutionResult
-from . import BasePlugin, PluginCapability, PluginConfig, register_plugin
+from ..models import EmailDTO, MailActionPort, PluginExecutionResult
+from .base import BasePlugin, PluginCapability, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -59,12 +59,12 @@ class EventTablePlugin(BasePlugin):
 
     async def execute(
         self,
-        email_data: dict,
+        email_data: EmailDTO,
         llm_response: str,
-        outlook_client,
+        action_port: MailActionPort,
     ) -> PluginExecutionResult:
         """Write appointment data into CSV when LLM asks to create."""
-        del outlook_client
+        del action_port
         try:
             response_data = self._parse_response(llm_response)
             if response_data.get("action") != "appointment":
@@ -98,9 +98,9 @@ class EventTablePlugin(BasePlugin):
                 )
 
             row = {
-                "email_subject": str(email_data.get("subject", "")),
-                "email_sender": str(email_data.get("sender", "")),
-                "email_received": str(email_data.get("received", "")),
+                "email_subject": str(email_data.subject),
+                "email_sender": str(email_data.sender),
+                "email_received": str(email_data.received),
                 "event_subject": str(event_subject),
                 "start": start.isoformat(timespec="seconds"),
                 "end": end.isoformat(timespec="seconds"),

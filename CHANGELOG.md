@@ -29,6 +29,9 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Added a shared `PreflightCheckService` for validating enabled jobs against Outlook account/source availability, and refactored TUI pre-run + About checks to use this common service.
 - Added CLI preflight validation before job execution (with `--skip-preflight` escape hatch) so command-line runs now catch account/source config issues early.
 - Added unit tests for preflight validation behavior (`tests/test_preflight_service.py`) and cleaned related UI lint warnings while wiring the new service.
+- Introduced `EmailDTO` and `MailActionPort` to separate domain email data from Outlook COM side effects, and added `OutlookMailActionAdapter` as the infrastructure implementation.
+- Refactored `EmailProcessor` and built-in plugins to use the action port boundary instead of hidden `_message`/`_account` fields, so plugin behavior can be tested with fake ports without COM dependencies.
+- Updated plugin/core tests to validate the new DTO + action-port flow and preserve existing processing behavior.
 
 ## [2026-03-18]
 
