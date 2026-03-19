@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.2.2] - 2026-03-20
+
+### Highlights
+
+- Refactored the large monolithic `screens.py` into a modular `outlook_mail_extractor/screens/` package while keeping `from outlook_mail_extractor.screens import ...` imports backward-compatible.
+- Improved maintainability of schema-driven configuration UI by extracting shared YAML write/backup and validation-message helpers used across main/LLM/plugin config tabs.
+- Simplified `PluginConfigEditorModal` internals by splitting dynamic form rendering and payload collection into smaller focused methods without changing runtime behavior.
+
+### Changed
+
+- Reorganized UI screens into dedicated modules (`about`, `home`, `schedule`, `usage`, config tabs, and modals) and removed the legacy single-file `outlook_mail_extractor/screens.py` implementation.
+- Added config-tab helper modules for consistent YAML serialization/atomic write+backup behavior and reusable rule failure preview formatting.
+- Kept existing TUI workflows and tests stable through refactor with no user-facing feature regression.
+
 ## [v0.2.1] - 2026-03-19
 
 ### Highlights
