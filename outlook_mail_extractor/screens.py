@@ -28,7 +28,7 @@ from textual.widgets import (
 )
 from textual.worker import Worker
 
-from outlook_mail_extractor.config import load_config
+from outlook_mail_extractor.config import load_config, validate_config
 from outlook_mail_extractor.core import OutlookConnectionError
 from outlook_mail_extractor.llm import load_llm_config
 from outlook_mail_extractor.runtime import RuntimeContext, get_runtime_context
@@ -82,7 +82,7 @@ class AboutScreen(Container):
     """About 標籤頁 - 系統狀態檢查"""
 
     SAMPLE_SUFFIX = ".yaml.sample"
-    VERSION = "0.2"
+    VERSION = "0.2.1"
     AUTHOR = "linax777"
     REPO_URL = "https://github.com/linax777/outlook-mail-extractor"
 
@@ -1301,6 +1301,8 @@ class MainConfigTab(Static):
         self._ui_schema = load_ui_schema(self._sample_path)
         self._schema_errors = validate_ui_schema(self._ui_schema)
         self._reset_armed = False
+        self._rendered_job_indices: list[int] = []
+        self._selected_job_index: int | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="main-config-split"):
@@ -1353,15 +1355,17 @@ class MainConfigTab(Static):
         table = self.query_one("#main-jobs-table", DataTable)
         table.clear(columns=True)
         table.add_columns("啟用", "名稱", "帳號", "來源", "目標", "Plugins", "Limit")
+        self._rendered_job_indices = []
 
         jobs = config.get("jobs", [])
         if not isinstance(jobs, list):
             table.styles.height = 4
             jobs_pane.styles.height = 6
+            self._selected_job_index = None
             return
 
         rendered_rows = 0
-        for job in jobs:
+        for job_index, job in enumerate(jobs):
             if not isinstance(job, dict):
                 continue
             plugins = ", ".join(job.get("plugins", [])) or "-"
@@ -1375,11 +1379,32 @@ class MainConfigTab(Static):
                 truncate(plugins),
                 str(job.get("limit", "")),
             )
+            self._rendered_job_indices.append(job_index)
             rendered_rows += 1
+
+        if self._selected_job_index not in self._rendered_job_indices:
+            self._selected_job_index = None
 
         visible_rows = max(2, min(rendered_rows + 1, 6))
         table.styles.height = visible_rows
         jobs_pane.styles.height = visible_rows + 2
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id != "main-jobs-table":
+            return
+
+        row = int(event.cursor_row)
+        if row < 0 or row >= len(self._rendered_job_indices):
+            self._selected_job_index = None
+            return
+        self._selected_job_index = self._rendered_job_indices[row]
+
+    def _resolve_remove_job_index(self, jobs: list[Any]) -> int:
+        if isinstance(
+            self._selected_job_index, int
+        ) and 0 <= self._selected_job_index < len(jobs):
+            return self._selected_job_index
+        return len(jobs) - 1
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if not event.button.id or not event.button.id.startswith("schema-btn-"):
@@ -1433,29 +1458,77 @@ class MainConfigTab(Static):
             )
         )
 
-    def _write_config_file(self, data: dict) -> None:
+    def _write_config_file(self, data: dict) -> Path:
         config_path = self._runtime.paths.config_file
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(
-            yaml.safe_dump(
-                data,
-                allow_unicode=True,
-                sort_keys=False,
-                default_flow_style=False,
-            ),
-            encoding="utf-8",
+
+        if config_path.exists():
+            backup_path = config_path.with_suffix(".yaml.bak")
+            backup_path.write_text(
+                config_path.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+
+        dumped = yaml.safe_dump(
+            data,
+            allow_unicode=True,
+            sort_keys=False,
+            default_flow_style=False,
         )
+        temp_path = config_path.with_name(f".{config_path.name}.tmp")
+        temp_path.write_text(dumped, encoding="utf-8")
+        temp_path.replace(config_path)
+        return config_path
+
+    def _validate_editor_payload(
+        self,
+        config: dict[str, Any],
+    ) -> tuple[dict[str, Any], list[str], list[str]]:
+        sanitized = strip_reserved_metadata(config)
+
+        results = evaluate_rules(
+            sanitized,
+            self._ui_schema.get("validation_rules", []),
+        )
+        failed_errors = [
+            result.message
+            for result in results
+            if not result.passed and result.level == "error"
+        ]
+        failed_warnings = [
+            result.message
+            for result in results
+            if not result.passed and result.level != "error"
+        ]
+
+        try:
+            validate_config(sanitized)
+        except ValueError as e:
+            failed_errors.append(str(e))
+
+        return sanitized, failed_errors, failed_warnings
 
     def _save_from_editor(self) -> None:
         try:
             config = self._load_editor_config()
-            sanitized = strip_reserved_metadata(config)
+            sanitized, failed_errors, failed_warnings = self._validate_editor_payload(
+                config
+            )
+
+            if failed_errors:
+                preview = "；".join(failed_errors[:2])
+                self.app.notify(f"❌ 驗證失敗：{preview}", severity="error")
+                return
+
             self._write_config_file(sanitized)
             self._dump_editor_config(sanitized)
             self._load_config()
-            self._run_schema_validation()
             self._reset_armed = False
-            self.app.notify("✅ 已儲存 config/config.yaml", severity="information")
+
+            if failed_warnings:
+                preview = "；".join(failed_warnings[:2])
+                self.app.notify(f"⚠️ 已儲存，請留意：{preview}", severity="warning")
+            else:
+                self.app.notify("✅ 已儲存 config/config.yaml", severity="information")
         except Exception as e:
             self.app.notify(f"❌ 儲存失敗: {e}", severity="error")
 
@@ -1550,8 +1623,10 @@ class MainConfigTab(Static):
                 self.app.notify("⚠️ 沒有可刪除的 Job", severity="warning")
                 return
 
-            removed = jobs.pop()
+            remove_index = self._resolve_remove_job_index(jobs)
+            removed = jobs.pop(remove_index)
             config["jobs"] = jobs
+            self._selected_job_index = None
             self._dump_editor_config(config)
             self._run_schema_validation()
             self._render_jobs_table(config)
@@ -1561,7 +1636,10 @@ class MainConfigTab(Static):
                 if isinstance(removed, dict)
                 else "(未知)"
             )
-            self.app.notify(f"✅ 已刪除最後一筆 Job: {name}", severity="information")
+            self.app.notify(
+                f"✅ 已刪除 Job（第 {remove_index + 1} 筆）: {name}",
+                severity="information",
+            )
         except Exception as e:
             self.app.notify(f"❌ 刪除 Job 失敗: {e}", severity="error")
 

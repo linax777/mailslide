@@ -22,6 +22,9 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Refined `response_json_format` editing UX: keep `action`/`start`/`end` locked as fixed template keys while allowing other JSON example fields to be edited safely as structured inputs.
 - Removed the unused LLM `provider` runtime setting from config/UI samples and status display, since execution already uses OpenAI-compatible `api_base` directly.
 - Updated README with `_ui` metadata guidance and `summary_file` plugin usage examples.
+- Hardened Main Config save flow in the TUI to validate editor payloads before write (`_ui.validation_rules` plus runtime `validate_config`), preventing invalid YAML objects from overwriting `config/config.yaml`.
+- Added Main Config backup+atomic write behavior (`config.yaml.bak` + temp-file replace), aligning safety guarantees with existing LLM/plugin editor writes.
+- Improved Main Config remove-job UX to delete the selected row when available (with fallback to last item) and updated the notification to show both removed row number and job name.
 
 ### Added
 
@@ -30,6 +33,7 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Added `config/plugins/summary_file.yaml.sample`, `outlook_mail_extractor/plugins/summary_file.py`, and `tests/test_summary_file_plugin.py` for the summary CSV plugin workflow.
 - Added `tests/test_ui_schema.py` coverage for schema field flattening, rule evaluation, default list-item generation, reserved-key stripping, and plugin schema loading.
 - Added `tests/test_plugin_config_editor.py` coverage for modal payload mapping/validation and plugin config file backup-write behavior.
+- Added `tests/test_main_config_editor.py` coverage for Main Config editor payload validation and backup/atomic write behavior.
 
 ## [v0.2.0] - 2026-03-19
 

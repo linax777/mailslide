@@ -2,6 +2,20 @@
 
 從 Outlook 提取郵件工具，支援 LLM 分析與自動化處理
 
+## 30 秒快速上手（TUI）
+
+```bash
+uv sync
+uv run app.py
+```
+
+1. 進入 **About** 分頁，點 **初始化設定**
+2. 進入 **Configuration → 一般設定**，新增/調整 Jobs 後按 **驗證**、**儲存**
+3. 需要 LLM 時，進入 **Configuration → LLM 設定** 調整參數並按 **測試連線**
+4. 需要插件時，進入 **Configuration → Plugin 設定** 選取 plugin 後按 **編輯設定**
+
+> 💡 建議：優先在 TUI 完成設定；手動編輯 YAML 僅作為進階備援方式。
+
 ## 安裝 uv（必備）
 
 本專案使用 [uv](https://github.com/astral-sh/uv) 管理 Python 依賴，請先安裝 uv：
@@ -51,7 +65,23 @@ copy config\logging.yaml.sample config\logging.yaml
 copy config\plugins\*.yaml.sample config\plugins\
 ```
 
-> ⚠️ 初始化完成後，請務必打開各項設定檔，根據您的需求修改內容（如帳號、資料夾名稱、插件參數等）。
+> ⚠️ 初始化完成後，請務必依需求調整設定（如帳號、資料夾名稱、插件參數等）；建議直接在 TUI 的 **Configuration** 分頁修改。
+
+## 推薦流程：直接在 TUI 修改設定
+
+從目前版本開始，建議直接使用 **Configuration** 分頁完成大部分設定，不必手動開 YAML 檔案。
+
+1. 執行 `uv run app.py`
+2. 到 **About** 分頁按一次 **初始化設定**
+3. 切到 **Configuration** 分頁：
+   - **一般設定**：新增/刪除 Job、修改 `config.yaml`、驗證與儲存
+   - **LLM 設定**：編輯 `llm-config.yaml`、測試連線
+   - **Plugin 設定**：選 plugin 後以表單編輯 `config/plugins/*.yaml`
+
+儲存保護機制（TUI）：
+
+- 主設定儲存前會先做 schema 與 runtime 驗證，避免把不合法設定寫入。
+- 覆蓋既有檔案前會建立備份（如 `config.yaml.bak`、`llm-config.yaml.bak`、`<plugin>.yaml.bak`）。
 
 ### 關於 `_ui` 區塊
 
@@ -84,7 +114,7 @@ uv run outlook-extract --no-move
 
 ## 如何設定 config.yaml
 
-開啟 `config/config.yaml`，修改內容：
+可在 **Configuration → 一般設定** 直接修改（推薦）；也可手動編輯 `config/config.yaml`。
 
 ```yaml
 jobs:
@@ -111,7 +141,7 @@ jobs:
 
 ## 設定 LLM（可選）
 
-若要使用 plugins，需編輯 `config/llm-config.yaml`：
+若要使用 plugins，建議在 **Configuration → LLM 設定** 編輯；也可手動修改 `config/llm-config.yaml`：
 
 ```yaml
 api_base: "http://localhost:11434/v1"
@@ -134,7 +164,7 @@ model: "llama3"
 
 ### write_file 插件設定
 
-編輯 `config/plugins/write_file.yaml`：
+建議在 **Configuration → Plugin 設定** 選取 `write_file` 後編輯；也可手動改 `config/plugins/write_file.yaml`：
 
 ```yaml
 enabled: true
@@ -150,7 +180,7 @@ include_fields:                # 要包含的欄位
 
 ### event_table 插件設定
 
-編輯 `config/plugins/event_table.yaml`：
+建議在 **Configuration → Plugin 設定** 選取 `event_table` 後編輯；也可手動改 `config/plugins/event_table.yaml`：
 
 ```yaml
 enabled: true
@@ -163,7 +193,7 @@ CSV 欄位由程式固定，順序為：
 
 ### summary_file 插件設定
 
-編輯 `config/plugins/summary_file.yaml`：
+建議在 **Configuration → Plugin 設定** 選取 `summary_file` 後編輯；也可手動改 `config/plugins/summary_file.yaml`：
 
 ```yaml
 enabled: true
@@ -204,8 +234,8 @@ CSV 欄位由程式固定，順序為：
 - **Schedule**：設定自動排程
 - **Guide**：使用說明
 - **Configuration**：查看/編輯設定檔
-  - 一般設定：查看主設定檔與 Jobs 列表
-  - LLM 設定：查看 LLM 設定值，可測試連線
+  - 一般設定：可直接新增/刪除 Job、編輯/驗證/儲存主設定
+  - LLM 設定：可表單化編輯 LLM 設定並測試連線
   - Plugin 設定：可表單化編輯各 Plugin 設定（由 `config/plugins/*.yaml.sample` 的 `_ui` 欄位驅動）
 - **About**：系統狀態檢查、初始化設定
 
