@@ -5,7 +5,7 @@ from datetime import datetime
 from loguru import logger
 
 from ..models import PluginExecutionResult
-from . import BasePlugin, PluginConfig, register_plugin
+from . import BasePlugin, PluginCapability, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -13,6 +13,10 @@ class CreateAppointmentPlugin(BasePlugin):
     """Create calendar appointment from email based on LLM response"""
 
     name = "create_appointment"
+    capabilities = {
+        PluginCapability.REQUIRES_LLM,
+        PluginCapability.CAN_SKIP_BY_RESPONSE,
+    }
     default_system_prompt = """你是一個日曆助手。分析以下郵件內容，判斷是否包含預約、會議或行程資訊。
 
 回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。"""
@@ -38,6 +42,24 @@ class CreateAppointmentPlugin(BasePlugin):
                 "response_json_format", self.default_response_json_format
             ),
         )
+
+    def should_skip_by_response(
+        self,
+        llm_response: str,
+    ) -> PluginExecutionResult | None:
+        """Skip appointment creation when LLM explicitly says create=false."""
+        if not self.supports(PluginCapability.CAN_SKIP_BY_RESPONSE):
+            return None
+
+        response_data = self._parse_response(llm_response)
+        if response_data.get("action") == "appointment" and not response_data.get(
+            "create", False
+        ):
+            return self.skipped_result(
+                message="Skip by LLM response: create=false",
+                code="llm_skip_condition",
+            )
+        return None
 
     async def execute(
         self,

@@ -4,6 +4,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 from ..models import (
@@ -25,11 +26,20 @@ class PluginConfig:
     response_json_format: dict[str, str] | None = None
 
 
+class PluginCapability(str, Enum):
+    """Capability flags that drive orchestrator dispatch rules."""
+
+    REQUIRES_LLM = "requires_llm"
+    CAN_SKIP_BY_RESPONSE = "can_skip_by_response"
+    MOVES_MESSAGE = "moves_message"
+
+
 class BasePlugin(ABC):
     """Base class for all plugins"""
 
     name: str = ""
     default_system_prompt: str = ""
+    capabilities: set[PluginCapability] = set()
 
     def __init__(self, config: dict | None = None):
         self.config = self._load_config(config or {})
@@ -104,6 +114,24 @@ class BasePlugin(ABC):
             return f"{base_prompt}\n\n{' '.join(format_examples)}"
 
         return base_prompt
+
+    def supports(self, capability: PluginCapability) -> bool:
+        """Return True when plugin declares the given capability."""
+        return capability in self.capabilities
+
+    def requires_llm(self) -> bool:
+        """Return True when plugin should be executed after LLM call."""
+        return self.supports(PluginCapability.REQUIRES_LLM) or bool(
+            self.build_effective_prompt()
+        )
+
+    def should_skip_by_response(
+        self,
+        llm_response: str,
+    ) -> PluginExecutionResult | None:
+        """Optionally short-circuit execution based on LLM response."""
+        del llm_response
+        return None
 
     def success_result(
         self,

@@ -2,6 +2,7 @@
 
 from .base import (
     BasePlugin,
+    PluginCapability,
     PluginConfig,
     get_plugin,
     list_plugins,
@@ -15,6 +16,7 @@ from . import category, calendar, event_table, move, write_file  # noqa: F401, E
 
 __all__ = [
     "BasePlugin",
+    "PluginCapability",
     "PluginConfig",
     "clean_invisible_chars",
     "get_plugin",

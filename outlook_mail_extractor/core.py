@@ -20,7 +20,7 @@ from .models import (
     UserVisibleError,
 )
 from .parser import extract_main_content, parse_tables
-from .plugins import get_plugin, load_plugin_configs
+from .plugins import PluginCapability, get_plugin, load_plugin_configs
 
 
 class OutlookConnectionError(InfrastructureError):
@@ -322,8 +322,9 @@ class EmailProcessor:
             if not plugin.config.enabled:
                 continue
             prompt = plugin.build_effective_prompt()
-            if prompt:
-                system_prompts.append(prompt)
+            if plugin.requires_llm():
+                if prompt:
+                    system_prompts.append(prompt)
                 plugins_needing_llm.append(plugin)
             else:
                 plugins_no_llm.append(plugin)
@@ -344,7 +345,10 @@ class EmailProcessor:
                         plugin_execute_result,
                     )
                     plugin_results.append(plugin_result)
-                    if plugin.name == "move_to_folder" and plugin_result.success:
+                    if (
+                        plugin.supports(PluginCapability.MOVES_MESSAGE)
+                        and plugin_result.success
+                    ):
                         moved_by_plugin = True
 
                     if plugin_result.status == PluginExecutionStatus.SUCCESS:
@@ -417,37 +421,17 @@ class EmailProcessor:
 
                 if success and not dry_run:
                     for plugin in plugins_needing_llm:
-                        # Check if plugin should be skipped based on LLM response
-                        if plugin.name == "create_appointment":
-                            try:
-                                import json
-                                import re
-
-                                clean = re.sub(r"^```json\s*", "", llm_response.strip())
-                                clean = re.sub(r"\s*```$", "", clean)
-                                json_match = re.search(r"\{[^}]+\}", clean, re.DOTALL)
-                                if json_match:
-                                    resp_data = json.loads(json_match.group())
-                                    if resp_data.get(
-                                        "action"
-                                    ) == "appointment" and not resp_data.get(
-                                        "create", False
-                                    ):
-                                        logger.info(
-                                            f"跳過 Plugin {plugin.name}: create 為 false"
-                                        )
-                                        plugin_results.append(
-                                            PluginResult(
-                                                plugin_name=plugin.name,
-                                                success=False,
-                                                status=PluginExecutionStatus.SKIPPED,
-                                                code="llm_skip_condition",
-                                                message="Skip by LLM response: create=false",
-                                            )
-                                        )
-                                        continue
-                            except Exception:
-                                pass
+                        skip_result = plugin.should_skip_by_response(llm_response)
+                        if skip_result:
+                            plugin_result = self._build_plugin_result(
+                                plugin.name,
+                                skip_result,
+                            )
+                            plugin_results.append(plugin_result)
+                            logger.info(
+                                f"跳過 Plugin {plugin.name}: {plugin_result.message}"
+                            )
+                            continue
 
                         logger.info(f"執行 Plugin: {plugin.name}")
                         try:
@@ -460,7 +444,7 @@ class EmailProcessor:
                             )
                             plugin_results.append(plugin_result)
                             if (
-                                plugin.name == "move_to_folder"
+                                plugin.supports(PluginCapability.MOVES_MESSAGE)
                                 and plugin_result.success
                             ):
                                 moved_by_plugin = True

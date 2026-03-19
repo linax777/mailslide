@@ -1,7 +1,7 @@
 """Move To Folder Plugin"""
 
 from ..models import PluginExecutionResult
-from . import BasePlugin, PluginConfig, register_plugin
+from . import BasePlugin, PluginCapability, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -9,6 +9,10 @@ class MoveToFolderPlugin(BasePlugin):
     """Move email to folder based on LLM response"""
 
     name = "move_to_folder"
+    capabilities = {
+        PluginCapability.REQUIRES_LLM,
+        PluginCapability.MOVES_MESSAGE,
+    }
     default_system_prompt = """你是一個郵件分類助手。分析以下郵件內容，判斷應該移動到哪個資料夾。
 
 可用的資料夾類別：

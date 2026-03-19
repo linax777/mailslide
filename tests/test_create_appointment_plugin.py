@@ -101,3 +101,14 @@ def test_create_appointment_execute_with_timezone_datetime() -> None:
     assert appointment.End is not None
     assert appointment.Start.tzinfo is None
     assert appointment.End.tzinfo is None
+
+
+def test_create_appointment_skip_hook_returns_skipped_result() -> None:
+    plugin = CreateAppointmentPlugin()
+    llm_response = json.dumps({"action": "appointment", "create": False})
+
+    result = plugin.should_skip_by_response(llm_response)
+
+    assert isinstance(result, PluginExecutionResult)
+    assert result.status == PluginExecutionStatus.SKIPPED
+    assert result.code == "llm_skip_condition"

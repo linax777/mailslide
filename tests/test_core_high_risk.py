@@ -8,6 +8,7 @@ from outlook_mail_extractor.core import (
     OutlookClient,
     process_config_file,
 )
+from outlook_mail_extractor.plugins import PluginCapability
 
 
 class DummyMessage:
@@ -25,6 +26,7 @@ class DummyPlugin:
         prompt: str,
         execute_result: bool = True,
         move_message: bool = False,
+        capabilities: set[PluginCapability] | None = None,
     ) -> None:
         self.name = name
         self._prompt = prompt
@@ -32,9 +34,20 @@ class DummyPlugin:
         self._move_message = move_message
         self.config = SimpleNamespace(enabled=True)
         self.execute_calls = 0
+        self.capabilities = capabilities or set()
 
     def build_effective_prompt(self) -> str:
         return self._prompt
+
+    def supports(self, capability: PluginCapability) -> bool:
+        return capability in self.capabilities
+
+    def requires_llm(self) -> bool:
+        return self.supports(PluginCapability.REQUIRES_LLM) or bool(self._prompt)
+
+    def should_skip_by_response(self, llm_response: str):
+        del llm_response
+        return None
 
     async def execute(
         self, email_data: dict, llm_response: str, outlook_client
@@ -111,7 +124,12 @@ def test_destination_move_works_without_llm_and_plugins() -> None:
 def test_move_to_folder_plugin_prevents_destination_double_move() -> None:
     message = DummyMessage()
     processor = _build_processor_with_stubbed_extract(message)
-    plugin = DummyPlugin(name="move_to_folder", prompt="", move_message=True)
+    plugin = DummyPlugin(
+        name="move_to_folder",
+        prompt="",
+        move_message=True,
+        capabilities={PluginCapability.MOVES_MESSAGE},
+    )
 
     result = asyncio.run(
         processor._process_email(

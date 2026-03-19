@@ -14,6 +14,11 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 
 ### Changed
 
+- Introduced `JobExecutionService` to own config-driven job orchestration, and refactored `core.process_config_file` into a thin compatibility wrapper while aligning CLI/TUI execution paths to the shared service.
+- Added plugin capability-based dispatch (`requires_llm`, `can_skip_by_response`, `moves_message`) so orchestrator behavior is declared by plugin capabilities instead of hardcoded plugin names.
+- Updated built-in plugins to declare capabilities and moved appointment skip logic (`create=false`) into the `create_appointment` plugin via a response-based skip hook.
+- Added `mypy` to the dev dependency group, installed typing stubs (`types-pyyaml`, `types-pywin32`), and introduced project mypy config (including `pycron` missing-stub override) so static typing checks can run in CI/local workflows.
+- Applied targeted typing improvements in core/services/tests to make `uv run mypy .` pass without changing runtime behavior.
 - Added plugin tests covering timezone datetime handling in both `event_table` CSV export and `create_appointment` calendar creation flows.
 - Removed the legacy `outlook_worker.py` compatibility script because the project now uses `outlook_mail_extractor.__main__` as the single CLI entry point.
 - Updated `.gitignore` and git tracking so local workflow notes (`AGENTS.md`, `DEVELOPER.md`, `tasks/`) stay untracked.

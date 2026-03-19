@@ -1,7 +1,7 @@
 """Add Category Plugin"""
 
 from ..models import PluginExecutionResult
-from . import BasePlugin, PluginConfig, register_plugin
+from . import BasePlugin, PluginCapability, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -9,6 +9,7 @@ class AddCategoryPlugin(BasePlugin):
     """Add categories/labels to email based on LLM response"""
 
     name = "add_category"
+    capabilities = {PluginCapability.REQUIRES_LLM}
     default_system_prompt = """你是一個郵件分類助手。分析以下郵件內容，選擇適當的分類標籤。
 
 可用的分類：

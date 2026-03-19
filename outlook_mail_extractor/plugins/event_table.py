@@ -7,7 +7,7 @@ from pathlib import Path
 from loguru import logger
 
 from ..models import PluginExecutionResult
-from . import BasePlugin, PluginConfig, register_plugin
+from . import BasePlugin, PluginCapability, PluginConfig, register_plugin
 
 
 @register_plugin
@@ -15,6 +15,7 @@ class EventTablePlugin(BasePlugin):
     """Write extracted appointment data to a CSV table."""
 
     name = "event_table"
+    capabilities = {PluginCapability.REQUIRES_LLM}
     default_system_prompt = """你是一個日曆助手。分析以下郵件內容，判斷是否包含預約、會議或行程資訊。
 
 回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。"""
