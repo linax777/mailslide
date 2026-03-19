@@ -7,8 +7,8 @@ import sys
 from pathlib import Path
 
 from .config import load_config
-from . import process_config_file
 from .logger import LoggerManager, get_logger
+from .services.job_execution import JobExecutionService
 from .services.preflight import PreflightCheckService
 
 
@@ -81,7 +81,8 @@ async def async_main() -> int:
                 )
                 return 1
 
-        results = await process_config_file(
+        execution_service = JobExecutionService()
+        results = await execution_service.process_config_file(
             config_file=args.config,
             dry_run=args.dry_run,
             no_move=args.no_move,

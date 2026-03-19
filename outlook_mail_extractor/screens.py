@@ -24,12 +24,10 @@ from textual.widgets import (
 from textual.worker import Worker
 
 from outlook_mail_extractor.config import load_config
-from outlook_mail_extractor.core import (
-    OutlookConnectionError,
-    process_config_file,
-)
+from outlook_mail_extractor.core import OutlookConnectionError
 from outlook_mail_extractor.llm import load_llm_config
 from outlook_mail_extractor.logger import LoggerManager
+from outlook_mail_extractor.services.job_execution import JobExecutionService
 from outlook_mail_extractor.services.preflight import PreflightCheckService
 
 from .models import CheckStatus, ConfigStatus, OutlookStatus, SystemStatus
@@ -384,7 +382,8 @@ class HomeScreen(Static):
 
     async def _execute_jobs(self) -> None:
         try:
-            await process_config_file(
+            execution_service = JobExecutionService()
+            await execution_service.process_config_file(
                 CONFIG_PATH,
                 False,
                 preserve_reply_thread=self._preserve_reply_thread,

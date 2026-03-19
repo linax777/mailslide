@@ -1,8 +1,13 @@
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
-from outlook_mail_extractor.core import EmailProcessor, process_config_file
+from outlook_mail_extractor.core import (
+    EmailProcessor,
+    OutlookClient,
+    process_config_file,
+)
 
 
 class DummyMessage:
@@ -40,18 +45,23 @@ class DummyPlugin:
         return self._execute_result
 
 
-def _build_processor_with_stubbed_extract(message: DummyMessage) -> EmailProcessor:
-    processor = EmailProcessor(client=object())
-    processor.extract_email_data = lambda *_args, **_kwargs: {
-        "subject": "Test",
-        "sender": "sender@example.com",
-        "received": "now",
-        "body": "hello",
-        "tables": [],
-        "_message": message,
-        "_account": None,
-    }
-    return processor
+def _build_processor_with_stubbed_extract(stub_message: DummyMessage) -> EmailProcessor:
+    class _TestEmailProcessor(EmailProcessor):
+        def extract_email_data(self, message, max_length: int | None = None) -> dict:
+            del message
+            del max_length
+            return {
+                "subject": "Test",
+                "sender": "sender@example.com",
+                "received": "now",
+                "body": "hello",
+                "tables": [],
+                "_message": stub_message,
+                "_account": None,
+            }
+
+    fake_client = cast(OutlookClient, object())
+    return _TestEmailProcessor(client=fake_client)
 
 
 def test_no_llm_plugin_still_executes() -> None:
@@ -158,7 +168,7 @@ def test_process_config_file_prefers_config_relative_llm_and_plugins(
     config_file = config_dir / "config.yaml"
     config_file.write_text("jobs: []\n", encoding="utf-8")
 
-    calls = {"llm": None, "plugins": None}
+    calls: dict[str, str | Path | None] = {"llm": None, "plugins": None}
 
     class FakeOutlookClient:
         def __init__(self) -> None:

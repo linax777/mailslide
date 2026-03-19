@@ -2,8 +2,26 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from ..core import FolderNotFoundError, OutlookClient
+
+
+class OutlookClientProtocol(Protocol):
+    """Minimal Outlook client interface required by preflight checks."""
+
+    def connect(self) -> None: ...
+
+    def disconnect(self) -> None: ...
+
+    def list_accounts(self) -> list[str]: ...
+
+    def get_folder(
+        self,
+        account: str,
+        folder_path: str,
+        create_if_missing: bool = False,
+    ): ...
 
 
 @dataclass
@@ -24,13 +42,13 @@ class PreflightCheckService:
 
     def __init__(
         self,
-        client_factory: Callable[[], OutlookClient] = OutlookClient,
+        client_factory: Callable[[], OutlookClientProtocol] = OutlookClient,
     ):
         self._client_factory = client_factory
 
     def validate_enabled_jobs_with_client(
         self,
-        client: OutlookClient,
+        client: OutlookClientProtocol,
         config: dict,
     ) -> list[str]:
         """Validate account/source settings for enabled jobs."""

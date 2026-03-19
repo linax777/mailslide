@@ -5,7 +5,6 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from ..models import (
     DomainError,
@@ -206,12 +205,12 @@ def list_plugins() -> list[str]:
 
 
 def load_plugin_configs(
-    plugins_dir: Any = "config/plugins",
+    plugins_dir: Path | str = "config/plugins",
 ) -> dict[str, dict]:
     """Load all plugin configs from directory"""
     import yaml
 
-    configs = {}
+    configs: dict[str, dict] = {}
     plugins_path = Path(plugins_dir)
 
     if not plugins_path.exists():
