@@ -64,20 +64,12 @@ class SystemStatus:
         )
 
 
-class LLMProvider(str, Enum):
-    """LLM provider type"""
-
-    OPENAI = "openai"
-    LLAMA_CPP = "llama.cpp"
-
-
 @dataclass
 class LLMConfigStatus:
     """LLM configuration status"""
 
     status: CheckStatus
     message: str
-    provider: str = ""
     model: str = ""
 
 

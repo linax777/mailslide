@@ -20,6 +20,7 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Updated the Plugin Configuration tab to support schema-driven modal editing (`str/int/bool/select/textarea/path/list[str]/multiselect`), with field-level validation and `_ui.validation_rules` execution before save.
 - Added plugin-config save safeguards: remove reserved metadata keys before write, and auto-create `<plugin>.yaml.bak` when overwriting an existing file.
 - Refined `response_json_format` editing UX: keep `action`/`start`/`end` locked as fixed template keys while allowing other JSON example fields to be edited safely as structured inputs.
+- Removed the unused LLM `provider` runtime setting from config/UI samples and status display, since execution already uses OpenAI-compatible `api_base` directly.
 - Updated README with `_ui` metadata guidance and `summary_file` plugin usage examples.
 
 ### Added

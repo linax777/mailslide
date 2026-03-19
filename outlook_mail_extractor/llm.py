@@ -16,7 +16,6 @@ class LLMError(Exception):
 class LLMConfig:
     """LLM API configuration"""
 
-    provider: str = "openai"
     api_base: str = "http://localhost:11434/v1"
     api_key: str = ""
     model: str = "llama3"
@@ -120,9 +119,7 @@ class LLMClient:
             if len(detail) > 300:
                 detail = detail[:300] + "..."
 
-            raise LLMError(
-                f"HTTP error: {e.response.status_code} - {detail}"
-            ) from e
+            raise LLMError(f"HTTP error: {e.response.status_code} - {detail}") from e
         except httpx.RequestError as e:
             request_url = str(e.request.url) if e.request else "(unknown URL)"
             raise LLMError(f"Request failed ({request_url}): {e}") from e
@@ -157,7 +154,6 @@ def load_llm_config(config_file: str | None = None) -> LLMConfig:
         data = yaml.safe_load(f) or {}
 
     return LLMConfig(
-        provider=data.get("provider", "openai"),
         api_base=data.get("api_base", "http://localhost:11434/v1"),
         api_key=data.get("api_key", ""),
         model=data.get("model", "llama3"),

@@ -114,7 +114,6 @@ jobs:
 若要使用 plugins，需編輯 `config/llm-config.yaml`：
 
 ```yaml
-provider: "openai"
 api_base: "http://localhost:11434/v1"
 api_key: ""
 model: "llama3"
@@ -265,7 +264,6 @@ CSV 欄位由程式固定，順序為：
 ### 3. 設定 config/llm-config.yaml
 
 ```yaml
-provider: "openai"
 api_base: "http://localhost:8080/v1"
 api_key: "any"
 model: "qwen3"

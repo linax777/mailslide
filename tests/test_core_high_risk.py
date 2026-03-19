@@ -199,7 +199,10 @@ def test_process_config_file_prefers_config_relative_llm_and_plugins(
 ) -> None:
     config_dir = tmp_path / "custom"
     config_dir.mkdir(parents=True, exist_ok=True)
-    (config_dir / "llm-config.yaml").write_text("provider: openai\n", encoding="utf-8")
+    (config_dir / "llm-config.yaml").write_text(
+        "api_base: http://localhost:11434/v1\n",
+        encoding="utf-8",
+    )
     (config_dir / "plugins").mkdir(parents=True, exist_ok=True)
     config_file = config_dir / "config.yaml"
     config_file.write_text("jobs: []\n", encoding="utf-8")

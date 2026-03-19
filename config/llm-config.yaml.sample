@@ -1,10 +1,6 @@
 # LLM API Configuration
 # Rename to llm.yaml to use
 
-# Provider: openai (OpenAI compatible API)
-# Supported: llama.cpp, LM Studio, Ollama, OpenAI, etc.
-provider: "openai"
-
 # API endpoint (OpenAI compatible)
 api_base: "http://localhost:11434/v1"
 
@@ -36,16 +32,6 @@ _ui:
       action: save
       variant: success
   fields:
-    provider:
-      type: select
-      label: "Provider"
-      required: true
-      default: openai
-      options:
-        - openai
-        - ollama
-        - lmstudio
-        - llama.cpp
     api_base:
       type: str
       label: "API Base"

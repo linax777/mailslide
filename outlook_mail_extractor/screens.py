@@ -814,9 +814,11 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         plugin_name: str,
         schema: dict[str, Any],
         current_config: dict[str, Any],
+        entity_label: str = "Plugin",
     ):
         super().__init__()
         self._plugin_name = plugin_name
+        self._entity_label = entity_label
         fields = schema.get("fields", {})
         self._fields = fields if isinstance(fields, dict) else {}
         buttons = schema.get("buttons", [])
@@ -832,7 +834,8 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="plugin-editor-dialog"):
             yield Static(
-                f"🧩 編輯 Plugin: {self._plugin_name}", id="plugin-editor-title"
+                f"🧩 編輯 {self._entity_label}: {self._plugin_name}",
+                id="plugin-editor-title",
             )
             with VerticalScroll(id="plugin-editor-form"):
                 for field_name, spec in self._fields.items():
@@ -878,6 +881,13 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                         )
                         textarea.styles.height = max(4, min(rows_value + 1, 12))
                         yield textarea
+                    elif field_type == "secret":
+                        yield Input(
+                            self._resolve_initial_text(field_name, spec),
+                            placeholder=str(spec.get("placeholder", "")),
+                            password=True,
+                            id=self._widget_id(field_name),
+                        )
                     else:
                         yield Input(
                             self._resolve_initial_text(field_name, spec),
@@ -1116,7 +1126,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                     TextArea,
                 )
                 value = str(textarea_widget.text).strip()
-            elif field_type in {"str", "path"}:
+            elif field_type in {"str", "path", "secret"}:
                 input_widget = self.query_one(
                     f"#{self._widget_id(field_name)}",
                     Input,
@@ -1681,6 +1691,11 @@ class LLMConfigTab(Static):
     def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
         self._runtime = runtime_context or get_runtime_context()
+        self._sample_path = self._runtime.paths.llm_config_file.with_suffix(
+            ".yaml.sample"
+        )
+        self._ui_schema = load_ui_schema(self._sample_path)
+        self._schema_errors = validate_ui_schema(self._ui_schema)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="llm-main"):
@@ -1690,7 +1705,6 @@ class LLMConfigTab(Static):
             yield DataTable(id="llm-table")
             yield Static("💡 說明", id="llm-help-title")
             yield Static(
-                "• Provider: LLM 供應商 (openai/ollama/llama.cpp 等)\n"
                 "• API Base: API 伺服器位址 (如 Ollama 本機: http://localhost:11434/v1)\n"
                 "• API Key: API 密鑰 (OpenAI 需要，其他可能可留空)\n"
                 "• Model: 模型名稱 (如 llama3, gpt-4 等)\n"
@@ -1705,6 +1719,7 @@ class LLMConfigTab(Static):
             )
             with Horizontal(id="llm-actions"):
                 yield Button("🔗 測試連線", id="test-llm-connection", variant="primary")
+                yield Button("🛠️ 編輯設定", id="edit-llm-config")
 
     def on_mount(self) -> None:
         self._load_llm_config()
@@ -1722,7 +1737,6 @@ class LLMConfigTab(Static):
             llm_config = load_llm_config(str(llm_config_path))
             table.clear()
             table.add_columns("項目", "值")
-            table.add_row("Provider", llm_config.provider)
             table.add_row("API Base", llm_config.api_base)
             table.add_row("API Key", "***" if llm_config.api_key else "(未設定)")
             table.add_row("Model", llm_config.model)
@@ -1739,6 +1753,102 @@ class LLMConfigTab(Static):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "test-llm-connection":
             self._test_llm_connection()
+            return
+        if event.button.id == "edit-llm-config":
+            self._open_llm_editor()
+
+    def _load_llm_payload(self) -> dict[str, Any]:
+        llm_config_path = self._runtime.paths.llm_config_file
+        if not llm_config_path.exists():
+            raise FileNotFoundError("找不到 config/llm-config.yaml")
+
+        try:
+            with open(llm_config_path, encoding="utf-8") as f:
+                payload = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            raise ValueError(f"llm-config.yaml YAML 解析錯誤: {e}") from e
+
+        if not isinstance(payload, dict):
+            raise ValueError("llm-config.yaml 內容必須是 YAML 物件")
+        return payload
+
+    def _open_llm_editor(self) -> None:
+        if not self._ui_schema:
+            self.app.notify(
+                "⚠️ llm-config.yaml.sample 缺少 _ui，維持唯讀模式", severity="warning"
+            )
+            return
+
+        if self._schema_errors:
+            preview = " | ".join(self._schema_errors[:2])
+            self.app.notify(f"❌ _ui schema 結構錯誤: {preview}", severity="error")
+            return
+
+        try:
+            payload = self._load_llm_payload()
+        except Exception as e:
+            self.app.notify(str(e), severity="error")
+            return
+
+        self.app.push_screen(
+            PluginConfigEditorModal(
+                plugin_name="llm-config",
+                schema=self._ui_schema,
+                current_config=strip_reserved_metadata(payload),
+                entity_label="LLM",
+            ),
+            self._handle_llm_editor_result,
+        )
+
+    def _handle_llm_editor_result(self, result: dict[str, Any] | None) -> None:
+        if result is None:
+            return
+
+        sanitized = strip_reserved_metadata(result)
+        results = evaluate_rules(sanitized, self._ui_schema.get("validation_rules", []))
+        failed_errors = [
+            r.message for r in results if not r.passed and r.level == "error"
+        ]
+        failed_warnings = [
+            r.message for r in results if not r.passed and r.level != "error"
+        ]
+
+        if failed_errors:
+            preview = "；".join(failed_errors[:2])
+            self.app.notify(f"❌ 驗證失敗：{preview}", severity="error")
+            return
+
+        try:
+            self._write_llm_config_file(sanitized)
+            self._load_llm_config()
+            if failed_warnings:
+                preview = "；".join(failed_warnings[:2])
+                self.app.notify(f"⚠️ 已儲存，請留意：{preview}", severity="warning")
+            else:
+                self.app.notify("✅ 已儲存 llm-config.yaml", severity="information")
+        except Exception as e:
+            self.app.notify(f"❌ 儲存失敗: {e}", severity="error")
+
+    def _write_llm_config_file(self, payload: dict[str, Any]) -> Path:
+        """Write LLM config and create `.bak` when original exists."""
+        llm_config_path = self._runtime.paths.llm_config_file
+        llm_config_path.parent.mkdir(parents=True, exist_ok=True)
+        if llm_config_path.exists():
+            backup_path = llm_config_path.with_suffix(".yaml.bak")
+            backup_path.write_text(
+                llm_config_path.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+
+        llm_config_path.write_text(
+            yaml.safe_dump(
+                payload,
+                allow_unicode=True,
+                sort_keys=False,
+                default_flow_style=False,
+            ),
+            encoding="utf-8",
+        )
+        return llm_config_path
 
     def _test_llm_connection(self) -> None:
         llm_config_path = self._runtime.paths.llm_config_file

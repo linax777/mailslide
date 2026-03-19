@@ -539,8 +539,7 @@ def check_llm_config(config_file: str | None = None) -> LLMConfigStatus:
         config = load_llm_config(config_file)
         return LLMConfigStatus(
             status=CheckStatus.OK,
-            message=f"Ready - {config.provider}: {config.model}",
-            provider=config.provider,
+            message=f"Ready - {config.model}",
             model=config.model,
         )
     except Exception as e:
