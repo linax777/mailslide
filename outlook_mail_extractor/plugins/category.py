@@ -1,5 +1,6 @@
 """Add Category Plugin"""
 
+from ..models import PluginExecutionResult
 from . import BasePlugin, PluginConfig, register_plugin
 
 
@@ -62,28 +63,42 @@ class AddCategoryPlugin(BasePlugin):
         email_data: dict,
         llm_response: str,
         outlook_client,
-    ) -> bool:
+    ) -> PluginExecutionResult:
         """Add categories to email based on LLM response"""
+        del outlook_client
         try:
             response_data = self._parse_response(llm_response)
             if not response_data.get("action") == "category":
-                return False
+                return self.skipped_result(
+                    message="Action is not category",
+                    code="action_mismatch",
+                )
 
             categories = response_data.get("categories", [])
             if not categories:
-                return False
+                return self.skipped_result(
+                    message="No categories provided",
+                    code="empty_categories",
+                )
 
             # Filter valid categories
             valid_categories = [
                 c for c in categories if c.lower() in self.VALID_CATEGORIES
             ]
             if not valid_categories:
-                return False
+                return self.skipped_result(
+                    message="No valid categories",
+                    code="invalid_categories",
+                    details={"categories": categories},
+                )
 
             # Get the message from email data
             message = email_data.get("_message")
             if not message:
-                return False
+                return self.failed_result(
+                    message="Missing _message in email_data",
+                    code="missing_message",
+                )
 
             # Set categories (Outlook uses comma-separated string)
             existing = getattr(message, "Categories", "") or ""
@@ -93,7 +108,13 @@ class AddCategoryPlugin(BasePlugin):
             else:
                 message.Categories = new_categories
             message.Save()
-            return True
+            return self.success_result(
+                message="Categories added",
+                details={"categories": valid_categories},
+            )
 
-        except Exception:
-            return False
+        except Exception as e:
+            return self.retriable_failed_result(
+                message=f"Unexpected error: {e}",
+                code="unexpected_error",
+            )

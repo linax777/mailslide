@@ -2,6 +2,7 @@ import asyncio
 import json
 from datetime import datetime
 
+from outlook_mail_extractor.models import PluginExecutionResult, PluginExecutionStatus
 from outlook_mail_extractor.plugins.calendar import CreateAppointmentPlugin
 
 
@@ -88,9 +89,11 @@ def test_create_appointment_execute_with_timezone_datetime() -> None:
         }
     )
 
-    success = asyncio.run(plugin.execute(email_data, llm_response, outlook_client))
+    result = asyncio.run(plugin.execute(email_data, llm_response, outlook_client))
 
-    assert success is True
+    assert isinstance(result, PluginExecutionResult)
+    assert result.status == PluginExecutionStatus.SUCCESS
+    assert result.success is True
     appointment = calendar.Items.last_appointment
     assert appointment is not None
     assert appointment.saved is True

@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..models import DomainError, InfrastructureError
+from ..models import (
+    DomainError,
+    InfrastructureError,
+    PluginExecutionResult,
+    PluginExecutionStatus,
+)
 
 
 @dataclass
@@ -101,13 +106,69 @@ class BasePlugin(ABC):
 
         return base_prompt
 
+    def success_result(
+        self,
+        message: str = "Success",
+        code: str = "",
+        details: dict | None = None,
+    ) -> PluginExecutionResult:
+        """Build a success plugin execution result."""
+        return PluginExecutionResult(
+            status=PluginExecutionStatus.SUCCESS,
+            code=code,
+            message=message,
+            details=details or {},
+        )
+
+    def skipped_result(
+        self,
+        message: str = "Skipped",
+        code: str = "",
+        details: dict | None = None,
+    ) -> PluginExecutionResult:
+        """Build a skipped plugin execution result."""
+        return PluginExecutionResult(
+            status=PluginExecutionStatus.SKIPPED,
+            code=code,
+            message=message,
+            details=details or {},
+        )
+
+    def failed_result(
+        self,
+        message: str = "Failed",
+        code: str = "",
+        details: dict | None = None,
+    ) -> PluginExecutionResult:
+        """Build a failed plugin execution result."""
+        return PluginExecutionResult(
+            status=PluginExecutionStatus.FAILED,
+            code=code,
+            message=message,
+            details=details or {},
+        )
+
+    def retriable_failed_result(
+        self,
+        message: str,
+        code: str = "",
+        details: dict | None = None,
+    ) -> PluginExecutionResult:
+        """Build a retriable failed plugin execution result."""
+        return PluginExecutionResult(
+            status=PluginExecutionStatus.RETRIABLE_FAILED,
+            code=code,
+            message=message,
+            details=details or {},
+        )
+
     @abstractmethod
     async def execute(
         self,
         email_data: dict,
         llm_response: str,
         outlook_client,
-    ) -> bool:
+    ) -> bool | PluginExecutionResult:
         """
         Execute the plugin action.
 
@@ -117,7 +178,7 @@ class BasePlugin(ABC):
             outlook_client: OutlookClient instance
 
         Returns:
-            True if action was successful
+            bool (legacy) or PluginExecutionResult
         """
         pass
 

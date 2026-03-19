@@ -5,6 +5,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from ..models import PluginExecutionResult
 from . import BasePlugin, PluginConfig, clean_invisible_chars, register_plugin
 
 
@@ -62,8 +63,10 @@ class WriteFilePlugin(BasePlugin):
         email_data: dict,
         llm_response: str,
         outlook_client=None,
-    ) -> bool:
+    ) -> PluginExecutionResult:
         """Write email data to JSON file"""
+        del llm_response
+        del outlook_client
         try:
             output_path = Path(self.output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
@@ -82,7 +85,13 @@ class WriteFilePlugin(BasePlugin):
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(prepared_data, f, ensure_ascii=False, indent=2)
 
-            return True
+            return self.success_result(
+                message="Email written to JSON file",
+                details={"path": str(filepath)},
+            )
 
-        except Exception:
-            return False
+        except Exception as e:
+            return self.retriable_failed_result(
+                message=f"Unexpected error: {e}",
+                code="unexpected_error",
+            )

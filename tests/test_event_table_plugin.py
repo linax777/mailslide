@@ -2,6 +2,7 @@ import asyncio
 import csv
 import json
 
+from outlook_mail_extractor.models import PluginExecutionResult, PluginExecutionStatus
 from outlook_mail_extractor.plugins.event_table import EventTablePlugin
 
 
@@ -29,9 +30,11 @@ def test_event_table_writes_csv_row(tmp_path) -> None:
         }
     )
 
-    success = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+    result = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
 
-    assert success is True
+    assert isinstance(result, PluginExecutionResult)
+    assert result.status == PluginExecutionStatus.SUCCESS
+    assert result.success is True
     assert output_file.exists()
 
     with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
@@ -64,9 +67,10 @@ def test_event_table_accepts_timezone_datetimes(tmp_path) -> None:
         }
     )
 
-    success = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+    result = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
 
-    assert success is True
+    assert isinstance(result, PluginExecutionResult)
+    assert result.status == PluginExecutionStatus.SUCCESS
 
     with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))
@@ -82,9 +86,10 @@ def test_event_table_noop_when_create_false(tmp_path) -> None:
     plugin = EventTablePlugin(config={"output_file": str(output_file)})
     llm_response = '{"action":"appointment","create":false}'
 
-    success = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+    result = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
 
-    assert success is True
+    assert isinstance(result, PluginExecutionResult)
+    assert result.status == PluginExecutionStatus.SKIPPED
     assert output_file.exists() is False
 
 
@@ -96,8 +101,10 @@ def test_event_table_appends_without_duplicate_header(tmp_path) -> None:
     first = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
     second = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
 
-    assert first is True
-    assert second is True
+    assert isinstance(first, PluginExecutionResult)
+    assert isinstance(second, PluginExecutionResult)
+    assert first.status == PluginExecutionStatus.SUCCESS
+    assert second.status == PluginExecutionStatus.SUCCESS
 
     with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
@@ -115,9 +122,10 @@ def test_event_table_ignores_custom_fields_config(tmp_path) -> None:
     )
     llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
 
-    success = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
+    result = asyncio.run(plugin.execute(_build_email_data(), llm_response, None))
 
-    assert success is True
+    assert isinstance(result, PluginExecutionResult)
+    assert result.status == PluginExecutionStatus.SUCCESS
 
     with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))

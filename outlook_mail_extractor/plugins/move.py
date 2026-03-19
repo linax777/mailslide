@@ -1,5 +1,6 @@
 """Move To Folder Plugin"""
 
+from ..models import PluginExecutionResult
 from . import BasePlugin, PluginConfig, register_plugin
 
 
@@ -56,16 +57,22 @@ class MoveToFolderPlugin(BasePlugin):
         email_data: dict,
         llm_response: str,
         outlook_client,
-    ) -> bool:
+    ) -> PluginExecutionResult:
         """Move email to folder based on LLM response"""
         try:
             response_data = self._parse_response(llm_response)
             if not response_data.get("action") == "move":
-                return False
+                return self.skipped_result(
+                    message="Action is not move",
+                    code="action_mismatch",
+                )
 
             folder_name = response_data.get("folder", "")
             if not folder_name:
-                return False
+                return self.skipped_result(
+                    message="Folder is empty",
+                    code="empty_folder",
+                )
 
             # Map folder name to canonical name
             canonical_folder = self._map_folder(folder_name)
@@ -73,7 +80,10 @@ class MoveToFolderPlugin(BasePlugin):
             # Get the message from email data
             message = email_data.get("_message")
             if not message:
-                return False
+                return self.failed_result(
+                    message="Missing _message in email_data",
+                    code="missing_message",
+                )
 
             # Get destination folder
             account = email_data.get("_account")
@@ -82,12 +92,18 @@ class MoveToFolderPlugin(BasePlugin):
                     account, canonical_folder, create_if_missing=True
                 )
                 message.Move(dest_folder)
-                return True
-            except Exception:
-                return False
+                return self.success_result(message="Message moved")
+            except Exception as e:
+                return self.retriable_failed_result(
+                    message=f"Move failed: {e}",
+                    code="move_failed",
+                )
 
-        except Exception:
-            return False
+        except Exception as e:
+            return self.retriable_failed_result(
+                message=f"Unexpected error: {e}",
+                code="unexpected_error",
+            )
 
     def _map_folder(self, folder_name: str) -> str:
         """Map folder name to canonical folder"""

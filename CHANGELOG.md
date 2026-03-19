@@ -18,6 +18,9 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Removed the legacy `outlook_worker.py` compatibility script because the project now uses `outlook_mail_extractor.__main__` as the single CLI entry point.
 - Updated `.gitignore` and git tracking so local workflow notes (`AGENTS.md`, `DEVELOPER.md`, `tasks/`) stay untracked.
 - Introduced application-level error layering (`AppError`, `DomainError`, `InfrastructureError`, `UserVisibleError`) and aligned core processing error handling to preserve typed failures while wrapping unknown exceptions as infrastructure-level errors.
+- Introduced structured plugin execution results via `PluginExecutionResult` and `PluginExecutionStatus` (`success`, `skipped`, `failed`, `retriable_failed`) to improve plugin observability and diagnostics.
+- Updated `EmailProcessor` orchestration to normalize both legacy `bool` plugin returns and new structured results, preserving backward compatibility while standardizing plugin logs and result metadata.
+- Migrated built-in plugins (`create_appointment`, `move_to_folder`, `add_category`, `event_table`, `write_file`) to return structured execution outcomes with explicit status codes/messages.
 
 ## [2026-03-18]
 
