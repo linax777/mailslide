@@ -2,7 +2,6 @@
 
 import asyncio
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +14,6 @@ from textual.widgets import (
     DataTable,
     Input,
     Log,
-    Markdown,
     MarkdownViewer,
     Static,
     Switch,
@@ -23,17 +21,16 @@ from textual.widgets import (
     TabPane,
     TextArea,
 )
-from textual.worker import Worker, WorkerState
+from textual.worker import Worker
 
 from outlook_mail_extractor.config import load_config
 from outlook_mail_extractor.core import (
-    FolderNotFoundError,
-    OutlookClient,
     OutlookConnectionError,
     process_config_file,
 )
 from outlook_mail_extractor.llm import load_llm_config
 from outlook_mail_extractor.logger import LoggerManager
+from outlook_mail_extractor.services.preflight import PreflightCheckService
 
 from .models import CheckStatus, ConfigStatus, OutlookStatus, SystemStatus
 
@@ -53,34 +50,6 @@ LLM_CONFIG_PATH = Path(__file__).parent.parent / "config" / "llm-config.yaml"
 PLUGINS_DIR = Path(__file__).parent.parent / "config" / "plugins"
 
 LEVEL_PRIORITY = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
-
-
-def validate_enabled_jobs_with_client(
-    client: OutlookClient,
-    config: dict,
-) -> list[str]:
-    """Validate account/source settings for enabled jobs."""
-    issues: list[str] = []
-    available_accounts = set(client.list_accounts())
-
-    for job in config.get("jobs", []):
-        if job.get("enable", True) is False:
-            continue
-
-        job_name = job.get("name", "Unnamed Job")
-        account = job.get("account", "")
-        source = job.get("source", "")
-
-        if account not in available_accounts:
-            issues.append(f"{job_name}: Account not found: {account}")
-            continue
-
-        try:
-            client.get_folder(account, source)
-        except FolderNotFoundError as e:
-            issues.append(f"{job_name}: {e}")
-
-    return issues
 
 
 class UsageScreen(Static):
@@ -186,26 +155,23 @@ class AboutScreen(Container):
     def _check_outlook(self) -> OutlookStatus:
         try:
             config = load_config(CONFIG_PATH) if CONFIG_PATH.exists() else None
-            client = OutlookClient()
-            client.connect()
-            accounts = client.list_accounts()
-            issues = validate_enabled_jobs_with_client(client, config) if config else []
-            client.disconnect()
+            preflight = PreflightCheckService()
+            result = preflight.run(config) if config else preflight.run({"jobs": []})
 
-            if issues:
-                issue_preview = "；".join(issues[:2])
-                if len(issues) > 2:
-                    issue_preview += f"；另有 {len(issues) - 2} 個 jobs 設定有誤"
+            if result.issues:
+                issue_preview = "；".join(result.issues[:2])
+                if len(result.issues) > 2:
+                    issue_preview += f"；另有 {len(result.issues) - 2} 個 jobs 設定有誤"
                 return OutlookStatus(
                     status=CheckStatus.ERROR,
                     message=f"設定檢查失敗 - {issue_preview}",
-                    account_count=len(accounts),
+                    account_count=result.account_count,
                 )
 
             return OutlookStatus(
                 status=CheckStatus.OK,
-                message=f"已連線 ({len(accounts)} 個帳號)",
-                account_count=len(accounts),
+                message=f"已連線 ({result.account_count} 個帳號)",
+                account_count=result.account_count,
             )
         except OutlookConnectionError as e:
             return OutlookStatus(status=CheckStatus.ERROR, message=str(e))
@@ -392,13 +358,9 @@ class HomeScreen(Static):
             self.app.notify("⚠️ 沒有可執行的啟用 jobs", severity="warning")
             return False
 
-        client = OutlookClient()
-        issues: list[str] = []
-
         try:
-            client.connect()
-            issues = validate_enabled_jobs_with_client(
-                client,
+            preflight = PreflightCheckService()
+            result = preflight.run(
                 {"jobs": enabled_jobs},
             )
         except OutlookConnectionError as e:
@@ -407,15 +369,13 @@ class HomeScreen(Static):
         except Exception as e:
             self.app.notify(f"❌ 執行前檢查失敗: {e}", severity="error")
             return False
-        finally:
-            client.disconnect()
 
-        if issues:
-            for issue in issues[:3]:
+        if result.issues:
+            for issue in result.issues[:3]:
                 self.app.notify(f"⚠️ {issue}", severity="error")
-            if len(issues) > 3:
+            if len(result.issues) > 3:
                 self.app.notify(
-                    f"⚠️ 另有 {len(issues) - 3} 個 job 的 account/source 設定有誤",
+                    f"⚠️ 另有 {len(result.issues) - 3} 個 job 的 account/source 設定有誤",
                     severity="error",
                 )
             return False
@@ -424,7 +384,7 @@ class HomeScreen(Static):
 
     async def _execute_jobs(self) -> None:
         try:
-            results = await process_config_file(
+            await process_config_file(
                 CONFIG_PATH,
                 False,
                 preserve_reply_thread=self._preserve_reply_thread,
@@ -676,7 +636,6 @@ class MainConfigTab(Static):
                     str(job.get("limit", "")),
                 )
 
-            status = Static("✅ 設定檔格式正確", id="main-config-status")
             self.query_one("#main-config-title", Static).update(
                 "📄 主設定檔 (config/config.yaml) ✅"
             )

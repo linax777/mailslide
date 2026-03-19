@@ -6,8 +6,10 @@ import json
 import sys
 from pathlib import Path
 
+from .config import load_config
 from . import process_config_file
 from .logger import LoggerManager, get_logger
+from .services.preflight import PreflightCheckService
 
 
 async def async_main() -> int:
@@ -43,6 +45,11 @@ async def async_main() -> int:
         action="store_true",
         help="不移動郵件，僅擷取資料",
     )
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="跳過執行前 account/source 檢查",
+    )
 
     args = parser.parse_args()
 
@@ -52,6 +59,28 @@ async def async_main() -> int:
         return 1
 
     try:
+        if not args.skip_preflight:
+            config = load_config(args.config)
+            preflight = PreflightCheckService()
+            preflight_result = preflight.run(config)
+
+            if preflight_result.issues:
+                issue_preview = "\n".join(
+                    f"- {issue}" for issue in preflight_result.issues[:5]
+                )
+                if len(preflight_result.issues) > 5:
+                    issue_preview += (
+                        f"\n- ...另有 {len(preflight_result.issues) - 5} 個設定問題"
+                    )
+
+                logger.error(f"Preflight failed with config issues:\n{issue_preview}")
+                print(
+                    "錯誤: 執行前檢查失敗，請先修正設定檔的 account/source：\n"
+                    f"{issue_preview}",
+                    file=sys.stderr,
+                )
+                return 1
+
         results = await process_config_file(
             config_file=args.config,
             dry_run=args.dry_run,
