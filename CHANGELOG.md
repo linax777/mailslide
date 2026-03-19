@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
-## [2026-03-19]
+## [v0.2.0] - 2026-03-19
+
+### Highlights
+
+- Completed architecture improvement milestones PR-1 through PR-7, including service extraction, typed error layering, structured plugin results, capability-based plugin dispatch, DTO/action-port boundaries, and runtime-context dependency injection.
+- Unified CLI/TUI behavior through shared execution and preflight services, reducing duplicated UI business logic and improving consistency.
+- Improved testability and maintainability by replacing hardcoded paths/global state with injectable runtime dependencies and by expanding automated test coverage.
 
 ### Fixed
 
@@ -32,6 +38,9 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Introduced `EmailDTO` and `MailActionPort` to separate domain email data from Outlook COM side effects, and added `OutlookMailActionAdapter` as the infrastructure implementation.
 - Refactored `EmailProcessor` and built-in plugins to use the action port boundary instead of hidden `_message`/`_account` fields, so plugin behavior can be tested with fake ports without COM dependencies.
 - Updated plugin/core tests to validate the new DTO + action-port flow and preserve existing processing behavior.
+- Introduced runtime dependency wiring via `RuntimeContext`/`RuntimePaths` and updated CLI/TUI flows to consume injected paths, logger manager, and client factory instead of hardcoded module-level paths.
+- Refactored logger state into an injectable `LogSessionManager` while keeping `LoggerManager` as a backward-compatible static facade.
+- Extended `core.process_config_file` and `JobExecutionService` dependency injection points (runtime paths + logger + factories/loaders), reducing monkeypatch needs in tests.
 
 ## [2026-03-18]
 

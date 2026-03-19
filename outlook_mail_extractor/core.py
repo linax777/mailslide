@@ -1,6 +1,7 @@
 """Outlook connection and email processing core module"""
 
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import pythoncom
@@ -23,6 +24,7 @@ from .models import (
 )
 from .parser import extract_main_content, parse_tables
 from .plugins import PluginCapability, get_plugin, load_plugin_configs
+from .runtime import RuntimeContext, get_runtime_context
 
 
 class OutlookConnectionError(InfrastructureError):
@@ -554,6 +556,13 @@ async def process_config_file(
     no_move: bool = False,
     preserve_reply_thread: bool = True,
     max_length: int = 800,
+    runtime_context: RuntimeContext | None = None,
+    client_factory: Callable[[], OutlookClient] | None = None,
+    processor_factory: Callable[..., EmailProcessor] = EmailProcessor,
+    config_loader: Callable[[Path | str], dict] | None = None,
+    llm_config_loader: Callable[[str | None], Any] = load_llm_config,
+    llm_client_factory: Callable[[Any], LLMClient] = LLMClient,
+    plugin_config_loader: Callable[[Path], dict] = load_plugin_configs,
 ) -> dict:
     """
     Process config file with LLM analysis and plugins.
@@ -564,6 +573,13 @@ async def process_config_file(
         no_move: Skip moving emails to destination folder
         preserve_reply_thread: Keep RE/FW thread content when parsing bodies
         max_length: Fallback body max length when config does not override
+        runtime_context: Optional runtime dependency context
+        client_factory: Optional Outlook client factory override
+        processor_factory: Email processor factory
+        config_loader: Optional config loader override
+        llm_config_loader: LLM config loader
+        llm_client_factory: LLM client factory
+        plugin_config_loader: Plugin config loader
 
     Returns:
         All job results
@@ -571,13 +587,19 @@ async def process_config_file(
     from .config import load_config
     from .services.job_execution import JobExecutionService
 
+    context = runtime_context or get_runtime_context()
+    resolved_client_factory = client_factory or context.client_factory
+    resolved_config_loader = config_loader or load_config
     service = JobExecutionService(
-        client_factory=OutlookClient,
-        processor_factory=EmailProcessor,
-        config_loader=load_config,
-        llm_config_loader=load_llm_config,
-        llm_client_factory=LLMClient,
-        plugin_config_loader=load_plugin_configs,
+        client_factory=resolved_client_factory,
+        processor_factory=processor_factory,
+        config_loader=resolved_config_loader,
+        llm_config_loader=llm_config_loader,
+        llm_client_factory=llm_client_factory,
+        plugin_config_loader=plugin_config_loader,
+        logger_manager=context.logger_manager,
+        default_llm_config_path=context.paths.llm_config_file,
+        default_plugin_config_dir=context.paths.plugins_dir,
     )
     return await service.process_config_file(
         config_file=config_file,

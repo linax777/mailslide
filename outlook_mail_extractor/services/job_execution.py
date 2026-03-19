@@ -7,10 +7,11 @@ from typing import Any
 from ..config import load_config
 from ..core import EmailProcessor, OutlookClient
 from ..llm import LLMClient, load_llm_config
-from ..logger import LoggerManager, get_logger
+from ..logger import get_default_logger_manager, get_logger
 from ..models import DomainError, InfrastructureError, UserVisibleError
 from ..parser import clean_invisible_chars
 from ..plugins import load_plugin_configs
+from ..runtime import LoggerManagerProtocol
 
 
 class JobExecutionService:
@@ -24,6 +25,9 @@ class JobExecutionService:
         llm_config_loader: Callable[[str | None], Any] = load_llm_config,
         llm_client_factory: Callable[[Any], LLMClient] = LLMClient,
         plugin_config_loader: Callable[[Path], dict] = load_plugin_configs,
+        logger_manager: LoggerManagerProtocol | None = None,
+        default_llm_config_path: Path = Path("config/llm-config.yaml"),
+        default_plugin_config_dir: Path = Path("config/plugins"),
     ):
         self._client_factory = client_factory
         self._processor_factory = processor_factory
@@ -31,32 +35,41 @@ class JobExecutionService:
         self._llm_config_loader = llm_config_loader
         self._llm_client_factory = llm_client_factory
         self._plugin_config_loader = plugin_config_loader
+        self._logger_manager = logger_manager or get_default_logger_manager()
+        self._default_llm_config_path = default_llm_config_path
+        self._default_plugin_config_dir = default_plugin_config_dir
 
     def _resolve_runtime_paths(
         self, config_file: Path | str
-    ) -> tuple[Path, Path | None, Path]:
+    ) -> tuple[Path, Path, Path]:
         """Resolve LLM/plugin config paths relative to target config file."""
         config_path = Path(config_file)
         config_dir = config_path.parent
 
         llm_config_path = config_dir / "llm-config.yaml"
-        resolved_llm_config = llm_config_path if llm_config_path.exists() else None
+        resolved_llm_config = (
+            llm_config_path
+            if llm_config_path.exists()
+            else self._default_llm_config_path
+        )
 
         plugin_config_dir = config_dir / "plugins"
         resolved_plugin_dir = (
-            plugin_config_dir if plugin_config_dir.exists() else Path("config/plugins")
+            plugin_config_dir
+            if plugin_config_dir.exists()
+            else self._default_plugin_config_dir
         )
-        return config_path, resolved_llm_config, resolved_plugin_dir
+        return config_path, resolved_llm_config, Path(resolved_plugin_dir)
 
     def _ensure_log_session(self) -> None:
         """Start a log session only when none exists."""
         logger = get_logger()
-        existing_log_path = LoggerManager.get_current_log_path()
+        existing_log_path = self._logger_manager.get_current_log_path()
         if existing_log_path:
             logger.info(f"使用現有日誌 session: {existing_log_path}")
             return
 
-        log_path = LoggerManager.start_session(enable_ui_sink=False)
+        log_path = self._logger_manager.start_session(enable_ui_sink=False)
         logger.info(f"開始執行，日誌文件: {log_path}")
 
     async def process_config_file(
@@ -93,9 +106,7 @@ class JobExecutionService:
         _config_path, resolved_llm_config, resolved_plugin_dir = (
             self._resolve_runtime_paths(config_file)
         )
-        logger.info(
-            f"LLM config path: {resolved_llm_config or 'config/llm-config.yaml'}"
-        )
+        logger.info(f"LLM config path: {resolved_llm_config}")
         logger.info(f"Plugin config dir: {resolved_plugin_dir}")
 
         try:
@@ -105,9 +116,7 @@ class JobExecutionService:
             client = self._client_factory()
             client.connect()
 
-            llm_config = self._llm_config_loader(
-                str(resolved_llm_config) if resolved_llm_config else None
-            )
+            llm_config = self._llm_config_loader(str(resolved_llm_config))
             if llm_config.api_base:
                 llm_client = self._llm_client_factory(llm_config)
                 logger.info(f"LLM 客戶端已初始化: {llm_config.model}")

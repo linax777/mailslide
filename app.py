@@ -1,7 +1,5 @@
 """Outlook Mail Extractor - 應用程式入口"""
 
-from pathlib import Path
-
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Horizontal, Middle
@@ -15,8 +13,7 @@ from outlook_mail_extractor.screens import (
     ScheduleScreen,
     UsageScreen,
 )
-
-CONFIG_PATH = Path(__file__).parent / "config" / "config.yaml"
+from outlook_mail_extractor.runtime import get_runtime_context
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -44,32 +41,36 @@ class OutlookMailExtractor(App):
     ]
 
     def compose(self) -> ComposeResult:
+        runtime = get_runtime_context()
         yield Header()
         yield Footer()
         with TabbedContent(initial="home"):
             with TabPane("Home", id="home"):
-                yield HomeScreen()
+                yield HomeScreen(runtime_context=runtime)
             with TabPane("Schedule", id="schedule"):
                 yield ScheduleScreen()
             with TabPane("Guide", id="usage"):
-                yield UsageScreen()
+                yield UsageScreen(runtime_context=runtime)
             with TabPane("Configuration", id="config"):
-                yield ConfigScreen()
+                yield ConfigScreen(runtime_context=runtime)
             with TabPane("About", id="about"):
-                yield AboutScreen()
+                yield AboutScreen(runtime_context=runtime)
 
     def action_show_tab(self, tab: str) -> None:
         self.get_child_by_type(TabbedContent).active = tab
 
     def on_mount(self) -> None:
+        runtime = get_runtime_context()
         self.title = "Outlook Mail Extractor"
         self.sub_title = "提取郵件內文"
-        if not CONFIG_PATH.exists():
+        if not runtime.paths.config_file.exists():
             self.call_after_refresh(self._show_first_run_guidance)
 
     def _show_first_run_guidance(self) -> None:
         self.action_show_tab("about")
-        self.notify("尚未初始化設定，請到 About 分頁按「初始化設定」", severity="warning")
+        self.notify(
+            "尚未初始化設定，請到 About 分頁按「初始化設定」", severity="warning"
+        )
 
     def action_toggle_dark(self) -> None:
         self.theme = (

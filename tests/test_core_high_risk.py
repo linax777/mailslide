@@ -10,6 +10,8 @@ from outlook_mail_extractor.core import (
 )
 from outlook_mail_extractor.models import EmailDTO
 from outlook_mail_extractor.plugins import PluginCapability
+from outlook_mail_extractor.logger import LogSessionManager
+from outlook_mail_extractor.runtime import RuntimeContext, RuntimePaths
 
 
 class DummyMessage:
@@ -193,7 +195,7 @@ def test_llm_required_plugin_reports_failure_when_llm_missing() -> None:
 
 
 def test_process_config_file_prefers_config_relative_llm_and_plugins(
-    monkeypatch, tmp_path: Path
+    tmp_path: Path,
 ) -> None:
     config_dir = tmp_path / "custom"
     config_dir.mkdir(parents=True, exist_ok=True)
@@ -225,21 +227,38 @@ def test_process_config_file_prefers_config_relative_llm_and_plugins(
         calls["llm"] = path
         return SimpleNamespace(api_base="", model="")
 
-    def fake_load_plugin_configs(path="config/plugins"):
+    def fake_load_plugin_configs(path: Path):
         calls["plugins"] = path
         return {}
 
-    monkeypatch.setattr("outlook_mail_extractor.core.OutlookClient", FakeOutlookClient)
-    monkeypatch.setattr(
-        "outlook_mail_extractor.core.load_llm_config", fake_load_llm_config
+    runtime_context = RuntimeContext(
+        paths=RuntimePaths(
+            project_root=tmp_path,
+            config_dir=config_dir,
+            config_file=config_file,
+            llm_config_file=tmp_path / "fallback" / "llm-config.yaml",
+            plugins_dir=tmp_path / "fallback" / "plugins",
+            logging_config_file=tmp_path / "config" / "logging.yaml",
+            logs_dir=tmp_path / "logs",
+            readme_file=tmp_path / "README.md",
+        ),
+        logger_manager=LogSessionManager(
+            log_dir=tmp_path / "logs",
+            log_config_path=tmp_path / "config" / "logging.yaml",
+        ),
+        client_factory=FakeOutlookClient,
     )
-    monkeypatch.setattr(
-        "outlook_mail_extractor.core.load_plugin_configs", fake_load_plugin_configs
-    )
-    monkeypatch.setattr("outlook_mail_extractor.config.load_config", fake_load_config)
 
     asyncio.run(
-        process_config_file(config_file=config_file, dry_run=True, no_move=True)
+        process_config_file(
+            config_file=config_file,
+            dry_run=True,
+            no_move=True,
+            runtime_context=runtime_context,
+            config_loader=fake_load_config,
+            llm_config_loader=fake_load_llm_config,
+            plugin_config_loader=fake_load_plugin_configs,
+        )
     )
 
     assert calls["llm"] == str(config_dir / "llm-config.yaml")

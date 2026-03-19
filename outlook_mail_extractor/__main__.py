@@ -7,14 +7,16 @@ import sys
 from pathlib import Path
 
 from .config import load_config
-from .logger import LoggerManager, get_logger
+from .logger import get_logger
+from .runtime import get_runtime_context
 from .services.job_execution import JobExecutionService
 from .services.preflight import PreflightCheckService
 
 
 async def async_main() -> int:
     """CLI 主函式"""
-    LoggerManager.start_session()
+    runtime = get_runtime_context()
+    runtime.logger_manager.start_session()
     logger = get_logger()
     logger.info("命令列執行開始")
 
@@ -61,7 +63,7 @@ async def async_main() -> int:
     try:
         if not args.skip_preflight:
             config = load_config(args.config)
-            preflight = PreflightCheckService()
+            preflight = PreflightCheckService(client_factory=runtime.client_factory)
             preflight_result = preflight.run(config)
 
             if preflight_result.issues:
@@ -81,7 +83,12 @@ async def async_main() -> int:
                 )
                 return 1
 
-        execution_service = JobExecutionService()
+        execution_service = JobExecutionService(
+            client_factory=runtime.client_factory,
+            logger_manager=runtime.logger_manager,
+            default_llm_config_path=runtime.paths.llm_config_file,
+            default_plugin_config_dir=runtime.paths.plugins_dir,
+        )
         results = await execution_service.process_config_file(
             config_file=args.config,
             dry_run=args.dry_run,

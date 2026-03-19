@@ -3,7 +3,6 @@
 import asyncio
 import re
 from datetime import datetime
-from pathlib import Path
 
 import pycron
 from textual.app import ComposeResult
@@ -26,7 +25,7 @@ from textual.worker import Worker
 from outlook_mail_extractor.config import load_config
 from outlook_mail_extractor.core import OutlookConnectionError
 from outlook_mail_extractor.llm import load_llm_config
-from outlook_mail_extractor.logger import LoggerManager
+from outlook_mail_extractor.runtime import RuntimeContext, get_runtime_context
 from outlook_mail_extractor.services.job_execution import JobExecutionService
 from outlook_mail_extractor.services.preflight import PreflightCheckService
 
@@ -43,15 +42,15 @@ def truncate(text: str | None, max_len: int = MAX_CELL_LENGTH) -> str:
     return text
 
 
-CONFIG_PATH = Path(__file__).parent.parent / "config" / "config.yaml"
-LLM_CONFIG_PATH = Path(__file__).parent.parent / "config" / "llm-config.yaml"
-PLUGINS_DIR = Path(__file__).parent.parent / "config" / "plugins"
-
 LEVEL_PRIORITY = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3}
 
 
 class UsageScreen(Static):
     """使用說明分頁"""
+
+    def __init__(self, runtime_context: RuntimeContext | None = None):
+        super().__init__()
+        self._runtime = runtime_context or get_runtime_context()
 
     def compose(self) -> ComposeResult:
         content = self._get_usage_content()
@@ -59,7 +58,7 @@ class UsageScreen(Static):
             yield MarkdownViewer(content)
 
     def _get_usage_content(self) -> str:
-        readme_path = Path(__file__).parent.parent / "README.md"
+        readme_path = self._runtime.paths.readme_file
         if readme_path.exists():
             return readme_path.read_text(encoding="utf-8")
         return "# 使用說明\n\n請參考 README.md"
@@ -68,11 +67,14 @@ class UsageScreen(Static):
 class AboutScreen(Container):
     """About 標籤頁 - 系統狀態檢查"""
 
-    CONFIG_DIR = Path("config")
     SAMPLE_SUFFIX = ".yaml.sample"
-    VERSION = "0.1.8"
+    VERSION = "0.2"
     AUTHOR = "linax777"
     REPO_URL = "https://github.com/linax777/outlook-mail-extractor"
+
+    def __init__(self, runtime_context: RuntimeContext | None = None):
+        super().__init__()
+        self._runtime = runtime_context or get_runtime_context()
 
     def compose(self) -> ComposeResult:
         yield Static("🔧 系統狀態", id="status-title")
@@ -102,9 +104,10 @@ class AboutScreen(Container):
         btn.disabled = all_exist
 
     def _check_all_configs_exist(self) -> bool:
-        if not self.CONFIG_DIR.exists():
+        config_dir = self._runtime.paths.config_dir
+        if not config_dir.exists():
             return False
-        sample_files = list(self.CONFIG_DIR.rglob(f"*{self.SAMPLE_SUFFIX}"))
+        sample_files = list(config_dir.rglob(f"*{self.SAMPLE_SUFFIX}"))
         for sample in sample_files:
             yaml_path = sample.with_suffix("")
             if not yaml_path.exists():
@@ -114,9 +117,10 @@ class AboutScreen(Container):
     def _init_configs(self) -> tuple[int, int]:
         copied = 0
         skipped = 0
-        if not self.CONFIG_DIR.exists():
+        config_dir = self._runtime.paths.config_dir
+        if not config_dir.exists():
             return (copied, skipped)
-        sample_files = list(self.CONFIG_DIR.rglob(f"*{self.SAMPLE_SUFFIX}"))
+        sample_files = list(config_dir.rglob(f"*{self.SAMPLE_SUFFIX}"))
         for sample in sample_files:
             yaml_path = sample.with_suffix("")
             if yaml_path.exists():
@@ -137,7 +141,7 @@ class AboutScreen(Container):
         return SystemStatus(config=config_status, outlook=outlook_status)
 
     def _check_config(self) -> ConfigStatus:
-        config_path = CONFIG_PATH
+        config_path = self._runtime.paths.config_file
         if not config_path.exists():
             return ConfigStatus(
                 status=CheckStatus.ERROR,
@@ -152,8 +156,11 @@ class AboutScreen(Container):
 
     def _check_outlook(self) -> OutlookStatus:
         try:
-            config = load_config(CONFIG_PATH) if CONFIG_PATH.exists() else None
-            preflight = PreflightCheckService()
+            config_path = self._runtime.paths.config_file
+            config = load_config(config_path) if config_path.exists() else None
+            preflight = PreflightCheckService(
+                client_factory=self._runtime.client_factory,
+            )
             result = preflight.run(config) if config else preflight.run({"jobs": []})
 
             if result.issues:
@@ -210,8 +217,9 @@ class HomeScreen(Static):
     }
     """
 
-    def __init__(self):
+    def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
+        self._runtime = runtime_context or get_runtime_context()
         self._scheduler_enabled = False
         self._cron_expression = "0 * * * *"
         self._last_run_time = None
@@ -250,7 +258,8 @@ class HomeScreen(Static):
         run_button = self.query_one("#run-jobs", Button)
         table.clear(columns=True)
 
-        if not CONFIG_PATH.exists():
+        config_path = self._runtime.paths.config_file
+        if not config_path.exists():
             status.update("⚠️ 尚未初始化設定，請到 About 分頁按「初始化設定」。")
             table.add_columns("狀態", "說明")
             table.add_row("未初始化", "找不到 config/config.yaml")
@@ -258,7 +267,7 @@ class HomeScreen(Static):
             return
 
         try:
-            config = load_config(CONFIG_PATH)
+            config = load_config(config_path)
             status.update("")
             table.add_columns("#", "啟用", "名稱", "帳號", "來源", "目標", "Plugins")
             run_button.disabled = False
@@ -316,8 +325,8 @@ class HomeScreen(Static):
         def ui_sink(message: str) -> None:
             self.app.call_from_thread(log_widget.write_line, message)
 
-        LoggerManager.set_ui_sink(ui_sink)
-        LoggerManager.start_session(enable_ui_sink=True)
+        self._runtime.logger_manager.set_ui_sink(ui_sink)
+        self._runtime.logger_manager.start_session(enable_ui_sink=True)
 
         self._set_job_running_state(True)
         self._job_worker = self.run_worker(
@@ -344,7 +353,7 @@ class HomeScreen(Static):
     def _validate_jobs_before_run(self) -> bool:
         """Validate enabled jobs before starting execution."""
         try:
-            config = load_config(CONFIG_PATH)
+            config = load_config(self._runtime.paths.config_file)
         except Exception as e:
             self.app.notify(f"❌ 無法載入設定檔: {e}", severity="error")
             return False
@@ -357,7 +366,9 @@ class HomeScreen(Static):
             return False
 
         try:
-            preflight = PreflightCheckService()
+            preflight = PreflightCheckService(
+                client_factory=self._runtime.client_factory,
+            )
             result = preflight.run(
                 {"jobs": enabled_jobs},
             )
@@ -382,9 +393,14 @@ class HomeScreen(Static):
 
     async def _execute_jobs(self) -> None:
         try:
-            execution_service = JobExecutionService()
+            execution_service = JobExecutionService(
+                client_factory=self._runtime.client_factory,
+                logger_manager=self._runtime.logger_manager,
+                default_llm_config_path=self._runtime.paths.llm_config_file,
+                default_plugin_config_dir=self._runtime.paths.plugins_dir,
+            )
             await execution_service.process_config_file(
-                CONFIG_PATH,
+                self._runtime.paths.config_file,
                 False,
                 preserve_reply_thread=self._preserve_reply_thread,
             )
@@ -398,7 +414,7 @@ class HomeScreen(Static):
             self.call_later(self._update_log, error_msg)
         finally:
             self._job_worker = None
-            LoggerManager.set_ui_sink(None)
+            self._runtime.logger_manager.set_ui_sink(None)
             self.call_later(self._set_job_running_state, False)
 
     def _update_log(self, text: str) -> None:
@@ -589,6 +605,10 @@ class ScheduleScreen(Static):
 class MainConfigTab(Static):
     """一般設定分頁"""
 
+    def __init__(self, runtime_context: RuntimeContext | None = None):
+        super().__init__()
+        self._runtime = runtime_context or get_runtime_context()
+
     def compose(self) -> ComposeResult:
         yield Static("📄 主設定檔 (config/config.yaml)", id="main-config-title")
         yield TextArea("", id="main-config-content", read_only=True)
@@ -603,7 +623,8 @@ class MainConfigTab(Static):
         table = self.query_one("#jobs-table", DataTable)
         table.clear(columns=True)
 
-        if not CONFIG_PATH.exists():
+        config_path = self._runtime.paths.config_file
+        if not config_path.exists():
             content_widget.load_text(
                 "⚠️ 找不到 config/config.yaml\n\n請先到 About 分頁按「初始化設定」。"
             )
@@ -613,10 +634,10 @@ class MainConfigTab(Static):
             return
 
         try:
-            content = CONFIG_PATH.read_text(encoding="utf-8")
+            content = config_path.read_text(encoding="utf-8")
             content_widget.load_text(content)
 
-            config = load_config(CONFIG_PATH)
+            config = load_config(config_path)
             table.clear()
 
             table.add_columns(
@@ -656,6 +677,10 @@ class LLMConfigTab(Static):
     }
     """
 
+    def __init__(self, runtime_context: RuntimeContext | None = None):
+        super().__init__()
+        self._runtime = runtime_context or get_runtime_context()
+
     def compose(self) -> ComposeResult:
         with Vertical(id="llm-main"):
             yield Static("🤖 LLM 設定 (config/llm-config.yaml)", id="llm-config-title")
@@ -688,11 +713,12 @@ class LLMConfigTab(Static):
         table = self.query_one("#llm-table", DataTable)
 
         try:
-            content = LLM_CONFIG_PATH.read_text(encoding="utf-8")
+            llm_config_path = self._runtime.paths.llm_config_file
+            content = llm_config_path.read_text(encoding="utf-8")
             masked_content = re.sub(r"(api_key:\s*).+", r"\1***", content)
             content_widget.load_text(masked_content)
 
-            llm_config = load_llm_config()
+            llm_config = load_llm_config(str(llm_config_path))
             table.clear()
             table.add_columns("項目", "值")
             table.add_row("Provider", llm_config.provider)
@@ -714,7 +740,8 @@ class LLMConfigTab(Static):
             self._test_llm_connection()
 
     def _test_llm_connection(self) -> None:
-        if not LLM_CONFIG_PATH.exists():
+        llm_config_path = self._runtime.paths.llm_config_file
+        if not llm_config_path.exists():
             self.app.notify(
                 "❌ llm-config.yaml 不存在，請先建立設定檔",
                 severity="error",
@@ -730,7 +757,7 @@ class LLMConfigTab(Static):
 
     async def _execute_test(self) -> None:
         try:
-            llm_config = load_llm_config()
+            llm_config = load_llm_config(str(self._runtime.paths.llm_config_file))
             from outlook_mail_extractor.llm import LLMClient
 
             client = LLMClient(llm_config)
@@ -773,6 +800,10 @@ class LLMConfigTab(Static):
 class PluginsConfigTab(Static):
     """Plugin 設定分頁"""
 
+    def __init__(self, runtime_context: RuntimeContext | None = None):
+        super().__init__()
+        self._runtime = runtime_context or get_runtime_context()
+
     def compose(self) -> ComposeResult:
         with Vertical(id="plugin-main"):
             yield Static("📦 Plugins", id="plugin-list-title")
@@ -798,12 +829,13 @@ class PluginsConfigTab(Static):
         table.clear()
         table.add_columns("Plugin 名稱", "狀態")
 
-        if not PLUGINS_DIR.exists():
+        plugins_dir = self._runtime.paths.plugins_dir
+        if not plugins_dir.exists():
             title.update("📦 Plugins (目錄不存在)")
             table.add_row("❌ plugins 目錄不存在", "")
             return
 
-        plugin_files = sorted(PLUGINS_DIR.glob("*.yaml*"))
+        plugin_files = sorted(plugins_dir.glob("*.yaml*"))
 
         if not plugin_files:
             title.update("📦 Plugins (0 個)")
@@ -836,8 +868,9 @@ class PluginsConfigTab(Static):
     def _load_plugin_content(self, plugin_name: str) -> None:
         content_widget = self.query_one("#plugin-content", TextArea)
 
-        sample_path = PLUGINS_DIR / f"{plugin_name}.yaml.sample"
-        normal_path = PLUGINS_DIR / f"{plugin_name}.yaml"
+        plugins_dir = self._runtime.paths.plugins_dir
+        sample_path = plugins_dir / f"{plugin_name}.yaml.sample"
+        normal_path = plugins_dir / f"{plugin_name}.yaml"
 
         file_path = normal_path if normal_path.exists() else sample_path
 
@@ -861,11 +894,15 @@ class PluginsConfigTab(Static):
 class ConfigScreen(Static):
     """Configuration 標籤頁 - 設定檔檢視"""
 
+    def __init__(self, runtime_context: RuntimeContext | None = None):
+        super().__init__()
+        self._runtime = runtime_context or get_runtime_context()
+
     def compose(self) -> ComposeResult:
         with TabbedContent(initial="main"):
             with TabPane("一般設定", id="main"):
-                yield MainConfigTab()
+                yield MainConfigTab(runtime_context=self._runtime)
             with TabPane("LLM 設定", id="llm"):
-                yield LLMConfigTab()
+                yield LLMConfigTab(runtime_context=self._runtime)
             with TabPane("Plugin 設定", id="plugins"):
-                yield PluginsConfigTab()
+                yield PluginsConfigTab(runtime_context=self._runtime)

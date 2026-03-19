@@ -10,7 +10,7 @@ from .core import (
     process_config_file,
 )
 from .llm import LLMClient, LLMConfig, LLMError, load_llm_config
-from .logger import LoggerManager, get_logger
+from .logger import LogSessionManager, LoggerManager, get_logger
 from .models import (
     AppError,
     CheckStatus,
@@ -27,6 +27,13 @@ from .models import (
     UserVisibleError,
 )
 from .parser import clean_content, clean_invisible_chars, parse_tables
+from .runtime import (
+    LoggerManagerProtocol,
+    RuntimeContext,
+    RuntimePaths,
+    build_runtime_paths,
+    get_runtime_context,
+)
 
 __version__ = "1.0.0"
 
@@ -67,5 +74,12 @@ __all__ = [
     "parse_tables",
     # Logger
     "LoggerManager",
+    "LogSessionManager",
     "get_logger",
+    # Runtime
+    "RuntimePaths",
+    "RuntimeContext",
+    "LoggerManagerProtocol",
+    "build_runtime_paths",
+    "get_runtime_context",
 ]
