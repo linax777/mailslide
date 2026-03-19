@@ -6,6 +6,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from ..models import PluginExecutionResult
 from . import BasePlugin, PluginConfig, register_plugin
 
 
@@ -60,28 +61,40 @@ class EventTablePlugin(BasePlugin):
         email_data: dict,
         llm_response: str,
         outlook_client,
-    ) -> bool:
+    ) -> PluginExecutionResult:
         """Write appointment data into CSV when LLM asks to create."""
         del outlook_client
         try:
             response_data = self._parse_response(llm_response)
             if response_data.get("action") != "appointment":
-                return False
+                return self.skipped_result(
+                    message="Action is not appointment",
+                    code="action_mismatch",
+                )
 
             if not response_data.get("create", False):
-                return True
+                return self.skipped_result(
+                    message="Create flag is false",
+                    code="create_false",
+                )
 
             event_subject = response_data.get("subject", "")
             start_str = response_data.get("start", "")
             end_str = response_data.get("end", "")
 
             if not event_subject or not start_str or not end_str:
-                return False
+                return self.failed_result(
+                    message="Missing subject/start/end",
+                    code="missing_fields",
+                )
 
             start = self._parse_datetime(start_str)
             end = self._parse_datetime(end_str)
             if not start or not end:
-                return False
+                return self.failed_result(
+                    message="Invalid datetime format",
+                    code="invalid_datetime",
+                )
 
             row = {
                 "email_subject": str(email_data.get("subject", "")),
@@ -106,9 +119,12 @@ class EventTablePlugin(BasePlugin):
                 if write_header:
                     writer.writeheader()
                 writer.writerow(row)
-            return True
-        except Exception:
-            return False
+            return self.success_result(message="Event appended to CSV")
+        except Exception as e:
+            return self.retriable_failed_result(
+                message=f"Unexpected error: {e}",
+                code="unexpected_error",
+            )
 
     def _parse_datetime(self, dt_str: str) -> datetime | None:
         """Parse ISO-like datetime string."""

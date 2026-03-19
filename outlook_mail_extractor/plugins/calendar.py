@@ -4,6 +4,7 @@ from datetime import datetime
 
 from loguru import logger
 
+from ..models import PluginExecutionResult
 from . import BasePlugin, PluginConfig, register_plugin
 
 
@@ -43,7 +44,7 @@ class CreateAppointmentPlugin(BasePlugin):
         email_data: dict,
         llm_response: str,
         outlook_client,
-    ) -> bool:
+    ) -> PluginExecutionResult:
         """Create calendar appointment from email based on LLM response"""
         try:
             response_data = self._parse_response(llm_response)
@@ -51,16 +52,25 @@ class CreateAppointmentPlugin(BasePlugin):
 
             if response_data.get("action") != "appointment":
                 logger.info("[create_appointment] Action is not appointment")
-                return False
+                return self.skipped_result(
+                    message="Action is not appointment",
+                    code="action_mismatch",
+                )
 
             if not response_data.get("create", False):
                 logger.info("[create_appointment] create is false")
-                return False
+                return self.skipped_result(
+                    message="Create flag is false",
+                    code="create_false",
+                )
 
             subject = response_data.get("subject", "")
             if not subject:
                 logger.info("[create_appointment] subject is empty")
-                return False
+                return self.failed_result(
+                    message="Missing subject",
+                    code="missing_subject",
+                )
 
             start_str = response_data.get("start", "")
             end_str = response_data.get("end", "")
@@ -70,18 +80,27 @@ class CreateAppointmentPlugin(BasePlugin):
                 end = self._parse_datetime(end_str) if end_str else None
             except Exception as e:
                 logger.info(f"[create_appointment] Datetime parse error: {e}")
-                return False
+                return self.failed_result(
+                    message=f"Datetime parse error: {e}",
+                    code="invalid_datetime",
+                )
 
             if not start or not end:
                 logger.info(
                     f"[create_appointment] start or end is None: start={start}, end={end}"
                 )
-                return False
+                return self.failed_result(
+                    message="Missing or invalid start/end datetime",
+                    code="missing_datetime",
+                )
 
             account = email_data.get("_account")
             if not account:
                 logger.info("[create_appointment] account is missing in email_data")
-                return False
+                return self.failed_result(
+                    message="Missing _account in email_data",
+                    code="missing_account",
+                )
             logger.info(f"[create_appointment] Using account: {account}")
 
             try:
@@ -91,7 +110,10 @@ class CreateAppointmentPlugin(BasePlugin):
                 logger.info(
                     f"[create_appointment] Failed to get calendar folder: {type(e).__name__}: {e}"
                 )
-                return False
+                return self.retriable_failed_result(
+                    message=f"Failed to get calendar folder: {e}",
+                    code="calendar_lookup_failed",
+                )
 
             # Create appointment item
             appointment = calendar.Items.Add(1)  # 1 = olAppointmentItem
@@ -110,10 +132,13 @@ class CreateAppointmentPlugin(BasePlugin):
                         recipient.Resolve()
 
             appointment.Save()
-            return True
+            return self.success_result(message="Appointment created")
 
-        except Exception:
-            return False
+        except Exception as e:
+            return self.retriable_failed_result(
+                message=f"Unexpected error: {e}",
+                code="unexpected_error",
+            )
 
     def _parse_datetime(self, dt_str: str) -> datetime | None:
         """Parse ISO format datetime string"""

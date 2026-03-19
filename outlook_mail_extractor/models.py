@@ -79,12 +79,38 @@ class LLMConfigStatus:
     model: str = ""
 
 
+class PluginExecutionStatus(str, Enum):
+    """Standardized plugin execution status."""
+
+    SUCCESS = "success"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+    RETRIABLE_FAILED = "retriable_failed"
+
+
+@dataclass
+class PluginExecutionResult:
+    """Structured execution result returned by plugins."""
+
+    status: PluginExecutionStatus
+    code: str = ""
+    message: str = ""
+    details: dict = field(default_factory=dict)
+
+    @property
+    def success(self) -> bool:
+        """Return True when plugin execution is successful."""
+        return self.status == PluginExecutionStatus.SUCCESS
+
+
 @dataclass
 class PluginResult:
     """Result of plugin execution"""
 
     plugin_name: str
     success: bool
+    status: PluginExecutionStatus = PluginExecutionStatus.SUCCESS
+    code: str = ""
     message: str = ""
     details: dict = field(default_factory=dict)
 

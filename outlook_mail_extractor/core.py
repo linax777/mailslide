@@ -13,6 +13,8 @@ from .models import (
     EmailAnalysisResult,
     InfrastructureError,
     LLMConfigStatus,
+    PluginExecutionResult,
+    PluginExecutionStatus,
     PluginResult,
     UserVisibleError,
 )
@@ -168,6 +170,45 @@ class EmailProcessor:
             "_account": None,  # Will be set by caller
         }
 
+    def _normalize_plugin_execution_result(
+        self,
+        plugin_name: str,
+        execute_result: bool | PluginExecutionResult,
+    ) -> PluginExecutionResult:
+        """Normalize legacy bool plugin returns into structured results."""
+        if isinstance(execute_result, PluginExecutionResult):
+            return execute_result
+
+        if execute_result:
+            return PluginExecutionResult(
+                status=PluginExecutionStatus.SUCCESS,
+                message="Success",
+            )
+
+        return PluginExecutionResult(
+            status=PluginExecutionStatus.FAILED,
+            code="legacy_false",
+            message=f"Plugin {plugin_name} returned False",
+        )
+
+    def _build_plugin_result(
+        self,
+        plugin_name: str,
+        execute_result: bool | PluginExecutionResult,
+    ) -> PluginResult:
+        """Build PluginResult from legacy/new plugin result types."""
+        normalized = self._normalize_plugin_execution_result(
+            plugin_name, execute_result
+        )
+        return PluginResult(
+            plugin_name=plugin_name,
+            success=normalized.success,
+            status=normalized.status,
+            code=normalized.code,
+            message=normalized.message,
+            details=normalized.details,
+        )
+
     async def process_job(
         self,
         job_config: dict,
@@ -188,7 +229,10 @@ class EmailProcessor:
         Returns:
             List of EmailAnalysisResult
         """
-        account_name = job_config.get("account")
+        account_name_raw = job_config.get("account")
+        if not isinstance(account_name_raw, str) or not account_name_raw.strip():
+            raise DomainError("Job account is required")
+        account_name = account_name_raw
         source_folder = job_config.get("source", "Inbox")
         destination_folder = job_config.get("destination")
         limit = job_config.get("limit", 10)
@@ -291,22 +335,36 @@ class EmailProcessor:
             for plugin in plugins_no_llm:
                 logger.info(f"執行 Plugin (無需 LLM): {plugin.name}")
                 try:
-                    plugin_success = await plugin.execute(email_data, "", self._client)
-                    plugin_results.append(
-                        PluginResult(
-                            plugin_name=plugin.name,
-                            success=plugin_success,
-                            message="Success" if plugin_success else "Failed",
-                        )
+                    plugin_execute_result = await plugin.execute(
+                        email_data, "", self._client
                     )
-                    if plugin.name == "move_to_folder" and plugin_success:
+                    plugin_result = self._build_plugin_result(
+                        plugin.name,
+                        plugin_execute_result,
+                    )
+                    plugin_results.append(plugin_result)
+                    if plugin.name == "move_to_folder" and plugin_result.success:
                         moved_by_plugin = True
+
+                    if plugin_result.status == PluginExecutionStatus.SUCCESS:
+                        logger.info(f"Plugin {plugin.name}: success")
+                    elif plugin_result.status == PluginExecutionStatus.SKIPPED:
+                        logger.info(
+                            f"Plugin {plugin.name}: skipped ({plugin_result.message})"
+                        )
+                    else:
+                        logger.warning(
+                            f"Plugin {plugin.name}: {plugin_result.status.value} "
+                            f"({plugin_result.message})"
+                        )
                 except (DomainError, InfrastructureError, UserVisibleError) as e:
                     logger.exception(f"Plugin {plugin.name} error: {e}")
                     plugin_results.append(
                         PluginResult(
                             plugin_name=plugin.name,
                             success=False,
+                            status=PluginExecutionStatus.FAILED,
+                            code="typed_error",
                             message=f"Error: {e}",
                         )
                     )
@@ -319,6 +377,8 @@ class EmailProcessor:
                         PluginResult(
                             plugin_name=plugin.name,
                             success=False,
+                            status=PluginExecutionStatus.RETRIABLE_FAILED,
+                            code="unhandled_error",
                             message=f"Error: {wrapped}",
                         )
                     )
@@ -337,6 +397,8 @@ class EmailProcessor:
                         PluginResult(
                             plugin_name=plugin.name,
                             success=False,
+                            status=PluginExecutionStatus.FAILED,
+                            code="llm_unavailable",
                             message="LLM client not available",
                         )
                     )
@@ -373,30 +435,45 @@ class EmailProcessor:
                                         logger.info(
                                             f"跳過 Plugin {plugin.name}: create 為 false"
                                         )
+                                        plugin_results.append(
+                                            PluginResult(
+                                                plugin_name=plugin.name,
+                                                success=False,
+                                                status=PluginExecutionStatus.SKIPPED,
+                                                code="llm_skip_condition",
+                                                message="Skip by LLM response: create=false",
+                                            )
+                                        )
                                         continue
                             except Exception:
                                 pass
 
                         logger.info(f"執行 Plugin: {plugin.name}")
                         try:
-                            plugin_success = await plugin.execute(
+                            plugin_execute_result = await plugin.execute(
                                 email_data, llm_response, self._client
                             )
-                            plugin_results.append(
-                                PluginResult(
-                                    plugin_name=plugin.name,
-                                    success=plugin_success,
-                                    message="Success" if plugin_success else "Failed",
-                                )
+                            plugin_result = self._build_plugin_result(
+                                plugin.name,
+                                plugin_execute_result,
                             )
-                            if plugin.name == "move_to_folder" and plugin_success:
+                            plugin_results.append(plugin_result)
+                            if (
+                                plugin.name == "move_to_folder"
+                                and plugin_result.success
+                            ):
                                 moved_by_plugin = True
 
-                            if plugin_success:
-                                logger.info(f"Plugin {plugin.name}: Success")
+                            if plugin_result.status == PluginExecutionStatus.SUCCESS:
+                                logger.info(f"Plugin {plugin.name}: success")
+                            elif plugin_result.status == PluginExecutionStatus.SKIPPED:
+                                logger.info(
+                                    f"Plugin {plugin.name}: skipped ({plugin_result.message})"
+                                )
                             else:
                                 logger.warning(
-                                    f"Plugin {plugin.name}: Failed (回覆非預期格式)"
+                                    f"Plugin {plugin.name}: {plugin_result.status.value} "
+                                    f"({plugin_result.message})"
                                 )
                         except (
                             DomainError,
@@ -408,6 +485,8 @@ class EmailProcessor:
                                 PluginResult(
                                     plugin_name=plugin.name,
                                     success=False,
+                                    status=PluginExecutionStatus.FAILED,
+                                    code="typed_error",
                                     message=f"Error: {e}",
                                 )
                             )
@@ -420,6 +499,8 @@ class EmailProcessor:
                                 PluginResult(
                                     plugin_name=plugin.name,
                                     success=False,
+                                    status=PluginExecutionStatus.RETRIABLE_FAILED,
+                                    code="unhandled_error",
                                     message=f"Error: {wrapped}",
                                 )
                             )
