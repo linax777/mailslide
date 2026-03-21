@@ -15,7 +15,7 @@ class AboutScreen(Container):
     """About 標籤頁 - 系統狀態檢查"""
 
     SAMPLE_SUFFIX = ".yaml.sample"
-    VERSION = "0.2.2"
+    VERSION = "0.2.3"
     AUTHOR = "linax777"
     REPO_URL = "https://github.com/linax777/outlook-mail-extractor"
 
