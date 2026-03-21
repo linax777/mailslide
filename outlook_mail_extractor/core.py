@@ -141,7 +141,7 @@ class EmailProcessor:
     def __init__(
         self,
         client: OutlookClient,
-        preserve_reply_thread: bool = True,
+        preserve_reply_thread: bool = False,
         max_length: int = 800,
     ):
         """Initialize email processor."""
@@ -151,6 +151,7 @@ class EmailProcessor:
 
     def extract_email_data(self, message, max_length: int | None = None) -> EmailDTO:
         """Extract data from single email"""
+        logger = get_logger()
         raw_body = str(message.Body) if getattr(message, "Body", None) else ""
         html_body = str(message.HTMLBody) if getattr(message, "HTMLBody", None) else ""
         clean_body = extract_main_content(
@@ -159,6 +160,12 @@ class EmailProcessor:
             max_length=max_length or self._max_length,
             subject=str(message.Subject) if getattr(message, "Subject", None) else "",
             preserve_reply_thread=self._preserve_reply_thread,
+        )
+        logger.debug(
+            "郵件內文清理完成: plain=%d chars, html=%d chars, cleaned=%d chars",
+            len(raw_body),
+            len(html_body),
+            len(clean_body),
         )
 
         return EmailDTO(
@@ -553,7 +560,7 @@ async def process_config_file(
     config_file: Path | str = "config/config.yaml",
     dry_run: bool = False,
     no_move: bool = False,
-    preserve_reply_thread: bool = True,
+    preserve_reply_thread: bool = False,
     max_length: int = 800,
     runtime_context: RuntimeContext | None = None,
     client_factory: Callable[[], OutlookClient] | None = None,

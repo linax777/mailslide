@@ -77,7 +77,7 @@ class JobExecutionService:
         config_file: Path | str = "config/config.yaml",
         dry_run: bool = False,
         no_move: bool = False,
-        preserve_reply_thread: bool = True,
+        preserve_reply_thread: bool = False,
         max_length: int = 800,
     ) -> dict:
         """

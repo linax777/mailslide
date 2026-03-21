@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed reply/forward body cleanup so metadata header lines are consistently removed from multi-layer threads (`From/Sent/Date/To/Cc/Subject` and `寄件者/已傳送/寄件日期/收件者/收件人/副本/主旨`) even when preserving RE/FW thread content.
+- Fixed reply-thread trimming behavior to keep meaningful older body text instead of dropping everything after the first separator block in common reply chains.
+
+### Changed
+
+- Expanded parser header pattern matching to cover colon-spacing and mixed Chinese/English variants such as `副本(CC)` and `Date:` for more stable LLM input cleanup.
+- Added parser debug observability by logging pre/post cleanup body lengths during email extraction to help verify noise-reduction impact.
+- Added/updated parser tests for multi-layer metadata stripping and date-header variants; current parser suite now validates this cleanup path with `uv run pytest -q tests/test_parser.py`.
+
 ## [v0.2.2] - 2026-03-20
 
 ### Highlights

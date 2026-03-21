@@ -7,30 +7,38 @@ from bs4 import BeautifulSoup
 
 REPLY_SEPARATOR_PATTERNS = [
     r"^\s*-{2,}\s*Original Message\s*-{2,}\s*$",
-    r"^\s*From:\s.+$",
-    r"^\s*Sent:\s.+$",
-    r"^\s*To:\s.+$",
-    r"^\s*Subject:\s.+$",
+    r"^\s*From\s*[:：]\s*.+$",
+    r"^\s*Sent\s*[:：]\s*.+$",
+    r"^\s*Date\s*[:：]\s*.+$",
+    r"^\s*To\s*[:：]\s*.+$",
+    r"^\s*Cc\s*[:：]\s*.+$",
+    r"^\s*Subject\s*[:：]\s*.+$",
     r"^\s*On .+ wrote:\s*$",
-    r"^\s*寄件者[:：]\s*.+$",
-    r"^\s*收件者[:：]\s*.+$",
-    r"^\s*副本[:：]\s*.+$",
-    r"^\s*主旨[:：]\s*.+$",
+    r"^\s*寄件者\s*[:：]\s*.+$",
+    r"^\s*已傳送\s*[:：]\s*.+$",
+    r"^\s*寄件日期\s*[:：]\s*.+$",
+    r"^\s*收件者\s*[:：]\s*.+$",
+    r"^\s*收件人\s*[:：]\s*.+$",
+    r"^\s*副本\s*(?:\(CC\))?\s*[:：]\s*.+$",
+    r"^\s*主旨\s*[:：]\s*.+$",
 ]
 
 REPLY_HEADER_PATTERNS = [
     r"^\s*-{2,}\s*Original Message\s*-{2,}\s*$",
-    r"^\s*From:\s.+$",
-    r"^\s*Sent:\s.+$",
-    r"^\s*To:\s.+$",
-    r"^\s*Cc:\s.+$",
-    r"^\s*Subject:\s.+$",
+    r"^\s*From\s*[:：]\s*.+$",
+    r"^\s*Sent\s*[:：]\s*.+$",
+    r"^\s*Date\s*[:：]\s*.+$",
+    r"^\s*To\s*[:：]\s*.+$",
+    r"^\s*Cc\s*[:：]\s*.+$",
+    r"^\s*Subject\s*[:：]\s*.+$",
     r"^\s*On .+ wrote:\s*$",
-    r"^\s*寄件者[:：]\s*.+$",
-    r"^\s*已傳送[:：]\s*.+$",
-    r"^\s*收件者[:：]\s*.+$",
-    r"^\s*副本[:：]\s*.+$",
-    r"^\s*主旨[:：]\s*.+$",
+    r"^\s*寄件者\s*[:：]\s*.+$",
+    r"^\s*已傳送\s*[:：]\s*.+$",
+    r"^\s*寄件日期\s*[:：]\s*.+$",
+    r"^\s*收件者\s*[:：]\s*.+$",
+    r"^\s*收件人\s*[:：]\s*.+$",
+    r"^\s*副本\s*(?:\(CC\))?\s*[:：]\s*.+$",
+    r"^\s*主旨\s*[:：]\s*.+$",
 ]
 
 FORWARD_SUBJECT_PATTERNS = [
@@ -278,12 +286,19 @@ def strip_reply_thread_with_subject(text: str, subject: str = "") -> str:
         return text.strip()
 
     comment = "\n".join(lines[:separator_index]).strip()
+    forwarded_body = _extract_forwarded_body(lines, separator_index)
+
     if is_forward_subject(subject) and _is_short_forward_comment(comment):
-        forwarded_body = _extract_forwarded_body(lines, separator_index)
         if forwarded_body:
             if comment:
                 return f"{comment}\n\n{forwarded_body}".strip()
             return forwarded_body
+        return comment
+
+    if forwarded_body:
+        if comment:
+            return f"{comment}\n\n{forwarded_body}".strip()
+        return forwarded_body
 
     return comment
 
@@ -382,7 +397,7 @@ def clean_content(
     text: str,
     max_length: int = 800,
     subject: str = "",
-    preserve_reply_thread: bool = True,
+    preserve_reply_thread: bool = False,
 ) -> str:
     """
     清理郵件雜訊並保留段落結構。
@@ -391,7 +406,7 @@ def clean_content(
         text: 原始文字內容
         max_length: 最大輸出長度，預設 800
         subject: 郵件主旨，用於判斷是否為轉寄郵件
-        preserve_reply_thread: 是否保留 RE/FW 原始對話內容，預設 True
+        preserve_reply_thread: 是否保留 RE/FW 原始對話內容，預設 False
 
     Returns:
         清理後的文字
@@ -402,7 +417,7 @@ def clean_content(
     text = normalize_text(text)
     if not preserve_reply_thread:
         text = strip_reply_thread_with_subject(text, subject=subject)
-        text = strip_reply_headers(text)
+    text = strip_reply_headers(text)
     text = strip_signature(text)
     text = strip_footer(text)
 
@@ -422,7 +437,7 @@ def extract_main_content(
     html: str = "",
     max_length: int = 800,
     subject: str = "",
-    preserve_reply_thread: bool = True,
+    preserve_reply_thread: bool = False,
 ) -> str:
     """
     Extract the best available email body for downstream LLM processing.

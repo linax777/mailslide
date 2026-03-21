@@ -34,7 +34,7 @@ class HomeScreen(Static):
         self._cron_expression = "0 * * * *"
         self._last_run_time = None
         self._polling = False
-        self._preserve_reply_thread = True
+        self._preserve_reply_thread = False
         self._job_worker: Worker | None = None
 
     def compose(self) -> ComposeResult:
@@ -49,7 +49,7 @@ class HomeScreen(Static):
                 yield Button("⏹️ 終止", id="stop-jobs", variant="error", disabled=True)
                 yield Button("🔄 重新整理", id="refresh-jobs")
                 yield Button(
-                    "保留 RE/FW: ON",
+                    "保留 RE/FW: OFF",
                     id="toggle-preserve-reply-thread",
                     variant="default",
                 )
