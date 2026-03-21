@@ -39,6 +39,7 @@ class PluginsConfigTab(Static):
             yield DataTable(id="plugin-list", show_cursor=True, cursor_type="row")
             with Horizontal(id="plugin-actions"):
                 yield Button("🔄 重新整理", id="refresh-plugins", variant="primary")
+                yield Button("🧹 清理備份", id="cleanup-plugin-backups")
                 yield Button("🛠️ 編輯設定", id="edit-plugin", disabled=True)
             yield Static("📄 選取的 Plugin 設定", id="plugin-content-title")
             yield TextArea("", id="plugin-content", read_only=True)
@@ -52,6 +53,9 @@ class PluginsConfigTab(Static):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "refresh-plugins":
             self._load_plugins()
+            return
+        if event.button.id == "cleanup-plugin-backups":
+            self._cleanup_plugin_backups()
             return
         if event.button.id == "edit-plugin":
             self._open_plugin_editor()
@@ -72,7 +76,9 @@ class PluginsConfigTab(Static):
             table.add_row("❌ plugins 目錄不存在", "")
             return
 
-        plugin_files = sorted(plugins_dir.glob("*.yaml*"))
+        plugin_files = sorted(
+            [*plugins_dir.glob("*.yaml"), *plugins_dir.glob("*.yaml.sample")]
+        )
 
         if not plugin_files:
             title.update("📦 Plugins (0 個)")
@@ -218,3 +224,31 @@ class PluginsConfigTab(Static):
             payload,
             backup_path=normal_path.parent / f"{plugin_name}.yaml.bak",
         )
+
+    def _cleanup_backup_files(self) -> tuple[int, list[str]]:
+        plugins_dir = self._runtime.paths.plugins_dir
+        if not plugins_dir.exists():
+            return 0, []
+
+        removed = 0
+        failed: list[str] = []
+        for backup_path in plugins_dir.glob("*.yaml.bak"):
+            try:
+                backup_path.unlink()
+                removed += 1
+            except Exception:
+                failed.append(backup_path.name)
+        return removed, failed
+
+    def _cleanup_plugin_backups(self) -> None:
+        removed, failed = self._cleanup_backup_files()
+        self._load_plugins()
+
+        if failed:
+            preview = ", ".join(failed[:2])
+            if len(failed) > 2:
+                preview += f" 等 {len(failed)} 個"
+            self.app.notify(f"⚠️ 清理部分失敗: {preview}", severity="warning")
+            return
+
+        self.app.notify(f"✅ 已清理 {removed} 個備份檔", severity="information")

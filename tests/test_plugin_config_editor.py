@@ -29,6 +29,34 @@ class _FakeSelectionList:
         self.selected = selected
 
 
+class _FakeStatic:
+    def __init__(self) -> None:
+        self.content = ""
+
+    def update(self, content: str) -> None:
+        self.content = content
+
+
+class _FakeButton:
+    def __init__(self) -> None:
+        self.disabled = False
+
+
+class _FakeDataTable:
+    def __init__(self) -> None:
+        self.columns: tuple[str, ...] = ()
+        self.rows: list[tuple[str, str]] = []
+
+    def clear(self) -> None:
+        self.rows = []
+
+    def add_columns(self, *columns: str) -> None:
+        self.columns = columns
+
+    def add_row(self, col1: str, col2: str) -> None:
+        self.rows.append((col1, col2))
+
+
 class _FakeLoggerManager:
     def set_ui_sink(self, callback: Any) -> None:
         del callback
@@ -206,3 +234,59 @@ def test_plugin_config_editor_response_json_time_fields_are_locked() -> None:
     assert parsed["create"] is False
     assert parsed["start"] == "2024-01-15T14:00:00"
     assert parsed["end"] == "2024-01-15T15:00:00"
+
+
+def test_plugins_config_tab_load_plugins_ignores_backup_files(tmp_path: Path) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.plugins_dir.mkdir(parents=True, exist_ok=True)
+
+    (runtime.paths.plugins_dir / "event_table.yaml.sample").write_text(
+        "enabled: true\n", encoding="utf-8"
+    )
+    (runtime.paths.plugins_dir / "event_table.yaml").write_text(
+        "enabled: false\n", encoding="utf-8"
+    )
+    (runtime.paths.plugins_dir / "event_table.yaml.bak").write_text(
+        "enabled: true\n", encoding="utf-8"
+    )
+    (runtime.paths.plugins_dir / "summary_file.yaml.bak").write_text(
+        "enabled: true\n", encoding="utf-8"
+    )
+
+    tab = PluginsConfigTab(runtime_context=runtime)
+    title = _FakeStatic()
+    table = _FakeDataTable()
+    edit_button = _FakeButton()
+
+    widgets: dict[str, Any] = {
+        "plugin-list-title": title,
+        "plugin-list": table,
+        "edit-plugin": edit_button,
+    }
+    tab.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+
+    tab._load_plugins()
+
+    assert table.rows == [("event_table", "active")]
+    assert title.content == "📦 Plugins (1 個)"
+
+
+def test_plugins_config_tab_cleanup_backup_files(tmp_path: Path) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.plugins_dir.mkdir(parents=True, exist_ok=True)
+
+    backup1 = runtime.paths.plugins_dir / "event_table.yaml.bak"
+    backup2 = runtime.paths.plugins_dir / "summary_file.yaml.bak"
+    active = runtime.paths.plugins_dir / "event_table.yaml"
+    backup1.write_text("enabled: true\n", encoding="utf-8")
+    backup2.write_text("enabled: true\n", encoding="utf-8")
+    active.write_text("enabled: false\n", encoding="utf-8")
+
+    tab = PluginsConfigTab(runtime_context=runtime)
+    removed, failed = tab._cleanup_backup_files()
+
+    assert removed == 2
+    assert failed == []
+    assert not backup1.exists()
+    assert not backup2.exists()
+    assert active.exists()

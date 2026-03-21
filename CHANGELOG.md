@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [un-released]
+
+### Fixed
+
+- Fixed Plugin Configuration tab file discovery so backup files (`*.yaml.bak`) are no longer treated as editable plugin entries, preventing phantom `*.yaml` rows that failed with "file not found" when opened.
+
+### Changed
+
+- Added a new Plugin tab action button `🧹 清理備份` to remove stale plugin backup files (`config/plugins/*.yaml.bak`) and refresh the plugin list in place.
+- Extended plugin-config tests to cover both backup-file filtering in the plugin list and backup cleanup behavior.
+
+
 ## [v0.2.3] - 2026-03-21
 
 ### Fixed
