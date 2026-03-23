@@ -22,6 +22,7 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 - Extended prompt-profile sample/UI schema coverage to all built-in LLM plugins (`move_to_folder`, `create_appointment`, `event_table`, `summary_file`), so Plugin Configuration modal now shows the same OptionList-based profile editor for each of them.
 - Updated Plugin Configuration modal UX for `prompt_profiles` editing: replaced raw YAML-only workflow with an OptionList-based profile switcher and per-profile detail editor (`version`, `description`, `system_prompt`).
 - Added profile management controls in Plugin Configuration modal (`+ 新增` / `- 刪除`) to create and remove prompt profiles interactively while enforcing at least one remaining profile.
+- Updated `config/config.yaml.sample` to show `plugin_prompt_profiles` under each job (per-job scope) and removed the misleading top-level example.
 - Updated README with a dedicated "同 Plugin 多 Prompt（Prompt Profiles）" section describing profile structure, job-level selection, and resolution order.
 
 

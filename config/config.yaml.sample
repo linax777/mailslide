@@ -10,6 +10,7 @@
 #   - limit: Max emails to process per job
 #   - body_max_length: Max cleaned body length for LLM/input (optional)
 #   - plugins: List of plugins to run (LLM analysis)
+#   - plugin_prompt_profiles: Per-job prompt profile mapping (optional)
 #
 # IMPORTANT:
 #   - Use "destination" for simple auto-move (no LLM needed)
@@ -40,15 +41,10 @@ jobs:
     plugins:
       - add_category
       - create_appointment
-
-# Plugin prompt profiles: specify which prompt profile each plugin should use for this job.
-# This allows the same plugin to use different system prompts in different jobs.
-# Format: plugin_name: profile_key (defined in plugin's prompt_profiles)
-# Example:
-#   plugin_prompt_profiles:
-#     add_category: invoice_v1
-#     create_appointment: meeting_v2
-plugin_prompt_profiles: {}
+    # Specify prompt profile per plugin for this job only
+    plugin_prompt_profiles:
+      add_category: invoice_v1
+      create_appointment: general_v1
 
 # UI schema metadata for future TUI form builder.
 # Reserved key prefix: _ui / _meta (ignored by runtime execution logic).
