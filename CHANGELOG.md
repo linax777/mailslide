@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.2.6] - 2026-03-23
+
+### Changed
+
+- Changed LLM plugin orchestration default to `per_plugin`, so each LLM-enabled plugin now gets its own `llm_client.chat(...)` call and response parsing path, avoiding cross-plugin `action` collisions when multiple plugins are enabled in one job.
+- Added backward-compatible legacy mode `share_deprecated` that restores shared single-response behavior for migration scenarios, with explicit runtime warnings that this mode can cause `action_mismatch/skipped` outcomes across mixed-action plugins.
+- Added `llm_mode` support at both config scopes (`config.llm_mode` default + `job.llm_mode` override), with runtime resolution and alias mapping from legacy values (`shared`, `shared_legacy`) to `share_deprecated`.
+- Updated job execution wiring to pass global `llm_mode` defaults into processor dispatch while allowing per-job overrides without changing existing plugin config loading behavior.
+- Updated `config/config.yaml.sample` and README documentation to describe `llm_mode`, recommended default usage (`per_plugin`), and deprecation guidance for shared-response mode.
+
+### Added
+
+- Added config validation rules for `llm_mode` values in both top-level config and per-job settings, including backward-compatible acceptance of legacy alias values.
+- Added high-risk orchestration tests covering per-plugin independent LLM calls, `share_deprecated` single-call behavior, and alias compatibility (`shared` -> `share_deprecated`) in `tests/test_core_high_risk.py`.
+
 ## [v0.2.4] - 2026-03-23
 
 

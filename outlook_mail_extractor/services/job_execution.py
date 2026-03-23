@@ -112,6 +112,7 @@ class JobExecutionService:
         try:
             config = self._config_loader(config_file)
             configured_max_length = config.get("body_max_length", max_length)
+            default_llm_mode = config.get("llm_mode", "per_plugin")
 
             client = self._client_factory()
             client.connect()
@@ -145,6 +146,7 @@ class JobExecutionService:
                     plugin_configs=plugin_configs,
                     dry_run=dry_run,
                     no_move=no_move,
+                    llm_mode=default_llm_mode,
                 )
                 all_results[job_name] = results
                 logger.info(f"Job {job_name} 完成，處理 {len(results)} 封郵件")

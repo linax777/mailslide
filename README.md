@@ -117,6 +117,8 @@ uv run outlook-extract --no-move
 可在 **Configuration → 一般設定** 直接修改（推薦）；也可手動編輯 `config/config.yaml`。
 
 ```yaml
+llm_mode: per_plugin
+
 jobs:
   - name: "我的工作"
     account: "your@email.com"
@@ -135,9 +137,22 @@ jobs:
 | source | 來源資料夾（如「收件匣」） |
 | destination | 處理後移動到（可省略，若省略則郵件不會移動，可能重複處理，單純測試時可不加） |
 | limit | 處理的郵件數量 |
+| llm_mode | LLM 呼叫模式（`per_plugin` 預設；`share_deprecated` 為舊模式） |
 | plugins | 啟用的插件（可省略） |
 
 > 💡 提示：若使用 `move_to_folder` 插件讓 LLM 決定移動目錄，則可省略 `destination`，由插件負責移動。
+
+### LLM 呼叫模式
+
+- `per_plugin`（預設）：每個需要 LLM 的 plugin 各自呼叫一次 LLM，適合多 plugin 混用。
+- `share_deprecated`（舊模式）：同一封郵件只呼叫一次 LLM，回覆共用給所有 LLM plugins。此模式容易因 `action` 不同造成 `action_mismatch/skipped`，不建議新設定使用。
+
+`llm_mode` 可設在：
+
+- 全域：`config.llm_mode`
+- 單一 Job 覆蓋：`job.llm_mode`
+
+> 向後相容：舊值 `shared` / `shared_legacy` 仍可執行，但會被視為 `share_deprecated` 並記錄警告。
 
 ## 設定 LLM（可選）
 

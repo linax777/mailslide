@@ -27,6 +27,35 @@ from .plugins import PluginCapability, get_plugin, load_plugin_configs
 from .runtime import RuntimeContext, get_runtime_context
 
 
+LLM_MODE_PER_PLUGIN = "per_plugin"
+LLM_MODE_SHARE_DEPRECATED = "share_deprecated"
+LLM_MODE_ALIASES = {
+    "shared": LLM_MODE_SHARE_DEPRECATED,
+    "shared_legacy": LLM_MODE_SHARE_DEPRECATED,
+}
+
+
+def _resolve_llm_mode(raw_mode: Any, logger) -> str:
+    """Resolve llm_mode with alias/backward compatibility handling."""
+    if not isinstance(raw_mode, str) or not raw_mode.strip():
+        return LLM_MODE_PER_PLUGIN
+
+    normalized = raw_mode.strip().lower()
+    if normalized == LLM_MODE_PER_PLUGIN:
+        return LLM_MODE_PER_PLUGIN
+    if normalized == LLM_MODE_SHARE_DEPRECATED:
+        return LLM_MODE_SHARE_DEPRECATED
+    if normalized in LLM_MODE_ALIASES:
+        mapped = LLM_MODE_ALIASES[normalized]
+        logger.warning(f"llm_mode '{raw_mode}' is deprecated; use '{mapped}' instead")
+        return mapped
+
+    logger.warning(
+        f"Unknown llm_mode '{raw_mode}'; fallback to '{LLM_MODE_PER_PLUGIN}'"
+    )
+    return LLM_MODE_PER_PLUGIN
+
+
 class OutlookConnectionError(InfrastructureError):
     """Cannot connect to Outlook"""
 
@@ -287,6 +316,7 @@ class EmailProcessor:
         plugin_configs: dict | None = None,
         dry_run: bool = False,
         no_move: bool = False,
+        llm_mode: str = LLM_MODE_PER_PLUGIN,
     ) -> list[EmailAnalysisResult]:
         """
         Process single job with LLM analysis and plugins.
@@ -308,6 +338,12 @@ class EmailProcessor:
         destination_folder = job_config.get("destination")
         limit = job_config.get("limit", 10)
         body_max_length = job_config.get("body_max_length", self._max_length)
+        logger = get_logger()
+        raw_job_llm_mode = job_config.get("llm_mode")
+        effective_llm_mode = _resolve_llm_mode(
+            raw_job_llm_mode if raw_job_llm_mode is not None else llm_mode,
+            logger,
+        )
 
         # Get source folder
         src_folder = self._client.get_folder(account_name, source_folder)
@@ -329,7 +365,6 @@ class EmailProcessor:
                 msg_list.append(msg)
             msg = messages.GetNext()
 
-        logger = get_logger()
         if not msg_list:
             logger.info(f"Job {job_config.get('name', 'Unnamed Job')} 沒有可處理的郵件")
 
@@ -359,6 +394,7 @@ class EmailProcessor:
                 no_move,
                 destination_folder_name,
                 body_max_length,
+                effective_llm_mode,
             )
             results.append(result)
 
@@ -374,6 +410,7 @@ class EmailProcessor:
         no_move: bool,
         destination_folder_name: str | None = None,
         body_max_length: int | None = None,
+        llm_mode: str = LLM_MODE_PER_PLUGIN,
     ) -> EmailAnalysisResult:
         """Process single email with LLM and plugins"""
         logger = get_logger()
@@ -389,17 +426,13 @@ class EmailProcessor:
         subject = email_data.subject or "Unknown"
         logger.info(f"處理郵件: {subject}")
 
-        # Collect system prompts from all plugins
-        system_prompts = []
+        # Split plugins by LLM requirement
         plugins_needing_llm = []
         plugins_no_llm = []
         for plugin in plugins:
             if not plugin.config.enabled:
                 continue
-            prompt = plugin.build_effective_prompt()
             if plugin.requires_llm():
-                if prompt:
-                    system_prompts.append(prompt)
                 plugins_needing_llm.append(plugin)
             else:
                 plugins_no_llm.append(plugin)
@@ -463,8 +496,9 @@ class EmailProcessor:
                         )
                     )
 
-        # Call LLM when there are plugins that require it.
+        # Call LLM for plugins that require it.
         llm_response = ""
+        llm_responses: list[str] = []
         success = True
 
         if plugins_needing_llm:
@@ -483,20 +517,139 @@ class EmailProcessor:
                         )
                     )
             else:
+                resolved_llm_mode = _resolve_llm_mode(llm_mode, logger)
                 user_prompt = self._build_email_prompt(email_data)
-                combined_system = "\n\n---\n\n".join(system_prompts)
 
-                try:
-                    llm_response = llm_client.chat(combined_system, user_prompt)
-                    logger.debug(f"LLM 回覆: {llm_response}")
-                except Exception as e:
-                    success = False
-                    error_msg = str(e)
-                    logger.error(f"LLM 呼叫失敗: {e}")
+                if resolved_llm_mode == LLM_MODE_SHARE_DEPRECATED:
+                    logger.warning(
+                        "llm_mode=share_deprecated is deprecated; prefer per_plugin to avoid action mismatch"
+                    )
+                    combined_system = "\n\n---\n\n".join(
+                        [
+                            plugin.build_effective_prompt()
+                            for plugin in plugins_needing_llm
+                        ]
+                    )
 
-                if success and not dry_run:
+                    try:
+                        llm_response = llm_client.chat(combined_system, user_prompt)
+                        logger.debug(f"LLM 回覆(shared): {llm_response}")
+                    except Exception as e:
+                        success = False
+                        error_msg = str(e)
+                        logger.error(f"LLM 呼叫失敗: {e}")
+
+                    if success and not dry_run:
+                        for plugin in plugins_needing_llm:
+                            skip_result = plugin.should_skip_by_response(llm_response)
+                            if skip_result:
+                                plugin_result = self._build_plugin_result(
+                                    plugin.name,
+                                    skip_result,
+                                )
+                                plugin_results.append(plugin_result)
+                                logger.info(
+                                    f"跳過 Plugin {plugin.name}: {plugin_result.message}"
+                                )
+                                continue
+
+                            logger.info(f"執行 Plugin: {plugin.name}")
+                            try:
+                                plugin_execute_result = await plugin.execute(
+                                    email_data, llm_response, action_port
+                                )
+                                plugin_result = self._build_plugin_result(
+                                    plugin.name,
+                                    plugin_execute_result,
+                                )
+                                plugin_results.append(plugin_result)
+                                if (
+                                    plugin.supports(PluginCapability.MOVES_MESSAGE)
+                                    and plugin_result.success
+                                ):
+                                    moved_by_plugin = True
+
+                                if (
+                                    plugin_result.status
+                                    == PluginExecutionStatus.SUCCESS
+                                ):
+                                    logger.info(f"Plugin {plugin.name}: success")
+                                elif (
+                                    plugin_result.status
+                                    == PluginExecutionStatus.SKIPPED
+                                ):
+                                    logger.info(
+                                        f"Plugin {plugin.name}: skipped ({plugin_result.message})"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"Plugin {plugin.name}: {plugin_result.status.value} "
+                                        f"({plugin_result.message})"
+                                    )
+                            except (
+                                DomainError,
+                                InfrastructureError,
+                                UserVisibleError,
+                            ) as e:
+                                logger.exception(f"Plugin {plugin.name} error: {e}")
+                                plugin_results.append(
+                                    PluginResult(
+                                        plugin_name=plugin.name,
+                                        success=False,
+                                        status=PluginExecutionStatus.FAILED,
+                                        code="typed_error",
+                                        message=f"Error: {e}",
+                                    )
+                                )
+                            except Exception as e:
+                                wrapped = InfrastructureError(
+                                    f"Unhandled plugin error ({plugin.name}): {e}"
+                                )
+                                logger.exception(str(wrapped))
+                                plugin_results.append(
+                                    PluginResult(
+                                        plugin_name=plugin.name,
+                                        success=False,
+                                        status=PluginExecutionStatus.RETRIABLE_FAILED,
+                                        code="unhandled_error",
+                                        message=f"Error: {wrapped}",
+                                    )
+                                )
+                else:
                     for plugin in plugins_needing_llm:
-                        skip_result = plugin.should_skip_by_response(llm_response)
+                        plugin_prompt = plugin.build_effective_prompt()
+                        plugin_llm_response = ""
+                        try:
+                            plugin_llm_response = llm_client.chat(
+                                plugin_prompt, user_prompt
+                            )
+                            llm_responses.append(
+                                f"[{plugin.name}]\n{plugin_llm_response}"
+                            )
+                            logger.debug(
+                                f"LLM 回覆 ({plugin.name}): {plugin_llm_response}"
+                            )
+                        except Exception as e:
+                            success = False
+                            error_msg = str(e)
+                            logger.error(f"LLM 呼叫失敗 ({plugin.name}): {e}")
+                            plugin_results.append(
+                                PluginResult(
+                                    plugin_name=plugin.name,
+                                    success=False,
+                                    status=PluginExecutionStatus.FAILED,
+                                    code="llm_call_failed",
+                                    message=f"LLM call failed: {e}",
+                                )
+                            )
+                            continue
+
+                        if dry_run:
+                            continue
+
+                        skip_result = plugin.should_skip_by_response(
+                            plugin_llm_response
+                        )
                         if skip_result:
                             plugin_result = self._build_plugin_result(
                                 plugin.name,
@@ -511,7 +664,7 @@ class EmailProcessor:
                         logger.info(f"執行 Plugin: {plugin.name}")
                         try:
                             plugin_execute_result = await plugin.execute(
-                                email_data, llm_response, action_port
+                                email_data, plugin_llm_response, action_port
                             )
                             plugin_result = self._build_plugin_result(
                                 plugin.name,
@@ -564,6 +717,8 @@ class EmailProcessor:
                                     message=f"Error: {wrapped}",
                                 )
                             )
+
+                    llm_response = "\n\n---\n\n".join(llm_responses)
 
         # Move email to destination folder if specified
         if (

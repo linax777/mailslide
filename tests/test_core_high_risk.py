@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -9,6 +10,7 @@ from outlook_mail_extractor.core import (
     process_config_file,
 )
 from outlook_mail_extractor.models import EmailDTO
+from outlook_mail_extractor.models import PluginExecutionResult, PluginExecutionStatus
 from outlook_mail_extractor.plugins import PluginCapability
 from outlook_mail_extractor.logger import LogSessionManager
 from outlook_mail_extractor.runtime import RuntimeContext, RuntimePaths
@@ -61,6 +63,73 @@ class DummyPlugin:
         if self._move_message:
             action_port.move_to_folder("plugin-folder")
         return self._execute_result
+
+
+class ActionAwarePlugin:
+    def __init__(
+        self,
+        name: str,
+        prompt: str,
+        expected_action: str,
+        move_message: bool = False,
+        capabilities: set[PluginCapability] | None = None,
+    ) -> None:
+        self.name = name
+        self._prompt = prompt
+        self._expected_action = expected_action
+        self._move_message = move_message
+        self.config = SimpleNamespace(enabled=True)
+        self.execute_calls = 0
+        self.capabilities = capabilities or {PluginCapability.REQUIRES_LLM}
+
+    def build_effective_prompt(self) -> str:
+        return self._prompt
+
+    def supports(self, capability: PluginCapability) -> bool:
+        return capability in self.capabilities
+
+    def requires_llm(self) -> bool:
+        return self.supports(PluginCapability.REQUIRES_LLM)
+
+    def should_skip_by_response(self, llm_response: str):
+        del llm_response
+        return None
+
+    async def execute(
+        self,
+        email_data: EmailDTO,
+        llm_response: str,
+        action_port,
+    ) -> PluginExecutionResult:
+        del email_data
+        self.execute_calls += 1
+        response_data = json.loads(llm_response)
+        if response_data.get("action") != self._expected_action:
+            return PluginExecutionResult(
+                status=PluginExecutionStatus.SKIPPED,
+                code="action_mismatch",
+                message="Action mismatch",
+            )
+        if self._move_message:
+            action_port.move_to_folder("plugin-folder")
+        return PluginExecutionResult(
+            status=PluginExecutionStatus.SUCCESS,
+            message="ok",
+        )
+
+
+class FakeLLMClient:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def chat(self, system_prompt: str, user_prompt: str) -> str:
+        del user_prompt
+        self.calls.append(system_prompt)
+        if "APPOINTMENT_ONLY" in system_prompt:
+            return '{"action":"appointment","create":true}'
+        if "MOVE_ONLY" in system_prompt:
+            return '{"action":"move","folder":"會議"}'
+        return '{"action":"appointment","create":true}'
 
 
 def _build_processor_with_stubbed_extract(stub_message: DummyMessage) -> EmailProcessor:
@@ -192,6 +261,122 @@ def test_llm_required_plugin_reports_failure_when_llm_missing() -> None:
     plugin_results = {item.plugin_name: item for item in result.plugin_results}
     assert plugin_results["add_category"].success is False
     assert "LLM client not available" in plugin_results["add_category"].message
+
+
+def test_each_llm_plugin_calls_llm_independently() -> None:
+    message = DummyMessage()
+    processor = _build_processor_with_stubbed_extract(message)
+    llm_client = FakeLLMClient()
+    create_plugin = ActionAwarePlugin(
+        name="create_appointment",
+        prompt="APPOINTMENT_ONLY",
+        expected_action="appointment",
+    )
+    move_plugin = ActionAwarePlugin(
+        name="move_to_folder",
+        prompt="MOVE_ONLY",
+        expected_action="move",
+        move_message=True,
+        capabilities={
+            PluginCapability.REQUIRES_LLM,
+            PluginCapability.MOVES_MESSAGE,
+        },
+    )
+
+    result = asyncio.run(
+        processor._process_email(
+            message=message,
+            account_name="acc",
+            llm_client=llm_client,
+            plugins=[create_plugin, move_plugin],
+            dry_run=False,
+            no_move=False,
+            destination_folder_name="destination-folder",
+            body_max_length=500,
+        )
+    )
+
+    assert result.success is True
+    assert len(llm_client.calls) == 2
+    assert create_plugin.execute_calls == 1
+    assert move_plugin.execute_calls == 1
+    assert message.move_calls == 1
+    plugin_results = {item.plugin_name: item for item in result.plugin_results}
+    assert plugin_results["create_appointment"].success is True
+    assert plugin_results["move_to_folder"].success is True
+
+
+def test_share_deprecated_uses_single_shared_llm_response() -> None:
+    message = DummyMessage()
+    processor = _build_processor_with_stubbed_extract(message)
+    llm_client = FakeLLMClient()
+    create_plugin = ActionAwarePlugin(
+        name="create_appointment",
+        prompt="APPOINTMENT_ONLY",
+        expected_action="appointment",
+    )
+    move_plugin = ActionAwarePlugin(
+        name="move_to_folder",
+        prompt="MOVE_ONLY",
+        expected_action="move",
+        capabilities={PluginCapability.REQUIRES_LLM},
+    )
+
+    result = asyncio.run(
+        processor._process_email(
+            message=message,
+            account_name="acc",
+            llm_client=llm_client,
+            plugins=[create_plugin, move_plugin],
+            dry_run=False,
+            no_move=False,
+            destination_folder_name=None,
+            body_max_length=500,
+            llm_mode="share_deprecated",
+        )
+    )
+
+    assert result.success is True
+    assert len(llm_client.calls) == 1
+    assert create_plugin.execute_calls == 1
+    assert move_plugin.execute_calls == 1
+    plugin_results = {item.plugin_name: item for item in result.plugin_results}
+    assert plugin_results["create_appointment"].success is True
+    assert plugin_results["move_to_folder"].status == PluginExecutionStatus.SKIPPED
+
+
+def test_shared_alias_maps_to_share_deprecated() -> None:
+    message = DummyMessage()
+    processor = _build_processor_with_stubbed_extract(message)
+    llm_client = FakeLLMClient()
+    create_plugin = ActionAwarePlugin(
+        name="create_appointment",
+        prompt="APPOINTMENT_ONLY",
+        expected_action="appointment",
+    )
+    move_plugin = ActionAwarePlugin(
+        name="move_to_folder",
+        prompt="MOVE_ONLY",
+        expected_action="move",
+        capabilities={PluginCapability.REQUIRES_LLM},
+    )
+
+    result = asyncio.run(
+        processor._process_email(
+            message=message,
+            account_name="acc",
+            llm_client=llm_client,
+            plugins=[create_plugin, move_plugin],
+            dry_run=False,
+            no_move=False,
+            destination_folder_name=None,
+            body_max_length=500,
+            llm_mode="shared",
+        )
+    )
+
+    assert result.success is True
+    assert len(llm_client.calls) == 1
 
 
 def test_process_config_file_prefers_config_relative_llm_and_plugins(

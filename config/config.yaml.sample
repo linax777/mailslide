@@ -9,6 +9,7 @@
 #   - destination: Destination folder for auto-move (optional)
 #   - limit: Max emails to process per job
 #   - body_max_length: Max cleaned body length for LLM/input (optional)
+#   - llm_mode: LLM dispatch mode (optional, default: per_plugin)
 #   - plugins: List of plugins to run (LLM analysis)
 #   - plugin_prompt_profiles: Per-job prompt profile mapping (optional)
 #
@@ -19,6 +20,7 @@
 #     (they both move emails and will conflict)
 
 body_max_length: 2500
+llm_mode: per_plugin
 
 jobs:
   - name: "處理microsoft郵件"
@@ -29,6 +31,8 @@ jobs:
     limit: 10
     # Optional per-job override (falls back to top-level body_max_length)
     # body_max_length: 3000
+    # Optional per-job override (per_plugin | share_deprecated)
+    # llm_mode: per_plugin
     plugins:
       - add_category
 
@@ -83,6 +87,15 @@ _ui:
       required: false
       min: 1
       help: "全域預設值；可被 job.body_max_length 覆蓋"
+    llm_mode:
+      type: select
+      label: "LLM 模式"
+      required: false
+      default: per_plugin
+      options:
+        - per_plugin
+        - share_deprecated
+      help: "per_plugin: 每個 plugin 各自呼叫 LLM；share_deprecated: 共用一次回覆（舊模式）"
     jobs:
       type: list
       label: "工作清單"
@@ -126,6 +139,13 @@ _ui:
           label: "內文長度上限（Job 覆蓋）"
           required: false
           min: 1
+        llm_mode:
+          type: select
+          label: "LLM 模式（Job 覆蓋）"
+          required: false
+          options:
+            - per_plugin
+            - share_deprecated
         plugins:
           type: multiselect
           label: "Plugins"
@@ -156,6 +176,14 @@ _ui:
       level: error
       message: "body_max_length 必須是正整數"
       check: "!job.body_max_length || (is_int(job.body_max_length) && job.body_max_length > 0)"
+    - id: llm_mode_enum
+      level: error
+      message: "llm_mode 僅支援 per_plugin/share_deprecated"
+      check: "!has_text(config.llm_mode) || in(config.llm_mode,['per_plugin','share_deprecated'])"
+    - id: job_llm_mode_enum
+      level: error
+      message: "job.llm_mode 僅支援 per_plugin/share_deprecated"
+      check: "!has_text(job.llm_mode) || in(job.llm_mode,['per_plugin','share_deprecated'])"
     - id: destination_move_conflict
       level: error
       message: "使用 move_to_folder 時，請不要同時設定 destination"
