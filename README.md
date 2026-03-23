@@ -259,6 +259,16 @@ CSV 欄位由程式固定，順序為：
 
 同一個 plugin 可定義多組 system prompt（稱為「profile」），讓不同 Job 使用不同的 prompt：
 
+目前內建支援 Prompt Profiles 的 LLM plugins：
+
+- `add_category`
+- `move_to_folder`
+- `create_appointment`
+- `event_table`
+- `summary_file`
+
+在 **Configuration → Plugin 設定 → 編輯設定** 中，以上 plugins 會顯示 `Prompt Profiles` 的 profile 列表（OptionList）與詳細欄位編輯器，可直接切換/新增/刪除 profile。
+
 **1. Plugin 設定（`config/plugins/<name>.yaml.sample`）**
 
 ```yaml

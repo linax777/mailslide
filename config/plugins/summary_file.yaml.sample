@@ -10,6 +10,20 @@ system_prompt: |
 
   回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
 
+# Prompt profiles: define multiple system prompts for different use cases
+# Each job can select which profile to use via plugin_prompt_profiles in config.yaml
+# Default profile used when job doesn't specify one
+default_prompt_profile: general_v1
+
+prompt_profiles:
+  general_v1:
+    version: 1
+    description: "一般郵件摘要"
+    system_prompt: |
+      你是郵件摘要助手。請根據郵件內容輸出精簡摘要。
+
+      回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
+
 # JSON response format (automatically appended to system prompt)
 response_json_format:
   has_summary: '{"action": "summary", "summary": "2-5 句重點摘要", "priority": "high"}'
@@ -42,9 +56,20 @@ _ui:
       required: true
     system_prompt:
       type: textarea
-      label: "System Prompt"
+      label: "System Prompt（預設）"
       required: false
       rows: 8
+    default_prompt_profile:
+      type: str
+      label: "預設 Prompt Profile"
+      required: false
+      placeholder: "general_v1"
+    prompt_profiles:
+      type: yaml
+      label: "Prompt Profiles"
+      required: false
+      rows: 15
+      placeholder: "general_v1:\n  version: 1\n  system_prompt: |"
     output_file:
       type: path
       label: "CSV 檔案"

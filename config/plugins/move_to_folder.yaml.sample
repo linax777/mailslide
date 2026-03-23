@@ -17,6 +17,27 @@ system_prompt: |
 
   回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
 
+# Prompt profiles: define multiple system prompts for different use cases
+# Each job can select which profile to use via plugin_prompt_profiles in config.yaml
+# Default profile used when job doesn't specify one
+default_prompt_profile: general_v1
+
+prompt_profiles:
+  general_v1:
+    version: 1
+    description: "一般資料夾分類"
+    system_prompt: |
+      你是一個郵件分類助手。分析以下郵件內容，判斷應該移動到哪個資料夾。
+
+      可用的資料夾類別：
+      - 會議/Meeting：關於會議、行程的郵件
+      - 帳單/Bill：帳單、發票、付款相關
+      - 技術支援/TechSupport：技術問題、故障回報
+      - 採購/Purchase：採購相關郵件
+      - 其他/Other：無法分類的郵件
+
+      回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
+
 # JSON response format (automatically appended to system prompt)
 # This format is fixed and should not be modified by users
 response_json_format:
@@ -44,9 +65,20 @@ _ui:
       required: true
     system_prompt:
       type: textarea
-      label: "System Prompt"
+      label: "System Prompt（預設）"
       required: false
       rows: 10
+    default_prompt_profile:
+      type: str
+      label: "預設 Prompt Profile"
+      required: false
+      placeholder: "general_v1"
+    prompt_profiles:
+      type: yaml
+      label: "Prompt Profiles"
+      required: false
+      rows: 15
+      placeholder: "general_v1:\n  version: 1\n  system_prompt: |"
     response_format:
       type: select
       label: "Response Format"

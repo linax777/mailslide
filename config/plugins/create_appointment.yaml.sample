@@ -10,6 +10,20 @@ system_prompt: |
   
   回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
 
+# Prompt profiles: define multiple system prompts for different use cases
+# Each job can select which profile to use via plugin_prompt_profiles in config.yaml
+# Default profile used when job doesn't specify one
+default_prompt_profile: general_v1
+
+prompt_profiles:
+  general_v1:
+    version: 1
+    description: "一般會議/行程偵測"
+    system_prompt: |
+      你是一個日曆助手。分析以下郵件內容，判斷是否包含預約、會議或行程資訊。
+
+      回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
+
 # JSON response format (automatically appended to system prompt)
 # This format is fixed and should not be modified by users
 response_json_format:
@@ -41,9 +55,20 @@ _ui:
       required: true
     system_prompt:
       type: textarea
-      label: "System Prompt"
+      label: "System Prompt（預設）"
       required: false
       rows: 8
+    default_prompt_profile:
+      type: str
+      label: "預設 Prompt Profile"
+      required: false
+      placeholder: "general_v1"
+    prompt_profiles:
+      type: yaml
+      label: "Prompt Profiles"
+      required: false
+      rows: 15
+      placeholder: "general_v1:\n  version: 1\n  system_prompt: |"
     recipients:
       type: list[str]
       label: "邀請收件者"
