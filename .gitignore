@@ -13,6 +13,11 @@ wheels/
 .vscode/
 AGENTS.md
 DEVELOPER.md
+.opencode/
+opencode.jsonc
+.mypy_cache
+.pytest_cache
+.ruff_cache
 
 # config
 config/*.yaml
