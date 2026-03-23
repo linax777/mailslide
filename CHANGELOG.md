@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
-## [un-released]
+## [v0.2.4] - 2026-03-23
 
 ### Fixed
 
