@@ -19,6 +19,55 @@ system_prompt: |
 
   回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
 
+# Prompt profiles: define multiple system prompts for different use cases
+# Each job can select which profile to use via plugin_prompt_profiles in config.yaml
+# Default profile used when job doesn't specify one
+default_prompt_profile: general_v1
+
+prompt_profiles:
+  general_v1:
+    version: 1
+    description: "一般郵件分類"
+    system_prompt: |
+      你是一個郵件分類助手。分析以下郵件內容，選擇適當的分類標籤。
+
+      可用的分類：
+      - Meeting (會議)
+      - Bill (帳單)
+      - Important (重要)
+      - Urgent (緊急)
+      - Personal (個人)
+      - Work (工作)
+      - Newsletter (電子報)
+
+      回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
+
+  invoice_v1:
+    version: 1
+    description: "帳單/發票分類（優先偵測付款語意）"
+    system_prompt: |
+      你是一個帳單分類助手。分析以下郵件內容，優先偵測付款、發票、帳單相關語意。
+
+      可用的分類：
+      - Bill (帳單)
+      - Important (重要)
+      - Work (工作)
+
+      回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
+
+  vip_v1:
+    version: 1
+    description: "VIP 郵件分類（更嚴格的標記標準）"
+    system_prompt: |
+      你是一個 VIP 郵件分類助手。只對高價值郵件進行分類標記。
+
+      可用的分類：
+      - Important (重要)
+      - Urgent (緊急)
+      - Personal (個人)
+
+      回覆時只輸出 JSON，不要有任何其他文字、解釋或 markdown 格式。
+
 # JSON response format (automatically appended to system prompt)
 # This format is fixed and should not be modified by users
 response_json_format:
@@ -29,7 +78,7 @@ response_json_format:
 response_format: "json"
 
 _ui:
-  schema_version: 1
+  schema_version: 2
   title: "Plugin: add_category"
   buttons:
     - id: validate
@@ -46,9 +95,20 @@ _ui:
       required: true
     system_prompt:
       type: textarea
-      label: "System Prompt"
+      label: "System Prompt（預設）"
       required: false
       rows: 10
+    default_prompt_profile:
+      type: str
+      label: "預設 Prompt Profile"
+      required: false
+      placeholder: "general_v1"
+    prompt_profiles:
+      type: yaml
+      label: "Prompt Profiles"
+      required: false
+      rows: 15
+      placeholder: "general_v1:\n  version: 1\n  system_prompt: |"
     response_format:
       type: select
       label: "Response Format"

@@ -255,6 +255,57 @@ CSV 欄位由程式固定，順序為：
 - 回退機制：若 sample 缺少 `_ui`，此 plugin 會維持唯讀 YAML 檢視模式。
 - `response_json_format` 編輯規則：`start`/`end`（以及 `action`）固定不可修改，其餘欄位可調整 value。
 
+### 同 Plugin 多 Prompt（Prompt Profiles）
+
+同一個 plugin 可定義多組 system prompt（稱為「profile」），讓不同 Job 使用不同的 prompt：
+
+**1. Plugin 設定（`config/plugins/<name>.yaml.sample`）**
+
+```yaml
+# 定義多個 prompt profiles
+default_prompt_profile: general_v1
+
+prompt_profiles:
+  general_v1:
+    version: 1
+    description: "一般分類"
+    system_prompt: |
+      你是一個郵件分類助手...
+
+  invoice_v1:
+    version: 1
+    description: "帳單分類"
+    system_prompt: |
+      你是一個帳單分類助手，優先偵測付款語意...
+```
+
+**2. Job 設定（`config/config.yaml`）**
+
+```yaml
+jobs:
+  - name: "處理一般郵件"
+    plugins:
+      - add_category
+    # 不指定時使用 plugin 的 default_prompt_profile
+
+  - name: "處理帳單"
+    plugins:
+      - add_category
+    plugin_prompt_profiles:
+      add_category: invoice_v1  # 指定使用 invoice_v1 profile
+```
+
+**解析優先序**
+
+1. `job.plugin_prompt_profiles[plugin]` → 對應 profile 的 system_prompt
+2. `plugin.default_prompt_profile` → 若 job 未指定，使用預設 profile
+3. `plugin.system_prompt` → 完全無 profiles 時的 fallback
+
+**命名規則**
+
+- Profile key：`場景_v<major>`（如 `invoice_v1`、`vip_v2`）
+- 每個 profile 內含 `version` 整數，方便日後追蹤遷移
+
 ## 需求
 
 - Windows 作業系統

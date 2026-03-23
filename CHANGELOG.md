@@ -6,6 +6,25 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 
 ## [v0.2.4] - 2026-03-23
 
+
+## [v0.2.5] - 2026-03-23
+
+### Added
+
+- Added plugin prompt profile support so a single plugin config can define multiple prompt variants (`prompt_profiles`) with `default_prompt_profile`, and each job can select a profile via `plugin_prompt_profiles`.
+- Added prompt-profile handling tests in `tests/test_core_high_risk.py` covering profile precedence, default fallback, missing-profile fallback warnings, shorthand profile values, and config immutability.
+- Added `yaml` field-type tests for plugin editor payload collection, including valid parse, empty input handling, and invalid YAML errors.
+
+### Changed
+
+- Updated plugin runtime prompt resolution to apply profile-specific prompt overrides before plugin instantiation, while preserving legacy `system_prompt` behavior as final fallback.
+- Updated `config/config.yaml.sample` and `config/plugins/add_category.yaml.sample` to document and demonstrate prompt-profile configuration.
+- Updated Plugin Configuration modal UX for `prompt_profiles` editing: replaced raw YAML-only workflow with an OptionList-based profile switcher and per-profile detail editor (`version`, `description`, `system_prompt`).
+- Added profile management controls in Plugin Configuration modal (`+ 新增` / `- 刪除`) to create and remove prompt profiles interactively while enforcing at least one remaining profile.
+- Updated README with a dedicated "同 Plugin 多 Prompt（Prompt Profiles）" section describing profile structure, job-level selection, and resolution order.
+
+
+## [v0.2.4] - 2026-03-23
 ### Fixed
 
 - Fixed Plugin Configuration tab file discovery so backup files (`*.yaml.bak`) are no longer treated as editable plugin entries, preventing phantom `*.yaml` rows that failed with "file not found" when opened.

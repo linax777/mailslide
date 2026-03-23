@@ -135,6 +135,67 @@ class OutlookClient:
             raise FolderNotFoundError(f"GetDefaultFolder failed: {e}") from e
 
 
+def _resolve_plugin_prompt(
+    plugin_name: str,
+    raw_config: dict,
+    job_prompt_profiles: dict,
+    logger,
+) -> dict:
+    """
+    Resolve effective system prompt for a plugin based on job profile assignment.
+
+    Resolution order (first wins):
+    1. job.plugin_prompt_profiles[plugin] -> plugin.prompt_profiles[profile].system_prompt
+    2. plugin.default_prompt_profile -> plugin.prompt_profiles[profile].system_prompt
+    3. plugin.system_prompt (existing behavior, fallback)
+
+    Args:
+        plugin_name: Name of the plugin
+        raw_config: Raw plugin config from yaml
+        job_prompt_profiles: job.plugin_prompt_profiles dict (plugin_name -> profile_key)
+        logger: Logger instance for warning messages
+
+    Returns:
+        Resolved config dict with override_prompt injected if needed
+    """
+    resolved = dict(raw_config)
+
+    profiles = raw_config.get("prompt_profiles", {})
+    if not profiles:
+        return resolved
+
+    job_profile = job_prompt_profiles.get(plugin_name)
+    if job_profile:
+        if job_profile in profiles:
+            profile_entry = profiles[job_profile]
+            profile_prompt = (
+                profile_entry.get("system_prompt")
+                if isinstance(profile_entry, dict)
+                else profile_entry
+            )
+            if profile_prompt:
+                resolved["override_prompt"] = profile_prompt
+                return resolved
+        else:
+            logger.warning(
+                f"Job 指定了不存在的 prompt profile '{job_profile}' for plugin '{plugin_name}'，"
+                f"將 fallback 到預設行為"
+            )
+
+    default_profile = raw_config.get("default_prompt_profile")
+    if default_profile and default_profile in profiles:
+        profile_entry = profiles[default_profile]
+        profile_prompt = (
+            profile_entry.get("system_prompt")
+            if isinstance(profile_entry, dict)
+            else profile_entry
+        )
+        if profile_prompt:
+            resolved["override_prompt"] = profile_prompt
+
+    return resolved
+
+
 class EmailProcessor:
     """Email processing logic"""
 
@@ -276,8 +337,13 @@ class EmailProcessor:
         plugin_names = job_config.get("plugins", [])
         plugins = []
         plugin_configs = plugin_configs or {}
+        job_prompt_profiles = job_config.get("plugin_prompt_profiles", {})
         for plugin_name in plugin_names:
-            plugin = get_plugin(plugin_name, plugin_configs.get(plugin_name))
+            raw_config = plugin_configs.get(plugin_name, {})
+            resolved_config = _resolve_plugin_prompt(
+                plugin_name, raw_config, job_prompt_profiles, logger
+            )
+            plugin = get_plugin(plugin_name, resolved_config)
             if plugin:
                 plugins.append(plugin)
 

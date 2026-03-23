@@ -290,3 +290,87 @@ def test_plugins_config_tab_cleanup_backup_files(tmp_path: Path) -> None:
     assert not backup1.exists()
     assert not backup2.exists()
     assert active.exists()
+
+
+def test_plugin_config_editor_yaml_field_parses_dict() -> None:
+    from outlook_mail_extractor.screens.modals.plugin_config_editor import (
+        PluginConfigEditorModal,
+    )
+
+    schema = {
+        "fields": {
+            "enabled": {"type": "bool", "required": True},
+            "prompt_profiles": {
+                "type": "yaml",
+                "label": "Prompt Profiles",
+                "required": False,
+            },
+        },
+        "validation_rules": [],
+    }
+    modal = PluginConfigEditorModal(
+        "add_category",
+        schema,
+        {"enabled": True},
+    )
+
+    yaml_text = "general_v1:\n  version: 1\n  system_prompt: |\n    你是一個助手\n"
+    widgets: dict[str, Any] = {
+        "plugin-field-enabled": _FakeSwitch(value=True),
+        "plugin-field-prompt_profiles": _FakeTextArea(yaml_text),
+    }
+    modal.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+
+    payload = modal._collect_payload()
+
+    assert payload["enabled"] is True
+    profiles = payload["prompt_profiles"]
+    assert isinstance(profiles, dict)
+    assert "general_v1" in profiles
+    assert profiles["general_v1"]["version"] == 1
+    assert profiles["general_v1"]["system_prompt"].rstrip("\n") == "你是一個助手"
+
+
+def test_plugin_config_editor_yaml_field_empty_returns_none() -> None:
+    from outlook_mail_extractor.screens.modals.plugin_config_editor import (
+        PluginConfigEditorModal,
+    )
+
+    schema = {
+        "fields": {
+            "prompt_profiles": {"type": "yaml", "label": "Profiles", "required": False},
+        },
+        "validation_rules": [],
+    }
+    modal = PluginConfigEditorModal("add_category", schema, {})
+
+    widgets: dict[str, Any] = {
+        "plugin-field-prompt_profiles": _FakeTextArea(""),
+    }
+    modal.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+
+    payload = modal._collect_payload()
+
+    assert "prompt_profiles" not in payload
+
+
+def test_plugin_config_editor_yaml_field_invalid_raises() -> None:
+    from outlook_mail_extractor.screens.modals.plugin_config_editor import (
+        PluginConfigEditorModal,
+    )
+
+    schema = {
+        "fields": {
+            "prompt_profiles": {"type": "yaml", "label": "Profiles", "required": False},
+        },
+        "validation_rules": [],
+    }
+    modal = PluginConfigEditorModal("add_category", schema, {})
+
+    widgets: dict[str, Any] = {
+        "plugin-field-prompt_profiles": _FakeTextArea("invalid: yaml: : :"),
+    }
+    modal.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="不是有效的 YAML"):
+        modal._collect_payload()

@@ -266,3 +266,141 @@ def test_process_config_file_prefers_config_relative_llm_and_plugins(
 
     assert calls["llm"] == str(config_dir / "llm-config.yaml")
     assert calls["plugins"] == config_dir / "plugins"
+
+
+class TestPromptProfileResolution:
+    def _fake_logger(self):
+        class FakeLogger:
+            def warning(self, msg: str) -> None:
+                self._warning_msg = msg
+
+        return FakeLogger()
+
+    def test_resolve_plugin_prompt_job_profile_wins(self) -> None:
+        from outlook_mail_extractor.core import _resolve_plugin_prompt
+
+        raw_config = {
+            "system_prompt": "default prompt",
+            "prompt_profiles": {
+                "profile_a": {
+                    "version": 1,
+                    "system_prompt": "profile A prompt",
+                },
+            },
+        }
+        job_profiles = {"test_plugin": "profile_a"}
+        logger = self._fake_logger()
+
+        resolved = _resolve_plugin_prompt(
+            "test_plugin", raw_config, job_profiles, logger
+        )
+
+        assert resolved["override_prompt"] == "profile A prompt"
+
+    def test_resolve_plugin_prompt_default_profile_when_job_not_specified(
+        self,
+    ) -> None:
+        from outlook_mail_extractor.core import _resolve_plugin_prompt
+
+        raw_config = {
+            "system_prompt": "default prompt",
+            "default_prompt_profile": "profile_b",
+            "prompt_profiles": {
+                "profile_b": {
+                    "version": 1,
+                    "system_prompt": "default profile B prompt",
+                },
+            },
+        }
+        job_profiles: dict[str, str] = {}
+        logger = self._fake_logger()
+
+        resolved = _resolve_plugin_prompt(
+            "test_plugin", raw_config, job_profiles, logger
+        )
+
+        assert resolved["override_prompt"] == "default profile B prompt"
+
+    def test_resolve_plugin_prompt_fallback_to_system_prompt(
+        self,
+    ) -> None:
+        from outlook_mail_extractor.core import _resolve_plugin_prompt
+
+        raw_config = {
+            "system_prompt": "fallback prompt",
+        }
+        job_profiles: dict[str, str] = {}
+        logger = self._fake_logger()
+
+        resolved = _resolve_plugin_prompt(
+            "test_plugin", raw_config, job_profiles, logger
+        )
+
+        assert "override_prompt" not in resolved
+        assert resolved["system_prompt"] == "fallback prompt"
+
+    def test_resolve_plugin_prompt_missing_profile_warns_and_fallbacks(
+        self,
+    ) -> None:
+        from outlook_mail_extractor.core import _resolve_plugin_prompt
+
+        raw_config = {
+            "system_prompt": "fallback prompt",
+            "prompt_profiles": {
+                "profile_x": {
+                    "version": 1,
+                    "system_prompt": "profile X",
+                },
+            },
+        }
+        job_profiles = {"test_plugin": "nonexistent_profile"}
+        logger = self._fake_logger()
+
+        resolved = _resolve_plugin_prompt(
+            "test_plugin", raw_config, job_profiles, logger
+        )
+
+        assert "override_prompt" not in resolved
+        assert hasattr(logger, "_warning_msg")
+        assert "nonexistent_profile" in logger._warning_msg
+
+    def test_resolve_plugin_prompt_profile_string_shorthand(self) -> None:
+        from outlook_mail_extractor.core import _resolve_plugin_prompt
+
+        raw_config = {
+            "system_prompt": "default",
+            "prompt_profiles": {
+                "short_profile": "shorthand prompt text",
+            },
+        }
+        job_profiles = {"test_plugin": "short_profile"}
+        logger = self._fake_logger()
+
+        resolved = _resolve_plugin_prompt(
+            "test_plugin", raw_config, job_profiles, logger
+        )
+
+        assert resolved["override_prompt"] == "shorthand prompt text"
+
+    def test_resolve_plugin_prompt_does_not_mutate_original(self) -> None:
+        from outlook_mail_extractor.core import _resolve_plugin_prompt
+
+        raw_config = {
+            "system_prompt": "original",
+            "prompt_profiles": {
+                "profile_c": {
+                    "version": 1,
+                    "system_prompt": "profile C",
+                },
+            },
+        }
+        job_profiles = {"test_plugin": "profile_c"}
+        logger = self._fake_logger()
+
+        resolved = _resolve_plugin_prompt(
+            "test_plugin", raw_config, job_profiles, logger
+        )
+
+        assert resolved is not raw_config
+        assert "override_prompt" not in raw_config
+        assert raw_config["system_prompt"] == "original"

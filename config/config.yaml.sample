@@ -41,6 +41,15 @@ jobs:
       - add_category
       - create_appointment
 
+# Plugin prompt profiles: specify which prompt profile each plugin should use for this job.
+# This allows the same plugin to use different system prompts in different jobs.
+# Format: plugin_name: profile_key (defined in plugin's prompt_profiles)
+# Example:
+#   plugin_prompt_profiles:
+#     add_category: invoice_v1
+#     create_appointment: meeting_v2
+plugin_prompt_profiles: {}
+
 # UI schema metadata for future TUI form builder.
 # Reserved key prefix: _ui / _meta (ignored by runtime execution logic).
 _ui:
@@ -132,6 +141,12 @@ _ui:
             - write_file
             - event_table
             - summary_file
+        plugin_prompt_profiles:
+          type: textarea
+          label: "Plugin Prompt Profiles (YAML)"
+          required: false
+          rows: 3
+          placeholder: "add_category: invoice_v1"
   validation_rules:
     - id: required_name_account_source
       level: error

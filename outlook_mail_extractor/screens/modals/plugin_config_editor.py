@@ -7,7 +7,15 @@ from typing import Any
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, SelectionList, Static, Switch, TextArea
+from textual.widgets import (
+    Button,
+    Input,
+    OptionList,
+    SelectionList,
+    Static,
+    Switch,
+    TextArea,
+)
 
 from ...ui_schema import evaluate_rules
 
@@ -50,6 +58,29 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
     .plugin-textarea-field {
         height: 7;
     }
+    #plugin-prompt-profiles-row {
+        height: auto;
+        min-height: 14;
+        margin-top: 1;
+    }
+    #plugin-prompt-profile-list-wrap {
+        width: 28;
+        min-width: 22;
+    }
+    #plugin-prompt-profile-list {
+        height: 1fr;
+        min-height: 10;
+    }
+    #plugin-prompt-profile-actions {
+        height: auto;
+        margin-top: 1;
+    }
+    #plugin-prompt-profile-detail {
+        width: 1fr;
+    }
+    #plugin-prompt-system_prompt {
+        height: 10;
+    }
     """
 
     def __init__(
@@ -72,6 +103,12 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         self._json_format_raw = self._extract_json_format_raw(current_config)
         self._json_format_examples, self._json_unparsed_keys = (
             self._parse_json_format_examples(self._json_format_raw)
+        )
+        self._use_prompt_profile_editor = self._has_prompt_profiles_field()
+        self._prompt_profiles_state = self._init_prompt_profiles_state()
+        self._prompt_profile_order = list(self._prompt_profiles_state.keys())
+        self._active_prompt_profile = (
+            self._prompt_profile_order[0] if self._prompt_profile_order else ""
         )
 
     def compose(self) -> ComposeResult:
@@ -113,6 +150,14 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             self.dismiss(None)
             return
 
+        if event.button.id == "plugin-prompt-add":
+            self._add_prompt_profile()
+            return
+
+        if event.button.id == "plugin-prompt-remove":
+            self._remove_active_prompt_profile()
+            return
+
         try:
             payload = self._collect_payload()
         except ValueError as e:
@@ -137,6 +182,57 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 self.app.notify(f"⚠️ 已儲存，請留意：{preview}", severity="warning")
             self.dismiss(payload)
 
+    def _add_prompt_profile(self) -> None:
+        if not self._use_prompt_profile_editor:
+            return
+
+        self._save_active_prompt_profile_fields()
+        base_name = "new_profile"
+        index = 1
+        while f"{base_name}_{index}" in self._prompt_profiles_state:
+            index += 1
+        key = f"{base_name}_{index}"
+
+        self._prompt_profiles_state[key] = {
+            "version": 1,
+            "description": "",
+            "system_prompt": "",
+        }
+        self._prompt_profile_order.append(key)
+        self._active_prompt_profile = key
+        self._refresh_prompt_profile_list()
+        self._load_active_prompt_profile_fields()
+
+    def _remove_active_prompt_profile(self) -> None:
+        if not self._use_prompt_profile_editor:
+            return
+        if len(self._prompt_profile_order) <= 1:
+            self.app.notify("⚠️ 至少需保留一個 prompt profile", severity="warning")
+            return
+
+        key = self._active_prompt_profile
+        if key not in self._prompt_profiles_state:
+            return
+
+        del self._prompt_profiles_state[key]
+        self._prompt_profile_order = [
+            item for item in self._prompt_profile_order if item != key
+        ]
+        self._active_prompt_profile = self._prompt_profile_order[0]
+        self._refresh_prompt_profile_list()
+        self._load_active_prompt_profile_fields()
+
+    def _refresh_prompt_profile_list(self) -> None:
+        option_list = self.query_one("#plugin-prompt-profile-list", OptionList)
+        option_list.clear_options()
+        option_list.add_options(self._prompt_profile_order)
+        try:
+            option_list.highlighted = self._prompt_profile_order.index(
+                self._active_prompt_profile
+            )
+        except ValueError:
+            option_list.highlighted = 0
+
     def _widget_id(self, field_name: str) -> str:
         return f"plugin-field-{field_name}"
 
@@ -145,11 +241,61 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             if not isinstance(spec, dict):
                 continue
 
+            if self._is_prompt_profiles_field(field_name, spec):
+                yield from self._compose_prompt_profile_editor(field_name, spec)
+                continue
+
             required = bool(spec.get("required", False))
             marker = " *" if required else ""
             label = str(spec.get("label", field_name))
             yield Static(f"{label}{marker}", classes="plugin-field-label")
             yield self._build_field_widget(field_name, spec)
+
+    def _compose_prompt_profile_editor(
+        self,
+        field_name: str,
+        spec: dict[str, Any],
+    ) -> ComposeResult:
+        required = bool(spec.get("required", False))
+        marker = " *" if required else ""
+        label = str(spec.get("label", field_name))
+        yield Static(f"{label}{marker}", classes="plugin-field-label")
+
+        with Horizontal(id="plugin-prompt-profiles-row"):
+            with Vertical(id="plugin-prompt-profile-list-wrap"):
+                options = self._prompt_profile_order or ["(無 profile)"]
+                yield OptionList(*options, id="plugin-prompt-profile-list")
+                with Horizontal(id="plugin-prompt-profile-actions"):
+                    yield Button("+ 新增", id="plugin-prompt-add", variant="success")
+                    yield Button("- 刪除", id="plugin-prompt-remove", variant="warning")
+
+            with Vertical(id="plugin-prompt-profile-detail"):
+                yield Static("Profile Key", classes="plugin-field-label")
+                yield Input(
+                    self._active_prompt_profile,
+                    id="plugin-prompt-key",
+                    disabled=True,
+                )
+                yield Static("Version", classes="plugin-field-label")
+                yield Input(
+                    self._prompt_profile_value(self._active_prompt_profile, "version"),
+                    id="plugin-prompt-version",
+                )
+                yield Static("Description", classes="plugin-field-label")
+                yield Input(
+                    self._prompt_profile_value(
+                        self._active_prompt_profile, "description"
+                    ),
+                    id="plugin-prompt-description",
+                )
+                yield Static("System Prompt", classes="plugin-field-label")
+                yield TextArea(
+                    self._prompt_profile_value(
+                        self._active_prompt_profile, "system_prompt"
+                    ),
+                    id="plugin-prompt-system_prompt",
+                    classes="plugin-textarea-field",
+                )
 
     def _build_field_widget(self, field_name: str, spec: dict[str, Any]) -> Any:
         field_type = str(spec.get("type", "str")).lower()
@@ -177,7 +323,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 classes="plugin-select-field",
             )
 
-        if field_type in {"textarea", "list[str]", "list"}:
+        if field_type in {"textarea", "yaml", "list[str]", "list"}:
             rows = spec.get("rows", 7)
             try:
                 rows_value = int(rows)
@@ -380,6 +526,12 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         widget_id = f"#{self._widget_id(field_name)}"
         options = self._options(spec)
 
+        if self._is_prompt_profiles_field(field_name, spec):
+            try:
+                return self._collect_prompt_profiles_from_editor()
+            except Exception:
+                pass
+
         if field_type == "bool":
             return self.query_one(widget_id, Switch).value
 
@@ -396,6 +548,17 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
 
         if field_type == "textarea":
             return str(self.query_one(widget_id, TextArea).text).strip()
+
+        if field_type == "yaml":
+            import yaml
+
+            raw = str(self.query_one(widget_id, TextArea).text).strip()
+            if not raw:
+                return None
+            try:
+                return yaml.safe_load(raw)
+            except yaml.YAMLError as exc:
+                raise ValueError(f"{field_label} 不是有效的 YAML：{exc}") from exc
 
         if field_type in {"str", "path", "secret"}:
             return self.query_one(widget_id, Input).value.strip()
@@ -417,6 +580,118 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 raise ValueError(f"{field_label} 必須是整數") from exc
 
         return self.query_one(widget_id, Input).value.strip()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option_list.id != "plugin-prompt-profile-list":
+            return
+
+        self._save_active_prompt_profile_fields()
+        if event.option_index < 0 or event.option_index >= len(
+            self._prompt_profile_order
+        ):
+            return
+        self._active_prompt_profile = self._prompt_profile_order[event.option_index]
+        self._load_active_prompt_profile_fields()
+
+    def _has_prompt_profiles_field(self) -> bool:
+        for field_name, spec in self._fields.items():
+            if self._is_prompt_profiles_field(field_name, spec):
+                return True
+        return False
+
+    def _is_prompt_profiles_field(self, field_name: str, spec: dict[str, Any]) -> bool:
+        return (
+            field_name == "prompt_profiles"
+            and str(spec.get("type", "")).lower() == "yaml"
+        )
+
+    def _init_prompt_profiles_state(self) -> dict[str, dict[str, Any]]:
+        if not self._use_prompt_profile_editor:
+            return {}
+
+        raw_profiles = self._current.get("prompt_profiles", {})
+        parsed: dict[str, dict[str, Any]] = {}
+        if isinstance(raw_profiles, dict):
+            for key, value in raw_profiles.items():
+                profile_key = str(key)
+                if isinstance(value, dict):
+                    parsed[profile_key] = {
+                        "version": value.get("version", 1),
+                        "description": str(value.get("description", "")),
+                        "system_prompt": str(value.get("system_prompt", "")),
+                    }
+                else:
+                    parsed[profile_key] = {
+                        "version": 1,
+                        "description": "",
+                        "system_prompt": str(value),
+                    }
+
+        if parsed:
+            return parsed
+
+        fallback_prompt = str(self._current.get("system_prompt", "")).strip()
+        return {
+            "default_v1": {
+                "version": 1,
+                "description": "",
+                "system_prompt": fallback_prompt,
+            }
+        }
+
+    def _prompt_profile_value(self, key: str, field: str) -> str:
+        profile = self._prompt_profiles_state.get(key, {})
+        value = profile.get(field, "")
+        return "" if value is None else str(value)
+
+    def _save_active_prompt_profile_fields(self) -> None:
+        key = self._active_prompt_profile
+        if not key or key not in self._prompt_profiles_state:
+            return
+
+        version_text = self.query_one("#plugin-prompt-version", Input).value.strip()
+        version = 1
+        if version_text:
+            try:
+                version = int(version_text)
+            except ValueError:
+                version = 1
+
+        self._prompt_profiles_state[key] = {
+            "version": version,
+            "description": self.query_one(
+                "#plugin-prompt-description", Input
+            ).value.strip(),
+            "system_prompt": str(
+                self.query_one("#plugin-prompt-system_prompt", TextArea).text
+            ).strip(),
+        }
+
+    def _load_active_prompt_profile_fields(self) -> None:
+        key = self._active_prompt_profile
+        profile = self._prompt_profiles_state.get(key, {})
+        self.query_one("#plugin-prompt-key", Input).value = key
+        self.query_one("#plugin-prompt-version", Input).value = str(
+            profile.get("version", 1)
+        )
+        self.query_one("#plugin-prompt-description", Input).value = str(
+            profile.get("description", "")
+        )
+        self.query_one("#plugin-prompt-system_prompt", TextArea).load_text(
+            str(profile.get("system_prompt", ""))
+        )
+
+    def _collect_prompt_profiles_from_editor(self) -> dict[str, dict[str, Any]]:
+        self._save_active_prompt_profile_fields()
+        payload: dict[str, dict[str, Any]] = {}
+        for key in self._prompt_profile_order:
+            profile = self._prompt_profiles_state.get(key, {})
+            payload[key] = {
+                "version": int(profile.get("version", 1) or 1),
+                "description": str(profile.get("description", "")).strip(),
+                "system_prompt": str(profile.get("system_prompt", "")).strip(),
+            }
+        return payload
 
     def _validate_field_value(
         self,
