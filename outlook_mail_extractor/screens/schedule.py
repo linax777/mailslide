@@ -8,6 +8,7 @@ from textual.timer import Timer
 from textual.widgets import Input, Log, Static, Switch
 from textual.containers import Vertical
 
+from ..i18n import t
 from .home import HomeScreen
 
 
@@ -38,24 +39,16 @@ class ScheduleScreen(Static):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="schedule-container"):
-            yield Static(
-                "🔄 排程設定，使用時須保持此程式(terminal)運行", id="schedule-title"
-            )
+            yield Static(t("ui.schedule.title"), id="schedule-title")
             with Vertical(id="schedule-toggle"):
-                yield Static("啟用排程:", id="schedule-enable-label")
+                yield Static(t("ui.schedule.enable"), id="schedule-enable-label")
                 yield Switch(id="schedule-switch")
             with Vertical(id="schedule-cron"):
-                yield Static("Cron 表達式，點擊下方區域可修改:", id="cron-label")
+                yield Static(t("ui.schedule.cron_label"), id="cron-label")
                 yield Input("0 * * * *", id="cron-input", placeholder="* * * * *")
-            yield Static("常用範例:", id="examples-title")
-            yield Static(
-                "0 * * * * - 每小時\n"
-                "0 9 * * * - 每天早上 9 點\n"
-                "0 9 * * 1-5 - 平日早上 9 點\n"
-                "*/15 * * * * - 每 15 分鐘",
-                id="examples-content",
-            )
-            yield Static("📝 排程日誌", id="log-title")
+            yield Static(t("ui.schedule.examples.title"), id="examples-title")
+            yield Static(t("ui.schedule.examples.content"), id="examples-content")
+            yield Static(t("ui.schedule.log.title"), id="log-title")
             yield Log(id="log-output", auto_scroll=True)
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
@@ -76,10 +69,16 @@ class ScheduleScreen(Static):
         """驗證 cron 表達式"""
         parts = self._cron_expression.strip().split()
         if len(parts) != 5:
-            self._show_error(f"❌ Cron 表達式需有 5 個欄位，實際為 {len(parts)} 個")
+            self._show_error(t("ui.schedule.error.cron_field_count", count=len(parts)))
             return False
 
-        field_names = ["分鐘", "小時", "日期", "月份", "星期"]
+        field_names = [
+            t("ui.schedule.field.minute"),
+            t("ui.schedule.field.hour"),
+            t("ui.schedule.field.day"),
+            t("ui.schedule.field.month"),
+            t("ui.schedule.field.weekday"),
+        ]
         valid_ranges = [
             (0, 59),
             (0, 23),
@@ -92,7 +91,14 @@ class ScheduleScreen(Static):
             zip(parts, field_names, valid_ranges)
         ):
             if not self._validate_cron_field(part, min_val, max_val):
-                self._show_error(f"❌ 第 {i + 1} 個欄位 ({name}) 格式錯誤: {part}")
+                self._show_error(
+                    t(
+                        "ui.schedule.error.cron_field_invalid",
+                        index=i + 1,
+                        field=name,
+                        value=part,
+                    )
+                )
                 return False
         return True
 
@@ -141,13 +147,13 @@ class ScheduleScreen(Static):
         if self._schedule_timer is not None:
             self._schedule_timer.stop()
         self._schedule_timer = self.set_interval(60, self._check_schedule)
-        self._log(f"🔄 排程已啟用: {self._cron_expression}")
+        self._log(t("ui.schedule.log.enabled", expr=self._cron_expression))
 
     def _stop_scheduler(self) -> None:
         if self._schedule_timer is not None:
             self._schedule_timer.stop()
             self._schedule_timer = None
-        self._log("⏹️ 排程已停用")
+        self._log(t("ui.schedule.log.disabled"))
 
     def on_unmount(self) -> None:
         self._stop_scheduler()
@@ -161,17 +167,22 @@ class ScheduleScreen(Static):
                     or (now - self._last_run_time).total_seconds() > 60
                 ):
                     self._last_run_time = now
-                    self._log(f"⏰ 排程觸發 ({now.strftime('%H:%M')}): 執行中...")
+                    self._log(
+                        t(
+                            "ui.schedule.log.triggered",
+                            time=now.strftime("%H:%M"),
+                        )
+                    )
                     self._run_jobs()
         except Exception as e:
-            self._log(f"⚠️ 排程檢查錯誤: {e}")
+            self._log(t("ui.schedule.error.check_failed", error=e))
 
     def _run_jobs(self) -> None:
         try:
             home_screen = self.app.query_one(HomeScreen)
             home_screen.run_jobs()
         except Exception as e:
-            self._log(f"❌ 執行失敗: {e}")
+            self._log(t("ui.schedule.error.execution_failed", error=e))
 
     def _log(self, message: str) -> None:
         try:

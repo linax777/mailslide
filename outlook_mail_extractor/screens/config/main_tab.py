@@ -8,12 +8,14 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Static, TextArea
 
+from ...i18n import t
 from ...config import load_config, validate_config
 from ...runtime import RuntimeContext, get_runtime_context
 from ...ui_schema import (
     build_default_list_item,
     evaluate_rules,
     load_ui_schema,
+    schema_text,
     strip_reserved_metadata,
     validate_ui_schema,
 )
@@ -74,7 +76,7 @@ class MainConfigTab(Static):
     def compose(self) -> ComposeResult:
         with Vertical(id="main-config-split"):
             with Vertical(id="main-jobs-pane"):
-                yield Static("📋 Jobs 清單", id="main-jobs-title")
+                yield Static(t("ui.main.jobs.title"), id="main-jobs-title")
                 yield DataTable(
                     id="main-jobs-table",
                     show_cursor=True,
@@ -87,7 +89,12 @@ class MainConfigTab(Static):
                         if not isinstance(button, dict):
                             continue
                         btn = Button(
-                            str(button.get("label", "未命名按鈕")),
+                            schema_text(
+                                button,
+                                key_field="label_key",
+                                fallback_field="label",
+                                default="未命名按鈕",
+                            ),
                             id=f"schema-btn-{button.get('id', 'unknown')}",
                             variant=self._resolve_button_variant(
                                 str(button.get("variant", "default"))
@@ -96,7 +103,7 @@ class MainConfigTab(Static):
                         btn.styles.min_height = 5
                         btn.styles.height = "auto"
                         yield btn
-                yield Static("📄 主設定檔 (config/config.yaml)", id="main-config-title")
+                yield Static(t("ui.main.config.title"), id="main-config-title")
                 yield TextArea("", id="main-config-content", read_only=False)
 
     def on_mount(self) -> None:
@@ -125,7 +132,15 @@ class MainConfigTab(Static):
         jobs_pane = self.query_one("#main-jobs-pane", Vertical)
         table = self.query_one("#main-jobs-table", DataTable)
         table.clear(columns=True)
-        table.add_columns("啟用", "名稱", "帳號", "來源", "目標", "Plugins", "Limit")
+        table.add_columns(
+            t("ui.main.table.enabled"),
+            t("ui.main.table.name"),
+            t("ui.main.table.account"),
+            t("ui.main.table.source"),
+            t("ui.main.table.destination"),
+            t("ui.main.table.plugins"),
+            t("ui.main.table.limit"),
+        )
         self._rendered_job_indices = []
 
         jobs = config.get("jobs", [])
@@ -215,7 +230,7 @@ class MainConfigTab(Static):
             return
 
         self.app.notify(
-            f"此按鈕尚未接上編輯流程: {action} (目前提供 schema 預覽與驗證)",
+            t("ui.main.notify.button_unhandled", action=action),
             severity="warning",
         )
 
@@ -224,14 +239,14 @@ class MainConfigTab(Static):
         with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         if not isinstance(data, dict):
-            raise ValueError("config.yaml 內容必須是物件")
+            raise ValueError(t("ui.main.error.config_object_required"))
         return data
 
     def _load_editor_config(self) -> dict:
         content_widget = self.query_one("#main-config-content", TextArea)
         data = yaml.safe_load(content_widget.text) or {}
         if not isinstance(data, dict):
-            raise ValueError("設定內容必須是 YAML 物件")
+            raise ValueError(t("ui.main.error.yaml_object_required"))
         return data
 
     def _dump_editor_config(self, data: dict) -> None:
@@ -269,7 +284,10 @@ class MainConfigTab(Static):
 
             if failed_errors:
                 preview = preview_messages(failed_errors)
-                self.app.notify(f"❌ 驗證失敗：{preview}", severity="error")
+                self.app.notify(
+                    t("ui.common.error.validation_failed", preview=preview),
+                    severity="error",
+                )
                 return
 
             self._write_config_file(sanitized)
@@ -279,17 +297,20 @@ class MainConfigTab(Static):
 
             if failed_warnings:
                 preview = preview_messages(failed_warnings)
-                self.app.notify(f"⚠️ 已儲存，請留意：{preview}", severity="warning")
+                self.app.notify(
+                    t("ui.common.warn.saved_with_warning", preview=preview),
+                    severity="warning",
+                )
             else:
-                self.app.notify("✅ 已儲存 config/config.yaml", severity="information")
+                self.app.notify(t("ui.main.notify.saved"), severity="information")
         except Exception as e:
-            self.app.notify(f"❌ 儲存失敗: {e}", severity="error")
+            self.app.notify(t("ui.common.error.save_failed", error=e), severity="error")
 
     def _next_job_name(self, jobs: list[dict]) -> str:
         existing = {str(job.get("name", "")).strip() for job in jobs}
         index = 1
         while True:
-            candidate = f"新工作{index}"
+            candidate = t("ui.main.default.job_name", index=index)
             if candidate not in existing:
                 return candidate
             index += 1
@@ -325,7 +346,7 @@ class MainConfigTab(Static):
             config = self._load_editor_config()
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
-                raise ValueError("jobs 必須是陣列")
+                raise ValueError(t("ui.main.error.jobs_must_list"))
 
             existing_names = {
                 str(job.get("name", "")).strip()
@@ -334,7 +355,7 @@ class MainConfigTab(Static):
             }
             new_name = str(result.get("name", "")).strip()
             if new_name in existing_names:
-                raise ValueError(f"Job 名稱重複: {new_name}")
+                raise ValueError(t("ui.main.error.job_name_duplicate", name=new_name))
 
             jobs.append(result)
             config["jobs"] = jobs
@@ -342,9 +363,11 @@ class MainConfigTab(Static):
             self._run_schema_validation()
             self._render_jobs_table(config)
             self._reset_armed = False
-            self.app.notify("✅ 已新增一筆 Job 到編輯器", severity="information")
+            self.app.notify(t("ui.main.notify.job_added"), severity="information")
         except Exception as e:
-            self.app.notify(f"❌ 新增 Job 失敗: {e}", severity="error")
+            self.app.notify(
+                t("ui.main.error.job_add_failed", error=e), severity="error"
+            )
 
     def _add_job(self) -> None:
         defaults = build_default_list_item(self._ui_schema, "jobs")
@@ -359,7 +382,7 @@ class MainConfigTab(Static):
                         [j for j in jobs if isinstance(j, dict)]
                     )
         except Exception:
-            defaults.setdefault("name", "新工作1")
+            defaults.setdefault("name", t("ui.main.default.job_name", index=1))
 
         self.app.push_screen(
             AddJobScreen(plugin_options=plugin_options, defaults=defaults),
@@ -378,16 +401,18 @@ class MainConfigTab(Static):
             config = self._load_editor_config()
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
-                raise ValueError("jobs 必須是陣列")
+                raise ValueError(t("ui.main.error.jobs_must_list"))
             if not (0 <= edit_index < len(jobs)):
-                raise ValueError("要修改的 Job 已不存在")
+                raise ValueError(t("ui.main.error.job_not_found"))
 
             updated_name = str(result.get("name", "")).strip()
             for idx, job in enumerate(jobs):
                 if idx == edit_index or not isinstance(job, dict):
                     continue
                 if str(job.get("name", "")).strip() == updated_name:
-                    raise ValueError(f"Job 名稱重複: {updated_name}")
+                    raise ValueError(
+                        t("ui.main.error.job_name_duplicate", name=updated_name)
+                    )
 
             jobs[edit_index] = result
             config["jobs"] = jobs
@@ -397,32 +422,34 @@ class MainConfigTab(Static):
             self._render_jobs_table(config)
             self._reset_armed = False
             self.app.notify(
-                f"✅ 已更新 Job（第 {edit_index + 1} 筆）",
+                t("ui.main.notify.job_updated", index=edit_index + 1),
                 severity="information",
             )
         except Exception as e:
-            self.app.notify(f"❌ 修改 Job 失敗: {e}", severity="error")
+            self.app.notify(
+                t("ui.main.error.job_edit_failed", error=e), severity="error"
+            )
 
     def _edit_job(self) -> None:
         try:
             config = self._load_editor_config()
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
-                raise ValueError("jobs 必須是陣列")
+                raise ValueError(t("ui.main.error.jobs_must_list"))
             if not jobs:
-                self.app.notify("⚠️ 沒有可修改的 Job", severity="warning")
+                self.app.notify(t("ui.main.warn.no_job_to_edit"), severity="warning")
                 return
 
             edit_index = self._resolve_edit_job_index(jobs)
             if edit_index is None:
                 self.app.notify(
-                    "⚠️ 請先在 Jobs 清單選取要修改的 Job", severity="warning"
+                    t("ui.main.warn.select_job_to_edit"), severity="warning"
                 )
                 return
 
             selected_job = jobs[edit_index]
             if not isinstance(selected_job, dict):
-                raise ValueError("選取的 Job 內容格式錯誤")
+                raise ValueError(t("ui.main.error.selected_job_invalid"))
 
             plugin_options = self._plugin_options_from_schema()
             defaults = dict(selected_job)
@@ -431,22 +458,24 @@ class MainConfigTab(Static):
                 AddJobScreen(
                     plugin_options=plugin_options,
                     defaults=defaults,
-                    title=f"✏️ 修改 Job（第 {edit_index + 1} 筆）",
-                    save_button_label="儲存修改",
+                    title=t("ui.main.edit_modal.title", index=edit_index + 1),
+                    save_button_label=t("ui.main.edit_modal.save"),
                 ),
                 lambda result: self._handle_edit_job_result(edit_index, result),
             )
         except Exception as e:
-            self.app.notify(f"❌ 開啟修改 Job 失敗: {e}", severity="error")
+            self.app.notify(
+                t("ui.main.error.open_edit_failed", error=e), severity="error"
+            )
 
     def _remove_job(self) -> None:
         try:
             config = self._load_editor_config()
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
-                raise ValueError("jobs 必須是陣列")
+                raise ValueError(t("ui.main.error.jobs_must_list"))
             if not jobs:
-                self.app.notify("⚠️ 沒有可刪除的 Job", severity="warning")
+                self.app.notify(t("ui.main.warn.no_job_to_remove"), severity="warning")
                 return
 
             remove_index = self._resolve_remove_job_index(jobs)
@@ -458,22 +487,24 @@ class MainConfigTab(Static):
             self._render_jobs_table(config)
             self._reset_armed = False
             name = (
-                str(removed.get("name", "(未命名)"))
+                str(removed.get("name", t("ui.main.default.unnamed")))
                 if isinstance(removed, dict)
-                else "(未知)"
+                else t("ui.main.default.unknown")
             )
             self.app.notify(
-                f"✅ 已刪除 Job（第 {remove_index + 1} 筆）: {name}",
+                t("ui.main.notify.job_removed", index=remove_index + 1, name=name),
                 severity="information",
             )
         except Exception as e:
-            self.app.notify(f"❌ 刪除 Job 失敗: {e}", severity="error")
+            self.app.notify(
+                t("ui.main.error.job_remove_failed", error=e), severity="error"
+            )
 
     def _reset_from_sample(self) -> None:
         if not self._reset_armed:
             self._reset_armed = True
             self.app.notify(
-                "⚠️ 再按一次「回復範本」以確認覆蓋目前編輯內容",
+                t("ui.main.warn.reset_confirm"),
                 severity="warning",
             )
             return
@@ -482,16 +513,16 @@ class MainConfigTab(Static):
             with open(self._sample_path, encoding="utf-8") as f:
                 sample = yaml.safe_load(f) or {}
             if not isinstance(sample, dict):
-                raise ValueError("sample 內容格式錯誤")
+                raise ValueError(t("ui.main.error.sample_invalid"))
 
             sanitized = strip_reserved_metadata(sample)
             self._dump_editor_config(sanitized)
             self._write_config_file(sanitized)
             self._load_config()
             self._run_schema_validation()
-            self.app.notify("✅ 已用 sample 回復設定", severity="information")
+            self.app.notify(t("ui.main.notify.reset_done"), severity="information")
         except Exception as e:
-            self.app.notify(f"❌ 回復失敗: {e}", severity="error")
+            self.app.notify(t("ui.main.error.reset_failed", error=e), severity="error")
         finally:
             self._reset_armed = False
 
@@ -499,7 +530,7 @@ class MainConfigTab(Static):
         if self._schema_errors:
             preview = " | ".join(self._schema_errors[:2])
             self.app.notify(
-                f"❌ _ui schema 結構錯誤: {preview}",
+                t("ui.main.error.schema_invalid", preview=preview),
                 severity="error",
             )
             return
@@ -510,7 +541,7 @@ class MainConfigTab(Static):
             else:
                 config_path = self._runtime.paths.config_file
                 if not config_path.exists():
-                    self.app.notify("❌ 找不到 config/config.yaml", severity="error")
+                    self.app.notify(t("ui.main.error.config_missing"), severity="error")
                     return
                 config = self._load_raw_config()
             results = evaluate_rules(
@@ -518,7 +549,9 @@ class MainConfigTab(Static):
                 self._ui_schema.get("validation_rules", []),
             )
         except Exception as e:
-            self.app.notify(f"❌ YAML 解析失敗: {e}", severity="error")
+            self.app.notify(
+                t("ui.main.error.yaml_parse_failed", error=e), severity="error"
+            )
             return
 
         failed_errors, failed_warnings = collect_rule_failures(results)
@@ -528,17 +561,19 @@ class MainConfigTab(Static):
         if has_error:
             detail = preview_messages(failed_errors)
             self.app.notify(
-                f"❌ 驗證失敗：{detail}",
+                t("ui.common.error.validation_failed", preview=detail),
                 severity="error",
             )
         elif has_warning:
             detail = preview_messages(failed_warnings)
             self.app.notify(
-                f"⚠️ 驗證完成：{detail}",
+                t("ui.main.warn.validation_done", detail=detail),
                 severity="warning",
             )
         else:
-            self.app.notify("✅ 驗證通過", severity="information")
+            self.app.notify(
+                t("ui.main.notify.validation_passed"), severity="information"
+            )
 
     def _load_config(self) -> None:
         content_widget = self.query_one("#main-config-content", TextArea)
@@ -547,11 +582,9 @@ class MainConfigTab(Static):
 
         config_path = self._runtime.paths.config_file
         if not config_path.exists():
-            content_widget.load_text(
-                "⚠️ 找不到 config/config.yaml\n\n請先到 About 分頁按「初始化設定」。"
-            )
+            content_widget.load_text(t("ui.main.content.config_missing"))
             self.query_one("#main-config-title", Static).update(
-                "📄 主設定檔 (config/config.yaml) ⚠️ 尚未初始化"
+                t("ui.main.config.title.not_initialized")
             )
             return
 
@@ -563,9 +596,9 @@ class MainConfigTab(Static):
             self._render_jobs_table(config)
 
             self.query_one("#main-config-title", Static).update(
-                "📄 主設定檔 (config/config.yaml) ✅"
+                t("ui.main.config.title.ok")
             )
         except Exception as e:
             self.query_one("#main-config-title", Static).update(
-                f"📄 主設定檔 (config/config.yaml) ❌ {e}"
+                t("ui.main.config.title.error", error=e)
             )

@@ -9,6 +9,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Static, TextArea
 
+from ...i18n import resolve_language, set_language, t
 from ...llm import load_llm_config
 from ...runtime import RuntimeContext, get_runtime_context
 from ...ui_schema import (
@@ -37,6 +38,7 @@ class LLMConfigTab(Static):
     def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
         self._runtime = runtime_context or get_runtime_context()
+        set_language(resolve_language(self._runtime.paths.config_file))
         self._sample_path = self._runtime.paths.llm_config_file.with_suffix(
             ".yaml.sample"
         )
@@ -45,27 +47,27 @@ class LLMConfigTab(Static):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="llm-main"):
-            yield Static("🤖 LLM 設定 (config/llm-config.yaml)", id="llm-config-title")
+            yield Static(t("ui.llm.title"), id="llm-config-title")
             yield TextArea("", id="llm-config-content", read_only=True)
-            yield Static("📊 設定值", id="llm-values-title")
+            yield Static(t("ui.llm.values.title"), id="llm-values-title")
             yield DataTable(id="llm-table")
-            yield Static("💡 說明", id="llm-help-title")
+            yield Static(t("ui.llm.help.title"), id="llm-help-title")
             yield Static(
-                "• API Base: API 伺服器位址 (如 Ollama 本機: http://localhost:11434/v1)\n"
-                "• API Key: API 密鑰 (OpenAI 需要，其他可能可留空)\n"
-                "• Model: 模型名稱 (如 llama3, gpt-4 等)\n"
-                "• Timeout: 請求逾時秒數",
+                t("ui.llm.help.body"),
                 id="llm-help",
             )
-            yield Static("🔌 連線測試", id="llm-test-title")
+            yield Static(t("ui.llm.test.title"), id="llm-test-title")
             yield Static(
-                "點擊「測試連線」按鈕驗證 LLM API 是否可正常連線\n"
-                "測試會發送一個簡單的請求確認 API 可用性",
+                t("ui.llm.test.desc"),
                 id="llm-test-desc",
             )
             with Horizontal(id="llm-actions"):
-                yield Button("🔗 測試連線", id="test-llm-connection", variant="primary")
-                yield Button("🛠️ 編輯設定", id="edit-llm-config")
+                yield Button(
+                    t("ui.llm.button.test_connection"),
+                    id="test-llm-connection",
+                    variant="primary",
+                )
+                yield Button(t("ui.llm.button.edit"), id="edit-llm-config")
 
     def on_mount(self) -> None:
         self._load_llm_config()
@@ -82,18 +84,22 @@ class LLMConfigTab(Static):
 
             llm_config = load_llm_config(str(llm_config_path))
             table.clear()
-            table.add_columns("項目", "值")
-            table.add_row("API Base", llm_config.api_base)
-            table.add_row("API Key", "***" if llm_config.api_key else "(未設定)")
-            table.add_row("Model", llm_config.model)
-            table.add_row("Timeout", f"{llm_config.timeout} 秒")
-
-            self.query_one("#llm-config-title", Static).update(
-                "🤖 LLM 設定 (config/llm-config.yaml) ✅"
+            table.add_columns(t("ui.common.column.item"), t("ui.common.column.value"))
+            table.add_row(t("ui.llm.table.api_base"), llm_config.api_base)
+            table.add_row(
+                t("ui.llm.table.api_key"),
+                "***" if llm_config.api_key else t("ui.llm.table.not_set"),
             )
+            table.add_row(t("ui.llm.table.model"), llm_config.model)
+            table.add_row(
+                t("ui.llm.table.timeout"),
+                t("ui.llm.table.timeout_seconds", seconds=llm_config.timeout),
+            )
+
+            self.query_one("#llm-config-title", Static).update(t("ui.llm.title.ok"))
         except Exception as e:
             self.query_one("#llm-config-title", Static).update(
-                f"🤖 LLM 設定 (config/llm-config.yaml) ❌ {e}"
+                t("ui.llm.title.error", error=e)
             )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -106,28 +112,28 @@ class LLMConfigTab(Static):
     def _load_llm_payload(self) -> dict[str, Any]:
         llm_config_path = self._runtime.paths.llm_config_file
         if not llm_config_path.exists():
-            raise FileNotFoundError("找不到 config/llm-config.yaml")
+            raise FileNotFoundError(t("ui.llm.error.config_missing"))
 
         try:
             with open(llm_config_path, encoding="utf-8") as f:
                 payload = yaml.safe_load(f) or {}
         except yaml.YAMLError as e:
-            raise ValueError(f"llm-config.yaml YAML 解析錯誤: {e}") from e
+            raise ValueError(t("ui.llm.error.yaml_parse", error=e)) from e
 
         if not isinstance(payload, dict):
-            raise ValueError("llm-config.yaml 內容必須是 YAML 物件")
+            raise ValueError(t("ui.llm.error.yaml_object_required"))
         return payload
 
     def _open_llm_editor(self) -> None:
         if not self._ui_schema:
-            self.app.notify(
-                "⚠️ llm-config.yaml.sample 缺少 _ui，維持唯讀模式", severity="warning"
-            )
+            self.app.notify(t("ui.llm.notify.schema_missing"), severity="warning")
             return
 
         if self._schema_errors:
             preview = " | ".join(self._schema_errors[:2])
-            self.app.notify(f"❌ _ui schema 結構錯誤: {preview}", severity="error")
+            self.app.notify(
+                t("ui.llm.error.schema_invalid", preview=preview), severity="error"
+            )
             return
 
         try:
@@ -156,7 +162,10 @@ class LLMConfigTab(Static):
 
         if failed_errors:
             preview = preview_messages(failed_errors)
-            self.app.notify(f"❌ 驗證失敗：{preview}", severity="error")
+            self.app.notify(
+                t("ui.common.error.validation_failed", preview=preview),
+                severity="error",
+            )
             return
 
         try:
@@ -164,11 +173,14 @@ class LLMConfigTab(Static):
             self._load_llm_config()
             if failed_warnings:
                 preview = preview_messages(failed_warnings)
-                self.app.notify(f"⚠️ 已儲存，請留意：{preview}", severity="warning")
+                self.app.notify(
+                    t("ui.common.warn.saved_with_warning", preview=preview),
+                    severity="warning",
+                )
             else:
-                self.app.notify("✅ 已儲存 llm-config.yaml", severity="information")
+                self.app.notify(t("ui.llm.notify.saved"), severity="information")
         except Exception as e:
-            self.app.notify(f"❌ 儲存失敗: {e}", severity="error")
+            self.app.notify(t("ui.common.error.save_failed", error=e), severity="error")
 
     def _write_llm_config_file(self, payload: dict[str, Any]) -> Path:
         """Write LLM config and create `.bak` when original exists."""
@@ -181,7 +193,7 @@ class LLMConfigTab(Static):
         llm_config_path = self._runtime.paths.llm_config_file
         if not llm_config_path.exists():
             self.app.notify(
-                "❌ llm-config.yaml 不存在，請先建立設定檔",
+                t("ui.llm.error.config_file_not_found"),
                 severity="error",
             )
             return
@@ -189,7 +201,7 @@ class LLMConfigTab(Static):
         test_button = self.query_one("#test-llm-connection", Button)
         test_button.disabled = True
 
-        self.app.notify("🔄 開始測試 LLM 連線...")
+        self.app.notify(t("ui.llm.notify.test_started"))
 
         self.run_worker(self._execute_test(), exclusive=True)
 
@@ -209,19 +221,19 @@ class LLMConfigTab(Static):
             if "ok" in response.lower():
                 self.call_later(
                     self.app.notify,
-                    "✅ LLM 連線成功！",
+                    t("ui.llm.notify.test_success"),
                     severity="information",
                 )
             else:
                 self.call_later(
                     self.app.notify,
-                    f"⚠️ LLM 回覆異常: {response[:50]}",
+                    t("ui.llm.warn.test_unexpected", response=response[:50]),
                     severity="warning",
                 )
         except Exception as e:
             self.call_later(
                 self.app.notify,
-                f"❌ LLM 連線失敗: {e}",
+                t("ui.llm.error.test_failed", error=e),
                 severity="error",
             )
         finally:

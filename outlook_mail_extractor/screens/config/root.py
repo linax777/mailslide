@@ -3,6 +3,7 @@
 from textual.app import ComposeResult
 from textual.widgets import Static, TabbedContent, TabPane
 
+from ...i18n import t
 from ...runtime import RuntimeContext, get_runtime_context
 from .llm_tab import LLMConfigTab
 from .main_tab import MainConfigTab
@@ -18,9 +19,9 @@ class ConfigScreen(Static):
 
     def compose(self) -> ComposeResult:
         with TabbedContent(initial="main"):
-            with TabPane("一般設定", id="main"):
+            with TabPane(t("ui.config.tab.main"), id="main"):
                 yield MainConfigTab(runtime_context=self._runtime)
-            with TabPane("LLM 設定", id="llm"):
+            with TabPane(t("ui.config.tab.llm"), id="llm"):
                 yield LLMConfigTab(runtime_context=self._runtime)
-            with TabPane("Plugin 設定", id="plugins"):
+            with TabPane(t("ui.config.tab.plugins"), id="plugins"):
                 yield PluginsConfigTab(runtime_context=self._runtime)

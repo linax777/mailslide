@@ -9,6 +9,7 @@ from textual.worker import Worker
 
 from ..config import load_config
 from ..core import OutlookConnectionError
+from ..i18n import resolve_language, set_language, t
 from ..runtime import RuntimeContext, get_runtime_context
 from ..services.job_execution import JobExecutionService
 from ..services.preflight import PreflightCheckService
@@ -30,6 +31,7 @@ class HomeScreen(Static):
     def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
         self._runtime = runtime_context or get_runtime_context()
+        set_language(resolve_language(self._runtime.paths.config_file))
         self._scheduler_enabled = False
         self._cron_expression = "0 * * * *"
         self._last_run_time = None
@@ -40,22 +42,27 @@ class HomeScreen(Static):
     def compose(self) -> ComposeResult:
         with Vertical(id="home-container"):
             yield Static(
-                "⌨️ Tab/方向鍵: 選擇 | Enter: 執行 | 🖱️ 可使用滑鼠操作點擊元件",
+                t("ui.home.help"),
                 id="help-text",
             )
             yield Static("", id="home-status")
             with Horizontal(id="home-actions"):
-                yield Button("▶️ 執行", id="run-jobs", variant="primary")
-                yield Button("⏹️ 終止", id="stop-jobs", variant="error", disabled=True)
-                yield Button("🔄 重新整理", id="refresh-jobs")
+                yield Button(t("ui.home.button.run"), id="run-jobs", variant="primary")
                 yield Button(
-                    "保留 RE/FW: OFF",
+                    t("ui.home.button.stop"),
+                    id="stop-jobs",
+                    variant="error",
+                    disabled=True,
+                )
+                yield Button(t("ui.home.button.refresh"), id="refresh-jobs")
+                yield Button(
+                    t("ui.home.button.preserve.off"),
                     id="toggle-preserve-reply-thread",
                     variant="default",
                 )
-            yield Static("📋 Jobs 列表", id="jobs-title")
+            yield Static(t("ui.home.jobs.title"), id="jobs-title")
             yield DataTable(id="jobs-table")
-            yield Static("📝 執行日誌", id="log-title")
+            yield Static(t("ui.home.log.title"), id="log-title")
             yield Log(id="log-output", auto_scroll=True)
 
     def on_mount(self) -> None:
@@ -70,16 +77,29 @@ class HomeScreen(Static):
 
         config_path = self._runtime.paths.config_file
         if not config_path.exists():
-            status.update("⚠️ 尚未初始化設定，請到 About 分頁按「初始化設定」。")
-            table.add_columns("狀態", "說明")
-            table.add_row("未初始化", "找不到 config/config.yaml")
+            status.update(t("ui.home.status.not_initialized"))
+            table.add_columns(
+                t("ui.common.column.status"), t("ui.common.column.detail")
+            )
+            table.add_row(
+                t("ui.home.row.uninitialized"),
+                t("ui.home.row.config_missing"),
+            )
             run_button.disabled = True
             return
 
         try:
             config = load_config(config_path)
             status.update("")
-            table.add_columns("#", "啟用", "名稱", "帳號", "來源", "目標", "Plugins")
+            table.add_columns(
+                "#",
+                t("ui.home.column.enabled"),
+                t("ui.home.column.name"),
+                t("ui.home.column.account"),
+                t("ui.home.column.source"),
+                t("ui.home.column.destination"),
+                t("ui.home.column.plugins"),
+            )
             run_button.disabled = False
 
             for idx, job in enumerate(config.get("jobs", []), 1):
@@ -95,9 +115,11 @@ class HomeScreen(Static):
                     truncate(plugins),
                 )
         except Exception as e:
-            status.update("⚠️ 設定檔存在，但格式異常，請先修正後再執行。")
-            table.add_columns("狀態", "說明")
-            table.add_row("載入失敗", str(e))
+            status.update(t("ui.home.status.config_invalid"))
+            table.add_columns(
+                t("ui.common.column.status"), t("ui.common.column.detail")
+            )
+            table.add_row(t("ui.home.row.load_failed"), str(e))
             run_button.disabled = True
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -110,19 +132,28 @@ class HomeScreen(Static):
         elif event.button.id == "toggle-preserve-reply-thread":
             self._preserve_reply_thread = not self._preserve_reply_thread
             self._update_preserve_reply_button()
-            status = "啟用" if self._preserve_reply_thread else "停用"
-            self.app.notify(f"RE/FW 內文保留：{status}", severity="information")
+            status = (
+                t("ui.home.preserve.enabled")
+                if self._preserve_reply_thread
+                else t("ui.home.preserve.disabled")
+            )
+            self.app.notify(
+                t("ui.home.notify.preserve_updated", status=status),
+                severity="information",
+            )
 
     def _update_preserve_reply_button(self) -> None:
         """Update preserve-reply-thread toggle button label."""
         button = self.query_one("#toggle-preserve-reply-thread", Button)
         button.label = (
-            "保留 RE/FW: ON" if self._preserve_reply_thread else "保留 RE/FW: OFF"
+            t("ui.home.button.preserve.on")
+            if self._preserve_reply_thread
+            else t("ui.home.button.preserve.off")
         )
 
     def run_jobs(self) -> None:
         if self._job_worker and self._job_worker.is_running:
-            self.app.notify("⚠️ 作業正在執行中", severity="warning")
+            self.app.notify(t("ui.home.notify.already_running"), severity="warning")
             return
 
         if not self._validate_jobs_before_run():
@@ -147,13 +178,13 @@ class HomeScreen(Static):
     def stop_jobs(self) -> None:
         """Request cancellation for the current job worker."""
         if not self._job_worker or not self._job_worker.is_running:
-            self.app.notify("ℹ️ 目前沒有執行中的作業", severity="information")
+            self.app.notify(t("ui.home.notify.no_running_job"), severity="information")
             self._set_job_running_state(False)
             return
 
         self._job_worker.cancel()
-        self._update_log("⏹️ 已送出終止要求，正在停止作業...")
-        self.app.notify("⏹️ 已送出終止要求", severity="warning")
+        self._update_log(t("ui.home.log.stop_requested"))
+        self.app.notify(t("ui.home.notify.stop_requested"), severity="warning")
 
         stop_button = self.query_one("#stop-jobs", Button)
         stop_button.disabled = True
@@ -163,14 +194,14 @@ class HomeScreen(Static):
         try:
             config = load_config(self._runtime.paths.config_file)
         except Exception as e:
-            self.app.notify(f"❌ 無法載入設定檔: {e}", severity="error")
+            self.app.notify(t("ui.home.error.config_load", error=e), severity="error")
             return False
 
         enabled_jobs = [
             job for job in config.get("jobs", []) if job.get("enable", True)
         ]
         if not enabled_jobs:
-            self.app.notify("⚠️ 沒有可執行的啟用 jobs", severity="warning")
+            self.app.notify(t("ui.home.notify.no_enabled_jobs"), severity="warning")
             return False
 
         try:
@@ -181,18 +212,25 @@ class HomeScreen(Static):
                 {"jobs": enabled_jobs},
             )
         except OutlookConnectionError as e:
-            self.app.notify(f"❌ Outlook 連線失敗: {e}", severity="error")
+            self.app.notify(
+                t("ui.home.error.outlook_connect", error=e), severity="error"
+            )
             return False
         except Exception as e:
-            self.app.notify(f"❌ 執行前檢查失敗: {e}", severity="error")
+            self.app.notify(t("ui.home.error.preflight", error=e), severity="error")
             return False
 
         if result.issues:
             for issue in result.issues[:3]:
-                self.app.notify(f"⚠️ {issue}", severity="error")
+                self.app.notify(
+                    t("ui.home.error.preflight_issue", issue=issue), severity="error"
+                )
             if len(result.issues) > 3:
                 self.app.notify(
-                    f"⚠️ 另有 {len(result.issues) - 3} 個 job 的 account/source 設定有誤",
+                    t(
+                        "ui.home.error.preflight_more_issues",
+                        count=len(result.issues) - 3,
+                    ),
                     severity="error",
                 )
             return False
@@ -212,13 +250,16 @@ class HomeScreen(Static):
                 False,
                 preserve_reply_thread=self._preserve_reply_thread,
             )
-            self.call_later(self._update_log, "✅ 執行完成")
+            self.call_later(self._update_log, t("ui.home.log.done"))
         except asyncio.CancelledError:
-            self.call_later(self._update_log, "⏹️ 作業已終止")
+            self.call_later(self._update_log, t("ui.home.log.cancelled"))
         except Exception as e:
             import traceback
 
-            error_msg = f"❌ 執行失敗: {e}\n{traceback.format_exc()}"
+            error_msg = (
+                f"{t('ui.home.error.execution_failed', error=e)}\n"
+                f"{traceback.format_exc()}"
+            )
             self.call_later(self._update_log, error_msg)
         finally:
             self._job_worker = None

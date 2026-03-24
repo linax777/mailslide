@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from .config import load_config
+from .i18n import resolve_language, set_language, t
 from .logger import get_logger
 from .runtime import get_runtime_context
 from .services.job_execution import JobExecutionService
@@ -16,48 +17,60 @@ from .services.preflight import PreflightCheckService
 async def async_main() -> int:
     """CLI 主函式"""
     runtime = get_runtime_context()
+    lang_override = _detect_lang_arg(sys.argv[1:])
+    set_language(
+        resolve_language(runtime.paths.config_file, explicit_language=lang_override)
+    )
+
     runtime.logger_manager.start_session()
     logger = get_logger()
-    logger.info("命令列執行開始")
+    logger.info(t("cli.log.start"))
 
-    parser = argparse.ArgumentParser(
-        description="讀取 Outlook Classic 指定帳號/目錄郵件 輸出 JSON"
-    )
+    parser = argparse.ArgumentParser(description=t("cli.description"))
     parser.add_argument(
         "--config",
         "-c",
         type=Path,
         default=Path("config/config.yaml"),
-        help="指定 YAML 設定檔路徑",
+        help=t("cli.arg.config"),
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="測試模式：僅讀取內容，不執行移動動作",
+        help=t("cli.arg.dry_run"),
     )
     parser.add_argument(
         "--output",
         "-o",
         type=Path,
         default=None,
-        help="輸出 JSON 檔案路徑 (若未指定則輸出至終端機)",
+        help=t("cli.arg.output"),
     )
     parser.add_argument(
         "--no-move",
         action="store_true",
-        help="不移動郵件，僅擷取資料",
+        help=t("cli.arg.no_move"),
     )
     parser.add_argument(
         "--skip-preflight",
         action="store_true",
-        help="跳過執行前 account/source 檢查",
+        help=t("cli.arg.skip_preflight"),
+    )
+    parser.add_argument(
+        "--lang",
+        choices=["zh-TW", "en-US"],
+        default=None,
+        help=t("cli.arg.lang"),
     )
 
     args = parser.parse_args()
+    if args.lang:
+        set_language(args.lang)
 
     if not args.config.exists():
-        print(f"錯誤: 找不到設定檔 {args.config}", file=sys.stderr)
-        logger.error(f"找不到設定檔: {args.config}")
+        message = t("cli.error.config_not_found", path=args.config)
+        print(message, file=sys.stderr)
+        logger.error(message)
         return 1
 
     try:
@@ -71,14 +84,14 @@ async def async_main() -> int:
                     f"- {issue}" for issue in preflight_result.issues[:5]
                 )
                 if len(preflight_result.issues) > 5:
-                    issue_preview += (
-                        f"\n- ...另有 {len(preflight_result.issues) - 5} 個設定問題"
+                    issue_preview += t(
+                        "cli.preflight.more_issues",
+                        count=len(preflight_result.issues) - 5,
                     )
 
                 logger.error(f"Preflight failed with config issues:\n{issue_preview}")
                 print(
-                    "錯誤: 執行前檢查失敗，請先修正設定檔的 account/source：\n"
-                    f"{issue_preview}",
+                    t("cli.error.preflight_failed", issues=issue_preview),
                     file=sys.stderr,
                 )
                 return 1
@@ -100,18 +113,30 @@ async def async_main() -> int:
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
                 f.write(json_str)
-            print(f"結果已儲存至 {args.output.resolve()}")
-            logger.info(f"結果已儲存至 {args.output.resolve()}")
+            result_saved_message = t(
+                "cli.info.result_saved", path=args.output.resolve()
+            )
+            print(result_saved_message)
+            logger.info(result_saved_message)
         else:
             print(json_str)
 
-        logger.info("命令列執行完成")
+        logger.info(t("cli.log.finish"))
         return 0
 
     except Exception as e:
         logger.exception(f"執行失敗: {e}")
-        print(f"錯誤: {e}", file=sys.stderr)
+        print(t("cli.error.execution_failed", error=e), file=sys.stderr)
         return 1
+
+
+def _detect_lang_arg(argv: list[str]) -> str | None:
+    for index, arg in enumerate(argv):
+        if arg == "--lang" and index + 1 < len(argv):
+            return argv[index + 1]
+        if arg.startswith("--lang="):
+            return arg.split("=", maxsplit=1)[1]
+    return None
 
 
 def main() -> int:

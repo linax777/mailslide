@@ -17,7 +17,8 @@ from textual.widgets import (
     TextArea,
 )
 
-from ...ui_schema import evaluate_rules
+from ...i18n import t
+from ...ui_schema import evaluate_rules, schema_text
 
 
 class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
@@ -114,7 +115,11 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="plugin-editor-dialog"):
             yield Static(
-                f"🧩 編輯 {self._entity_label}: {self._plugin_name}",
+                t(
+                    "ui.plugin_editor.title",
+                    entity=self._entity_label,
+                    name=self._plugin_name,
+                ),
                 id="plugin-editor-title",
             )
             with VerticalScroll(id="plugin-editor-form"):
@@ -123,16 +128,22 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
 
             yield Static("", id="plugin-editor-error")
             with Horizontal(id="plugin-editor-actions"):
-                yield Button("取消", id="plugin-editor-cancel")
+                yield Button(
+                    t("ui.plugin_editor.button.cancel"), id="plugin-editor-cancel"
+                )
                 actions = self._schema_actions()
                 if "validate" in actions:
                     yield Button(
-                        "驗證",
+                        t("ui.plugin_editor.button.validate"),
                         id="plugin-editor-validate",
                         variant="warning",
                     )
                 if "save" in actions:
-                    yield Button("儲存", id="plugin-editor-save", variant="primary")
+                    yield Button(
+                        t("ui.plugin_editor.button.save"),
+                        id="plugin-editor-save",
+                        variant="primary",
+                    )
 
     def on_mount(self) -> None:
         first_field = next(iter(self._fields.keys()), None)
@@ -167,11 +178,20 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         has_error, has_warning, preview = self._evaluate_rule_result(payload)
         if event.button.id == "plugin-editor-validate":
             if has_error:
-                self.app.notify(f"❌ 驗證失敗：{preview}", severity="error")
+                self.app.notify(
+                    t("ui.common.error.validation_failed", preview=preview),
+                    severity="error",
+                )
             elif has_warning:
-                self.app.notify(f"⚠️ 驗證完成：{preview}", severity="warning")
+                self.app.notify(
+                    t("ui.plugin_editor.warn.validation_done", preview=preview),
+                    severity="warning",
+                )
             else:
-                self.app.notify("✅ 驗證通過", severity="information")
+                self.app.notify(
+                    t("ui.plugin_editor.notify.validation_passed"),
+                    severity="information",
+                )
             return
 
         if event.button.id == "plugin-editor-save":
@@ -179,7 +199,10 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 self._show_error(preview)
                 return
             if has_warning:
-                self.app.notify(f"⚠️ 已儲存，請留意：{preview}", severity="warning")
+                self.app.notify(
+                    t("ui.common.warn.saved_with_warning", preview=preview),
+                    severity="warning",
+                )
             self.dismiss(payload)
 
     def _add_prompt_profile(self) -> None:
@@ -207,7 +230,9 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         if not self._use_prompt_profile_editor:
             return
         if len(self._prompt_profile_order) <= 1:
-            self.app.notify("⚠️ 至少需保留一個 prompt profile", severity="warning")
+            self.app.notify(
+                t("ui.plugin_editor.warn.keep_one_profile"), severity="warning"
+            )
             return
 
         key = self._active_prompt_profile
@@ -247,7 +272,12 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
 
             required = bool(spec.get("required", False))
             marker = " *" if required else ""
-            label = str(spec.get("label", field_name))
+            label = schema_text(
+                spec,
+                key_field="label_key",
+                fallback_field="label",
+                default=field_name,
+            )
             yield Static(f"{label}{marker}", classes="plugin-field-label")
             yield self._build_field_widget(field_name, spec)
 
@@ -258,7 +288,12 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
     ) -> ComposeResult:
         required = bool(spec.get("required", False))
         marker = " *" if required else ""
-        label = str(spec.get("label", field_name))
+        label = schema_text(
+            spec,
+            key_field="label_key",
+            fallback_field="label",
+            default=field_name,
+        )
         yield Static(f"{label}{marker}", classes="plugin-field-label")
 
         with Horizontal(id="plugin-prompt-profiles-row"):
@@ -266,29 +301,48 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 options = self._prompt_profile_order or ["(無 profile)"]
                 yield OptionList(*options, id="plugin-prompt-profile-list")
                 with Horizontal(id="plugin-prompt-profile-actions"):
-                    yield Button("+ 新增", id="plugin-prompt-add", variant="success")
-                    yield Button("- 刪除", id="plugin-prompt-remove", variant="warning")
+                    yield Button(
+                        t("ui.plugin_editor.button.add_profile"),
+                        id="plugin-prompt-add",
+                        variant="success",
+                    )
+                    yield Button(
+                        t("ui.plugin_editor.button.remove_profile"),
+                        id="plugin-prompt-remove",
+                        variant="warning",
+                    )
 
             with Vertical(id="plugin-prompt-profile-detail"):
-                yield Static("Profile Key", classes="plugin-field-label")
+                yield Static(
+                    t("ui.plugin_editor.field.profile_key"),
+                    classes="plugin-field-label",
+                )
                 yield Input(
                     self._active_prompt_profile,
                     id="plugin-prompt-key",
                     disabled=True,
                 )
-                yield Static("Version", classes="plugin-field-label")
+                yield Static(
+                    t("ui.plugin_editor.field.version"), classes="plugin-field-label"
+                )
                 yield Input(
                     self._prompt_profile_value(self._active_prompt_profile, "version"),
                     id="plugin-prompt-version",
                 )
-                yield Static("Description", classes="plugin-field-label")
+                yield Static(
+                    t("ui.plugin_editor.field.description"),
+                    classes="plugin-field-label",
+                )
                 yield Input(
                     self._prompt_profile_value(
                         self._active_prompt_profile, "description"
                     ),
                     id="plugin-prompt-description",
                 )
-                yield Static("System Prompt", classes="plugin-field-label")
+                yield Static(
+                    t("ui.plugin_editor.field.system_prompt"),
+                    classes="plugin-field-label",
+                )
                 yield TextArea(
                     self._prompt_profile_value(
                         self._active_prompt_profile, "system_prompt"
@@ -356,7 +410,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             return
 
         yield Static(
-            "JSON 輸出格式（時間欄位固定，其餘可改）",
+            t("ui.plugin_editor.json.title"),
             classes="plugin-field-label",
         )
 
@@ -364,7 +418,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             yield Static(f"{key}", classes="plugin-field-label")
             for field_name, field_value in template.items():
                 locked = self._is_locked_json_field(field_name)
-                lock_suffix = " (固定)" if locked else ""
+                lock_suffix = t("ui.plugin_editor.json.locked_suffix") if locked else ""
                 yield Static(
                     f"{field_name}{lock_suffix}",
                     classes="plugin-field-label",
@@ -379,7 +433,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         if self._json_unparsed_keys:
             names = ", ".join(self._json_unparsed_keys)
             yield Static(
-                f"⚠️ 以下範例非 JSON 物件，保留原值: {names}",
+                t("ui.plugin_editor.json.unparsed", names=names),
                 classes="plugin-field-label",
             )
 
@@ -503,7 +557,12 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 continue
 
             field_type = str(spec.get("type", "str")).lower()
-            field_label = str(spec.get("label", field_name))
+            field_label = schema_text(
+                spec,
+                key_field="label_key",
+                fallback_field="label",
+                default=field_name,
+            )
             value = self._collect_field_value(field_name, spec, field_type, field_label)
             self._validate_field_value(spec, field_type, field_label, value)
 
@@ -542,7 +601,9 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             ]
             if field_type == "select":
                 if len(selected) > 1:
-                    raise ValueError(f"{field_label} 只能選一個選項")
+                    raise ValueError(
+                        t("ui.plugin_editor.error.select_one", label=field_label)
+                    )
                 return selected[0] if selected else ""
             return selected
 
@@ -558,7 +619,13 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             try:
                 return yaml.safe_load(raw)
             except yaml.YAMLError as exc:
-                raise ValueError(f"{field_label} 不是有效的 YAML：{exc}") from exc
+                raise ValueError(
+                    t(
+                        "ui.plugin_editor.error.invalid_yaml",
+                        label=field_label,
+                        error=exc,
+                    )
+                ) from exc
 
         if field_type in {"str", "path", "secret"}:
             return self.query_one(widget_id, Input).value.strip()
@@ -577,7 +644,9 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             try:
                 return int(text)
             except ValueError as exc:
-                raise ValueError(f"{field_label} 必須是整數") from exc
+                raise ValueError(
+                    t("ui.plugin_editor.error.int_required", label=field_label)
+                ) from exc
 
         return self.query_one(widget_id, Input).value.strip()
 
@@ -704,15 +773,23 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         options = self._options(spec)
 
         if required and (value is None or value == "" or value == []):
-            raise ValueError(f"{field_label} 為必填")
+            raise ValueError(t("ui.plugin_editor.error.required", label=field_label))
 
         if field_type == "select" and value and value not in options:
-            raise ValueError(f"{field_label} 選項不合法")
+            raise ValueError(
+                t("ui.plugin_editor.error.select_invalid", label=field_label)
+            )
 
         if field_type == "multiselect" and isinstance(value, list):
             illegal = [item for item in value if item not in options]
             if illegal:
-                raise ValueError(f"{field_label} 包含不合法選項: {', '.join(illegal)}")
+                raise ValueError(
+                    t(
+                        "ui.plugin_editor.error.multiselect_invalid",
+                        label=field_label,
+                        illegal=", ".join(illegal),
+                    )
+                )
 
         int_value = (
             value if isinstance(value, int) and not isinstance(value, bool) else None
@@ -721,9 +798,21 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             minimum = spec.get("min")
             maximum = spec.get("max")
             if isinstance(minimum, int) and int_value < minimum:
-                raise ValueError(f"{field_label} 不能小於 {minimum}")
+                raise ValueError(
+                    t(
+                        "ui.plugin_editor.error.min_value",
+                        label=field_label,
+                        minimum=minimum,
+                    )
+                )
             if isinstance(maximum, int) and int_value > maximum:
-                raise ValueError(f"{field_label} 不能大於 {maximum}")
+                raise ValueError(
+                    t(
+                        "ui.plugin_editor.error.max_value",
+                        label=field_label,
+                        maximum=maximum,
+                    )
+                )
 
     def _collect_response_json_format(self) -> dict[str, str]:
         if not self._json_format_raw:
@@ -760,19 +849,43 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         if isinstance(original_value, int) and not isinstance(original_value, bool):
             text = self.query_one(widget_id, Input).value.strip()
             if not text:
-                raise ValueError(f"{key}.{field_name} 必須是整數")
+                raise ValueError(
+                    t(
+                        "ui.plugin_editor.error.template_int_required",
+                        key=key,
+                        field=field_name,
+                    )
+                )
             try:
                 return int(text)
             except ValueError as exc:
-                raise ValueError(f"{key}.{field_name} 必須是整數") from exc
+                raise ValueError(
+                    t(
+                        "ui.plugin_editor.error.template_int_required",
+                        key=key,
+                        field=field_name,
+                    )
+                ) from exc
         if isinstance(original_value, float):
             text = self.query_one(widget_id, Input).value.strip()
             if not text:
-                raise ValueError(f"{key}.{field_name} 必須是數字")
+                raise ValueError(
+                    t(
+                        "ui.plugin_editor.error.template_number_required",
+                        key=key,
+                        field=field_name,
+                    )
+                )
             try:
                 return float(text)
             except ValueError as exc:
-                raise ValueError(f"{key}.{field_name} 必須是數字") from exc
+                raise ValueError(
+                    t(
+                        "ui.plugin_editor.error.template_number_required",
+                        key=key,
+                        field=field_name,
+                    )
+                ) from exc
         return self.query_one(widget_id, Input).value.strip()
 
     def _evaluate_rule_result(self, payload: dict[str, Any]) -> tuple[bool, bool, str]:

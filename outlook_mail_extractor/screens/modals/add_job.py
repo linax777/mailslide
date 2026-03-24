@@ -5,6 +5,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, SelectionList, Static, Switch
 
+from ...i18n import t
+
 
 class AddJobScreen(ModalScreen[dict | None]):
     """Modal screen for collecting a new job before writing config."""
@@ -38,36 +40,39 @@ class AddJobScreen(ModalScreen[dict | None]):
         self,
         plugin_options: list[str],
         defaults: dict | None = None,
-        title: str = "➕ 新增 Job",
-        save_button_label: str = "儲存 Job",
+        title: str | None = None,
+        save_button_label: str | None = None,
     ):
         super().__init__()
         self._plugin_options = plugin_options
         self._defaults = defaults or {}
-        self._title = title
-        self._save_button_label = save_button_label
+        self._title = title or t("ui.add_job.title")
+        self._save_button_label = save_button_label or t("ui.add_job.button.save")
 
     def compose(self) -> ComposeResult:
         with Vertical(id="add-job-dialog"):
             yield Static(self._title, id="add-job-title")
-            yield Static("工作名稱", classes="add-job-label")
+            yield Static(t("ui.add_job.field.name"), classes="add-job-label")
             yield Input(self._default_text("name"), id="add-job-name")
-            yield Static("啟用", classes="add-job-label")
+            yield Static(t("ui.add_job.field.enable"), classes="add-job-label")
             yield Switch(value=self._default_bool("enable", True), id="add-job-enable")
-            yield Static("Outlook 帳號", classes="add-job-label")
+            yield Static(t("ui.add_job.field.account"), classes="add-job-label")
             yield Input(self._default_text("account"), id="add-job-account")
-            yield Static("來源資料夾", classes="add-job-label")
+            yield Static(t("ui.add_job.field.source"), classes="add-job-label")
             yield Input(self._default_text("source"), id="add-job-source")
-            yield Static("目標資料夾（可留空）", classes="add-job-label")
+            yield Static(t("ui.add_job.field.destination"), classes="add-job-label")
             yield Input(self._default_text("destination"), id="add-job-destination")
-            yield Static("人工判斷資料夾（可留空）", classes="add-job-label")
+            yield Static(
+                t("ui.add_job.field.manual_review_destination"),
+                classes="add-job-label",
+            )
             yield Input(
                 self._default_text("manual_review_destination"),
                 id="add-job-manual-review-destination",
             )
-            yield Static("處理上限", classes="add-job-label")
+            yield Static(t("ui.add_job.field.limit"), classes="add-job-label")
             yield Input(str(self._default_limit()), id="add-job-limit")
-            yield Static("Plugins（可多選）", classes="add-job-label")
+            yield Static(t("ui.add_job.field.plugins"), classes="add-job-label")
             default_plugins = set(self._default_plugins())
             yield SelectionList(
                 *[
@@ -82,7 +87,7 @@ class AddJobScreen(ModalScreen[dict | None]):
             )
             yield Static("", id="add-job-error")
             with Horizontal(id="add-job-actions"):
-                yield Button("取消", id="add-job-cancel")
+                yield Button(t("ui.add_job.button.cancel"), id="add-job-cancel")
                 yield Button(
                     self._save_button_label,
                     id="add-job-save",
@@ -135,13 +140,13 @@ class AddJobScreen(ModalScreen[dict | None]):
         enable = self.query_one("#add-job-enable", Switch).value
 
         if not name:
-            self._show_error("name 為必填")
+            self._show_error(t("ui.add_job.error.name_required"))
             return
         if not account:
-            self._show_error("account 為必填")
+            self._show_error(t("ui.add_job.error.account_required"))
             return
         if not source:
-            self._show_error("source 為必填")
+            self._show_error(t("ui.add_job.error.source_required"))
             return
 
         try:
@@ -149,7 +154,7 @@ class AddJobScreen(ModalScreen[dict | None]):
             if limit <= 0:
                 raise ValueError
         except ValueError:
-            self._show_error("limit 必須是正整數")
+            self._show_error(t("ui.add_job.error.limit_positive"))
             return
 
         selected_plugins = set(plugin_selector.selected)
@@ -158,7 +163,7 @@ class AddJobScreen(ModalScreen[dict | None]):
         ]
 
         if "move_to_folder" in plugins and destination:
-            self._show_error("使用 move_to_folder 時，請不要設定 destination")
+            self._show_error(t("ui.add_job.error.destination_conflict"))
             return
 
         job: dict[str, object] = {

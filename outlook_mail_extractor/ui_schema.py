@@ -9,6 +9,8 @@ from typing import Any
 
 import yaml
 
+from .i18n import t
+
 
 @dataclass
 class UiRuleResult:
@@ -64,9 +66,11 @@ def validate_ui_schema(schema: dict[str, Any]) -> list[str]:
             if not isinstance(button, dict):
                 errors.append(f"_ui.buttons[{index}] 必須是物件")
                 continue
-            for key in ("id", "label", "action"):
+            for key in ("id", "action"):
                 if key not in button:
                     errors.append(f"_ui.buttons[{index}] 缺少 '{key}'")
+            if "label" not in button and "label_key" not in button:
+                errors.append(f"_ui.buttons[{index}] 缺少 'label' 或 'label_key'")
 
     fields = schema.get("fields", {})
     if not isinstance(fields, dict):
@@ -80,9 +84,13 @@ def validate_ui_schema(schema: dict[str, Any]) -> list[str]:
             if not isinstance(rule, dict):
                 errors.append(f"_ui.validation_rules[{index}] 必須是物件")
                 continue
-            for key in ("id", "level", "message"):
+            for key in ("id", "level"):
                 if key not in rule:
                     errors.append(f"_ui.validation_rules[{index}] 缺少 '{key}'")
+            if "message" not in rule and "message_key" not in rule:
+                errors.append(
+                    f"_ui.validation_rules[{index}] 缺少 'message' 或 'message_key'"
+                )
 
     return errors
 
@@ -99,7 +107,9 @@ def flatten_ui_fields(
 
         path = f"{prefix}{field_name}" if not prefix else f"{prefix}.{field_name}"
         field_type = str(spec.get("type", "unknown"))
-        label = str(spec.get("label", field_name))
+        label = schema_text(
+            spec, key_field="label_key", fallback_field="label", default=field_name
+        )
         required = bool(spec.get("required", False))
         rows.append((path, field_type, label, required))
 
@@ -119,7 +129,12 @@ def evaluate_rules(
     for rule in rules:
         rule_id = str(rule.get("id", "unknown"))
         level = str(rule.get("level", "warning")).lower()
-        message = str(rule.get("message", ""))
+        message = schema_text(
+            rule,
+            key_field="message_key",
+            fallback_field="message",
+            default="",
+        )
 
         evaluator = _RULE_EVALUATORS.get(rule_id)
         if evaluator is None:
@@ -148,6 +163,21 @@ def evaluate_rules(
         )
 
     return results
+
+
+def schema_text(
+    payload: dict[str, Any],
+    key_field: str,
+    fallback_field: str,
+    default: str = "",
+) -> str:
+    """Resolve schema text via i18n key with plain text fallback."""
+    key = payload.get(key_field)
+    if isinstance(key, str) and key.strip():
+        return t(key.strip())
+
+    value = payload.get(fallback_field, default)
+    return str(value)
 
 
 def build_default_list_item(

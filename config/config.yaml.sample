@@ -11,6 +11,7 @@
 #   - limit: Max emails to process per job
 #   - body_max_length: Max cleaned body length for LLM/input (optional)
 #   - llm_mode: LLM dispatch mode (optional, default: per_plugin)
+#   - ui_language: UI language (optional, zh-TW/en-US, default: zh-TW)
 #   - plugins: List of plugins to run (LLM analysis)
 #   - plugin_prompt_profiles: Per-job prompt profile mapping (optional)
 #
@@ -24,6 +25,7 @@
 
 body_max_length: 2500
 llm_mode: per_plugin
+ui_language: zh-TW
 
 jobs:
   - name: "處理microsoft郵件"
@@ -63,29 +65,35 @@ _ui:
   buttons:
     - id: add_job
       label: "新增 Job"
+      label_key: "ui.main.button.add_job"
       action: add_list_item
       target: jobs
       variant: primary
     - id: edit_job
       label: "修改 Job"
+      label_key: "ui.main.button.edit_job"
       action: edit_list_item
       target: jobs
       variant: default
     - id: remove_job
       label: "刪除 Job"
+      label_key: "ui.main.button.remove_job"
       action: remove_list_item
       target: jobs
       variant: warning
     - id: validate
       label: "驗證設定"
+      label_key: "ui.main.button.validate"
       action: validate
       variant: default
     - id: save
       label: "儲存"
+      label_key: "ui.main.button.save"
       action: save
       variant: success
     - id: reset
       label: "回復範本"
+      label_key: "ui.main.button.reset"
       action: reset_from_sample
       variant: error
       confirm: true
@@ -181,32 +189,40 @@ _ui:
     - id: required_name_account_source
       level: error
       message: "每個 Job 必須包含 name/account/source"
+      message_key: "ui.main.rule.required_name_account_source"
       check: "job.name && job.account && job.source"
     - id: limit_positive
       level: error
       message: "limit 必須是正整數"
+      message_key: "ui.main.rule.limit_positive"
       check: "!job.limit || (is_int(job.limit) && job.limit > 0)"
     - id: body_max_length_positive
       level: error
       message: "body_max_length 必須是正整數"
+      message_key: "ui.main.rule.body_max_length_positive"
       check: "!job.body_max_length || (is_int(job.body_max_length) && job.body_max_length > 0)"
     - id: llm_mode_enum
       level: error
       message: "llm_mode 僅支援 per_plugin/share_deprecated"
+      message_key: "ui.main.rule.llm_mode_enum"
       check: "!has_text(config.llm_mode) || in(config.llm_mode,['per_plugin','share_deprecated'])"
     - id: job_llm_mode_enum
       level: error
       message: "job.llm_mode 僅支援 per_plugin/share_deprecated"
+      message_key: "ui.main.rule.job_llm_mode_enum"
       check: "!has_text(job.llm_mode) || in(job.llm_mode,['per_plugin','share_deprecated'])"
     - id: destination_move_conflict
       level: error
       message: "使用 move_to_folder 時，請不要同時設定 destination"
+      message_key: "ui.main.rule.destination_move_conflict"
       check: "!(includes(job.plugins,'move_to_folder') && has_text(job.destination))"
     - id: unique_job_name
       level: warning
       message: "建議 Job 名稱不要重複，方便追蹤"
+      message_key: "ui.main.rule.unique_job_name"
       check: "unique(config.jobs[].name)"
     - id: at_least_one_enabled
       level: warning
       message: "目前沒有啟用的 Job"
+      message_key: "ui.main.rule.at_least_one_enabled"
       check: "count(config.jobs[?enable!=false]) > 0"

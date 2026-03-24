@@ -6,6 +6,7 @@ from textual.widgets import Button, Static
 
 from ..config import load_config
 from ..core import OutlookConnectionError
+from ..i18n import resolve_language, set_language, t
 from ..models import CheckStatus, ConfigStatus, OutlookStatus, SystemStatus
 from ..runtime import RuntimeContext, get_runtime_context
 from ..services.preflight import PreflightCheckService
@@ -15,20 +16,23 @@ class AboutScreen(Container):
     """About 標籤頁 - 系統狀態檢查"""
 
     SAMPLE_SUFFIX = ".yaml.sample"
-    VERSION = "0.2.8"
+    VERSION = "0.3.0"
     AUTHOR = "linax777"
     REPO_URL = "https://github.com/linax777/outlook-mail-extractor"
 
     def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
         self._runtime = runtime_context or get_runtime_context()
+        set_language(resolve_language(self._runtime.paths.config_file))
 
     def compose(self) -> ComposeResult:
-        yield Static("🔧 系統狀態", id="status-title")
+        yield Static(t("ui.about.status.title"), id="status-title")
         yield Static("", id="status-content")
         with Horizontal():
-            yield Button("初始化設定", id="init-config", variant="primary")
-            yield Button("重新檢查", id="refresh-check", variant="default")
+            yield Button(t("ui.about.button.init"), id="init-config", variant="primary")
+            yield Button(
+                t("ui.about.button.refresh"), id="refresh-check", variant="default"
+            )
         yield Static("", id="about-info")
 
     def on_mount(self) -> None:
@@ -37,12 +41,12 @@ class AboutScreen(Container):
         self.run_check()
 
     def _show_about_info(self) -> None:
-        info = f"""📦 版本: {self.VERSION}
-👤 作者: {self.AUTHOR}
-🔗 GitHub: {self.REPO_URL}
-📜 授權: MIT License
-
-一款使用 Python + Textual 開發的 Outlook 郵件提取工具。"""
+        info = t(
+            "ui.about.info",
+            version=self.VERSION,
+            author=self.AUTHOR,
+            repo_url=self.REPO_URL,
+        )
         self.query_one("#about-info", Static).update(info)
 
     def _update_init_button(self) -> None:
@@ -92,14 +96,17 @@ class AboutScreen(Container):
         if not config_path.exists():
             return ConfigStatus(
                 status=CheckStatus.ERROR,
-                message="找不到 config.yaml，請參考 config/config.yaml.sample 建立",
+                message=t("ui.about.config.missing"),
             )
 
         try:
             load_config(config_path)
-            return ConfigStatus(status=CheckStatus.OK, message="正常")
+            return ConfigStatus(status=CheckStatus.OK, message=t("ui.about.config.ok"))
         except Exception as e:
-            return ConfigStatus(status=CheckStatus.ERROR, message=f"格式錯誤 - {e}")
+            return ConfigStatus(
+                status=CheckStatus.ERROR,
+                message=t("ui.about.config.invalid", error=e),
+            )
 
     def _check_outlook(self) -> OutlookStatus:
         try:
@@ -113,30 +120,48 @@ class AboutScreen(Container):
             if result.issues:
                 issue_preview = "；".join(result.issues[:2])
                 if len(result.issues) > 2:
-                    issue_preview += f"；另有 {len(result.issues) - 2} 個 jobs 設定有誤"
+                    issue_preview += t(
+                        "ui.about.outlook.issue_more",
+                        count=len(result.issues) - 2,
+                    )
                 return OutlookStatus(
                     status=CheckStatus.ERROR,
-                    message=f"設定檢查失敗 - {issue_preview}",
+                    message=t("ui.about.outlook.issue_failed", issues=issue_preview),
                     account_count=result.account_count,
                 )
 
             return OutlookStatus(
                 status=CheckStatus.OK,
-                message=f"已連線 ({result.account_count} 個帳號)",
+                message=t("ui.about.outlook.connected", count=result.account_count),
                 account_count=result.account_count,
             )
         except OutlookConnectionError as e:
             return OutlookStatus(status=CheckStatus.ERROR, message=str(e))
         except Exception as e:
-            return OutlookStatus(status=CheckStatus.ERROR, message=f"連線失敗 - {e}")
+            return OutlookStatus(
+                status=CheckStatus.ERROR,
+                message=t("ui.about.outlook.connect_failed", error=e),
+            )
 
     def _display_status(self, status: SystemStatus) -> None:
         lines = []
         config_icon = "✅" if status.config.status == CheckStatus.OK else "❌"
         outlook_icon = "✅" if status.outlook.status == CheckStatus.OK else "❌"
 
-        lines.append(f"{config_icon} 設定檔: {status.config.message}")
-        lines.append(f"{outlook_icon} Outlook: {status.outlook.message}")
+        lines.append(
+            t(
+                "ui.about.status.config",
+                icon=config_icon,
+                message=status.config.message,
+            )
+        )
+        lines.append(
+            t(
+                "ui.about.status.outlook",
+                icon=outlook_icon,
+                message=status.outlook.message,
+            )
+        )
 
         status_content = self.query_one("#status-content", Static)
         status_content.update("\n".join(lines))
@@ -146,7 +171,9 @@ class AboutScreen(Container):
             copied, skipped = self._init_configs()
             self._update_init_button()
             status_content = self.query_one("#status-content", Static)
-            status_content.update(f"已初始化設定檔 (新增: {copied}, 跳過: {skipped})")
+            status_content.update(
+                t("ui.about.status.init_done", copied=copied, skipped=skipped)
+            )
             self.run_check()
         elif event.button.id == "refresh-check":
             self.run_check()

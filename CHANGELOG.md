@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.3.0] - 2026-03-24
+
+### Added
+
+- Added English documentation file `README.en.md` with installation, TUI/CLI usage, configuration examples, plugin overview, localization notes, and local `llama.cpp` setup.
+- Added cross-language navigation links at the top of both README files (`README.md` <-> `README.en.md`) so users can switch languages quickly.
+- Added usage-screen tests in `tests/test_usage_screen.py` to verify language-based README resolution and fallback behavior.
+- Added key-based i18n runtime (`outlook_mail_extractor/i18n.py`) with gettext catalog loading and YAML fallback dictionaries for `zh-TW` and `en-US`.
+- Added CLI language override `--lang` (`zh-TW`/`en-US`) and config-level `ui_language` support in `config/config.yaml(.sample)`.
+- Added Language modal in TUI (hotkey `L`) with radio-button selection, persisted language updates to `config/config.yaml`, and immediate UI recompose on language switch.
+- Added Babel i18n tooling (`babel.cfg`, locale `pot/po` files, `scripts/i18n.ps1`) and README instructions for extract/init/update/compile workflows.
+- Added i18n/config tests (`tests/test_i18n.py`, `tests/test_config_ui_language.py`, `tests/test_app_language.py`) and extended schema tests for `label_key`/`message_key` support.
+
+### Changed
+
+- Migrated major TUI/CLI surfaces to translation keys, including app shell/tab labels, Home/About/Schedule/Usage pages, Configuration tabs, Main Config workflows, and key modal/error notifications.
+- Updated `_ui` schema handling to support localized key fields (`label_key`, `message_key`) with backward-compatible fallback to raw `label`/`message` text.
+- Updated Plugin/Main config editor rendering and rule evaluation paths to resolve translated schema labels/messages at runtime.
+- Updated packaging metadata to include locale resources and Babel dev dependency.
+- Updated Guide tab content loading (`outlook_mail_extractor/screens/usage.py`) to read README by active app language: `en-US` prefers `README.en.md` with fallback to `README.md`, while `zh-TW` continues using `README.md`.
+
 ## [v0.2.8] - 2026-03-24
 
 ### Added

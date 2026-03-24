@@ -1,0 +1,150 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: outlook-mail-extractor\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "app.confirm_quit.message"
+msgstr ""
+
+msgid "app.confirm_quit.yes"
+msgstr ""
+
+msgid "app.confirm_quit.no"
+msgstr ""
+
+msgid "app.tab.home"
+msgstr ""
+
+msgid "app.tab.schedule"
+msgstr ""
+
+msgid "app.tab.guide"
+msgstr ""
+
+msgid "app.tab.config"
+msgstr ""
+
+msgid "app.tab.about"
+msgstr ""
+
+msgid "app.title"
+msgstr ""
+
+msgid "app.subtitle"
+msgstr ""
+
+msgid "app.first_run.notice"
+msgstr ""
+
+msgid "app.language.modal_title"
+msgstr ""
+
+msgid "app.language.option.zh_tw"
+msgstr ""
+
+msgid "app.language.option.en_us"
+msgstr ""
+
+msgid "app.language.apply"
+msgstr ""
+
+msgid "app.language.cancel"
+msgstr ""
+
+msgid "app.language.no_change"
+msgstr ""
+
+msgid "app.language.changed"
+msgstr ""
+
+msgid "app.language.restart_hint"
+msgstr ""
+
+msgid "app.language.save_failed"
+msgstr ""
+
+msgid "cli.description"
+msgstr ""
+
+msgid "cli.arg.config"
+msgstr ""
+
+msgid "cli.arg.dry_run"
+msgstr ""
+
+msgid "cli.arg.output"
+msgstr ""
+
+msgid "cli.arg.no_move"
+msgstr ""
+
+msgid "cli.arg.skip_preflight"
+msgstr ""
+
+msgid "cli.arg.lang"
+msgstr ""
+
+msgid "cli.log.start"
+msgstr ""
+
+msgid "cli.log.finish"
+msgstr ""
+
+msgid "cli.error.config_not_found"
+msgstr ""
+
+msgid "cli.error.preflight_failed"
+msgstr ""
+
+msgid "cli.info.result_saved"
+msgstr ""
+
+msgid "cli.error.execution_failed"
+msgstr ""
+
+msgid "cli.preflight.more_issues"
+msgstr ""
+
+msgid "ui.main.button.add_job"
+msgstr ""
+
+msgid "ui.main.button.edit_job"
+msgstr ""
+
+msgid "ui.main.button.remove_job"
+msgstr ""
+
+msgid "ui.main.button.validate"
+msgstr ""
+
+msgid "ui.main.button.save"
+msgstr ""
+
+msgid "ui.main.button.reset"
+msgstr ""
+
+msgid "ui.main.rule.required_name_account_source"
+msgstr ""
+
+msgid "ui.main.rule.limit_positive"
+msgstr ""
+
+msgid "ui.main.rule.body_max_length_positive"
+msgstr ""
+
+msgid "ui.main.rule.llm_mode_enum"
+msgstr ""
+
+msgid "ui.main.rule.job_llm_mode_enum"
+msgstr ""
+
+msgid "ui.main.rule.destination_move_conflict"
+msgstr ""
+
+msgid "ui.main.rule.unique_job_name"
+msgstr ""
+
+msgid "ui.main.rule.at_least_one_enabled"
+msgstr ""

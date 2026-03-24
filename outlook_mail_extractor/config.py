@@ -12,6 +12,11 @@ _ALLOWED_LLM_MODES = {
     "shared_legacy",
 }
 
+_ALLOWED_UI_LANGUAGES = {
+    "zh-TW",
+    "en-US",
+}
+
 
 def _validate_body_max_length(value: int, location: str) -> None:
     """Validate body_max_length value."""
@@ -28,6 +33,17 @@ def _validate_llm_mode(value: str, location: str) -> None:
     if value not in _ALLOWED_LLM_MODES:
         allowed = ", ".join(sorted(_ALLOWED_LLM_MODES))
         raise ValueError(f"{location}.llm_mode must be one of: {allowed}")
+
+
+def _validate_ui_language(value: str) -> None:
+    """Validate UI language value."""
+    if not isinstance(value, str):
+        raise ValueError("Config.ui_language must be a string")
+
+    normalized = value.strip().replace("_", "-")
+    if normalized not in _ALLOWED_UI_LANGUAGES:
+        allowed = ", ".join(sorted(_ALLOWED_UI_LANGUAGES))
+        raise ValueError(f"Config.ui_language must be one of: {allowed}")
 
 
 def validate_job(job: dict, idx: int) -> None:
@@ -71,6 +87,9 @@ def validate_config(config: dict) -> None:
 
     if "llm_mode" in config:
         _validate_llm_mode(config["llm_mode"], "Config")
+
+    if "ui_language" in config:
+        _validate_ui_language(config["ui_language"])
 
     for idx, job in enumerate(config["jobs"]):
         validate_job(job, idx)

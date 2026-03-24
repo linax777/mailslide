@@ -1,0 +1,151 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: outlook-mail-extractor\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: zh_TW\n"
+
+msgid "app.confirm_quit.message"
+msgstr "確定要結束程式嗎？"
+
+msgid "app.confirm_quit.yes"
+msgstr "確定"
+
+msgid "app.confirm_quit.no"
+msgstr "取消"
+
+msgid "app.tab.home"
+msgstr "Home"
+
+msgid "app.tab.schedule"
+msgstr "Schedule"
+
+msgid "app.tab.guide"
+msgstr "Guide"
+
+msgid "app.tab.config"
+msgstr "Configuration"
+
+msgid "app.tab.about"
+msgstr "About"
+
+msgid "app.title"
+msgstr "Outlook Mail Extractor"
+
+msgid "app.subtitle"
+msgstr "提取郵件內文"
+
+msgid "app.first_run.notice"
+msgstr "尚未初始化設定，請到 About 分頁按「初始化設定」"
+
+msgid "app.language.modal_title"
+msgstr "選擇介面語言"
+
+msgid "app.language.option.zh_tw"
+msgstr "繁體中文 (zh-TW)"
+
+msgid "app.language.option.en_us"
+msgstr "English (en-US)"
+
+msgid "app.language.apply"
+msgstr "套用"
+
+msgid "app.language.cancel"
+msgstr "取消"
+
+msgid "app.language.no_change"
+msgstr "語言未變更"
+
+msgid "app.language.changed"
+msgstr "✅ 已切換語言為 {language}"
+
+msgid "app.language.restart_hint"
+msgstr "請重新啟動程式，以完整套用所有畫面文字"
+
+msgid "app.language.save_failed"
+msgstr "❌ 儲存語言設定失敗: {error}"
+
+msgid "cli.description"
+msgstr "讀取 Outlook Classic 指定帳號/目錄郵件 輸出 JSON"
+
+msgid "cli.arg.config"
+msgstr "指定 YAML 設定檔路徑"
+
+msgid "cli.arg.dry_run"
+msgstr "測試模式：僅讀取內容，不執行移動動作"
+
+msgid "cli.arg.output"
+msgstr "輸出 JSON 檔案路徑 (若未指定則輸出至終端機)"
+
+msgid "cli.arg.no_move"
+msgstr "不移動郵件，僅擷取資料"
+
+msgid "cli.arg.skip_preflight"
+msgstr "跳過執行前 account/source 檢查"
+
+msgid "cli.arg.lang"
+msgstr "介面語言（zh-TW 或 en-US）"
+
+msgid "cli.log.start"
+msgstr "命令列執行開始"
+
+msgid "cli.log.finish"
+msgstr "命令列執行完成"
+
+msgid "cli.error.config_not_found"
+msgstr "錯誤: 找不到設定檔 {path}"
+
+msgid "cli.error.preflight_failed"
+msgstr "錯誤: 執行前檢查失敗，請先修正設定檔的 account/source：\n{issues}"
+
+msgid "cli.info.result_saved"
+msgstr "結果已儲存至 {path}"
+
+msgid "cli.error.execution_failed"
+msgstr "錯誤: {error}"
+
+msgid "cli.preflight.more_issues"
+msgstr "\n- ...另有 {count} 個設定問題"
+
+msgid "ui.main.button.add_job"
+msgstr "新增 Job"
+
+msgid "ui.main.button.edit_job"
+msgstr "修改 Job"
+
+msgid "ui.main.button.remove_job"
+msgstr "刪除 Job"
+
+msgid "ui.main.button.validate"
+msgstr "驗證設定"
+
+msgid "ui.main.button.save"
+msgstr "儲存"
+
+msgid "ui.main.button.reset"
+msgstr "回復範本"
+
+msgid "ui.main.rule.required_name_account_source"
+msgstr "每個 Job 必須包含 name/account/source"
+
+msgid "ui.main.rule.limit_positive"
+msgstr "limit 必須是正整數"
+
+msgid "ui.main.rule.body_max_length_positive"
+msgstr "body_max_length 必須是正整數"
+
+msgid "ui.main.rule.llm_mode_enum"
+msgstr "llm_mode 僅支援 per_plugin/share_deprecated"
+
+msgid "ui.main.rule.job_llm_mode_enum"
+msgstr "job.llm_mode 僅支援 per_plugin/share_deprecated"
+
+msgid "ui.main.rule.destination_move_conflict"
+msgstr "使用 move_to_folder 時，請不要同時設定 destination"
+
+msgid "ui.main.rule.unique_job_name"
+msgstr "建議 Job 名稱不要重複，方便追蹤"
+
+msgid "ui.main.rule.at_least_one_enabled"
+msgstr "目前沒有啟用的 Job"

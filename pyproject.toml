@@ -1,6 +1,6 @@
 [project]
 name = "outlook-mail-extractor"
-version = "0.2.8"
+version = "0.3.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -25,11 +25,19 @@ exclude = ["config*", "tasks*", "tests*"]
 
 [dependency-groups]
 dev = [
+    "babel>=2.17.0",
     "mypy>=1.19.1",
     "pytest>=9.0.2",
     "ruff>=0.15.6",
     "types-pywin32>=311.0.0.20260317",
     "types-pyyaml>=6.0.12.20250915",
+]
+
+[tool.setuptools.package-data]
+outlook_mail_extractor = [
+    "locales/*.yaml",
+    "locales/gettext/**/*.mo",
+    "locales/gettext/**/*.po",
 ]
 
 [tool.mypy]

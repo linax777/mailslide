@@ -2,6 +2,8 @@
 
 從 Outlook 提取郵件工具，支援 LLM 分析與自動化處理
 
+For the English version, see `README.en.md`.
+
 ## 30 秒快速上手（TUI）
 
 ```bash
@@ -90,6 +92,7 @@ copy config\plugins\*.yaml.sample config\plugins\
 - `_ui` / `_meta` 為保留鍵，執行流程會忽略這些 UI 描述。
 - 一般使用者只需要修改業務設定欄位（例如 `jobs`、`api_base`、`plugins`）。
 - 進階開發可調整 `_ui` 來統一表單行為與驗證規格。
+- `_ui` 的 `label_key` / `message_key` 可搭配 i18n key 做多語顯示；`label` / `message` 仍可作為 fallback。
 
 ## 命令列模式（CLI）
 
@@ -140,6 +143,7 @@ jobs:
 | manual_review_destination | LLM 無 action（skipped）或失敗（failed/retriable_failed）時移動到人工判斷資料夾（可省略） |
 | limit | 處理的郵件數量 |
 | llm_mode | LLM 呼叫模式（`per_plugin` 預設；`share_deprecated` 為舊模式） |
+| ui_language | 介面語言（`zh-TW` / `en-US`，預設 `zh-TW`） |
 | plugins | 啟用的插件（可省略） |
 
 > 💡 提示：若使用 `move_to_folder` 插件讓 LLM 決定移動目錄，則可省略 `destination`，由插件負責移動。
@@ -155,6 +159,49 @@ jobs:
 - 單一 Job 覆蓋：`job.llm_mode`
 
 > 向後相容：舊值 `shared` / `shared_legacy` 仍可執行，但會被視為 `share_deprecated` 並記錄警告。
+
+## 多語言（gettext + Babel）
+
+本專案採用 key-based i18n：程式使用翻譯 key（例如 `app.title`）而非直接寫死文案。
+
+- 執行期：`gettext`（若未編譯 catalog，會 fallback 到 `outlook_mail_extractor/locales/*.yaml`）
+- 開發期：`Babel` 管理 `po/mo`
+
+CLI 可用 `--lang` 暫時覆蓋語言（`zh-TW` / `en-US`）：
+
+```bash
+uv run outlook-extract --lang en-US
+```
+
+或在 `config/config.yaml` 設定：
+
+```yaml
+ui_language: zh-TW
+```
+
+常用 Babel 指令（在專案根目錄執行）：
+
+```bash
+# 抽取可翻譯字串到 POT
+pybabel extract -F babel.cfg -o outlook_mail_extractor/locales/gettext/messages.pot .
+
+# 初始化語言（首次）
+pybabel init -i outlook_mail_extractor/locales/gettext/messages.pot -d outlook_mail_extractor/locales/gettext -D messages -l zh_TW
+pybabel init -i outlook_mail_extractor/locales/gettext/messages.pot -d outlook_mail_extractor/locales/gettext -D messages -l en_US
+
+# 更新既有語言
+pybabel update -i outlook_mail_extractor/locales/gettext/messages.pot -d outlook_mail_extractor/locales/gettext -D messages
+
+# 編譯成 .mo
+pybabel compile -d outlook_mail_extractor/locales/gettext -D messages
+```
+
+也可直接使用 PowerShell 腳本（Windows）：
+
+```powershell
+./scripts/i18n.ps1 all
+# 或分步驟：extract / init / update / compile
+```
 
 ## 設定 LLM（可選）
 
@@ -251,6 +298,7 @@ CSV 欄位由程式固定，順序為：
 | `G` | Guide：使用說明 |
 | `C` | Configuration：查看/編輯設定檔 |
 | `A` | About：系統狀態檢查、初始化設定 |
+| `L` | Language：切換介面語言（zh-TW / en-US） |
 
 - **Home**：執行 Jobs、查看日誌
 - **Schedule**：設定自動排程

@@ -1,0 +1,66 @@
+from pathlib import Path
+from typing import Any
+
+from outlook_mail_extractor.i18n import set_language
+from outlook_mail_extractor.runtime import RuntimeContext, RuntimePaths
+from outlook_mail_extractor.screens.usage import UsageScreen
+
+
+class _FakeLoggerManager:
+    def set_ui_sink(self, callback: Any) -> None:
+        del callback
+
+    def start_session(self, enable_ui_sink: bool = False) -> Path:
+        del enable_ui_sink
+        return Path("logs/session.log")
+
+    def get_current_log_path(self) -> Path | None:
+        return None
+
+    def get_display_level(self) -> str:
+        return "INFO"
+
+    def set_display_level(self, level: str) -> None:
+        del level
+
+
+def _runtime_context(tmp_path: Path) -> RuntimeContext:
+    config_dir = tmp_path / "config"
+    paths = RuntimePaths(
+        project_root=tmp_path,
+        config_dir=config_dir,
+        config_file=config_dir / "config.yaml",
+        llm_config_file=config_dir / "llm-config.yaml",
+        plugins_dir=config_dir / "plugins",
+        logging_config_file=config_dir / "logging.yaml",
+        logs_dir=tmp_path / "logs",
+        readme_file=tmp_path / "README.md",
+    )
+    return RuntimeContext(
+        paths=paths,
+        logger_manager=_FakeLoggerManager(),
+        client_factory=lambda: None,
+    )
+
+
+def test_usage_reads_english_readme_for_en_us(tmp_path: Path) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.readme_file.write_text("zh readme", encoding="utf-8")
+    (tmp_path / "README.en.md").write_text("en readme", encoding="utf-8")
+    set_language("en-US")
+
+    screen = UsageScreen(runtime_context=runtime)
+
+    assert screen._get_usage_content() == "en readme"
+
+
+def test_usage_falls_back_to_default_readme_when_en_readme_missing(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.readme_file.write_text("zh readme", encoding="utf-8")
+    set_language("en-US")
+
+    screen = UsageScreen(runtime_context=runtime)
+
+    assert screen._get_usage_content() == "zh readme"

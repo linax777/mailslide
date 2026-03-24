@@ -8,6 +8,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, DataTable, Static, TextArea
 
+from ...i18n import resolve_language, set_language, t
 from ...runtime import RuntimeContext, get_runtime_context
 from ...ui_schema import (
     load_plugin_ui_schema,
@@ -31,17 +32,26 @@ class PluginsConfigTab(Static):
     def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
         self._runtime = runtime_context or get_runtime_context()
+        set_language(resolve_language(self._runtime.paths.config_file))
         self._selected_plugin: str | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="plugin-main"):
-            yield Static("📦 Plugins", id="plugin-list-title")
+            yield Static(t("ui.plugins.title"), id="plugin-list-title")
             yield DataTable(id="plugin-list", show_cursor=True, cursor_type="row")
             with Horizontal(id="plugin-actions"):
-                yield Button("🔄 重新整理", id="refresh-plugins", variant="primary")
-                yield Button("🧹 清理備份", id="cleanup-plugin-backups")
-                yield Button("🛠️ 編輯設定", id="edit-plugin", disabled=True)
-            yield Static("📄 選取的 Plugin 設定", id="plugin-content-title")
+                yield Button(
+                    t("ui.plugins.button.refresh"),
+                    id="refresh-plugins",
+                    variant="primary",
+                )
+                yield Button(
+                    t("ui.plugins.button.cleanup"), id="cleanup-plugin-backups"
+                )
+                yield Button(
+                    t("ui.plugins.button.edit"), id="edit-plugin", disabled=True
+                )
+            yield Static(t("ui.plugins.content.title"), id="plugin-content-title")
             yield TextArea("", id="plugin-content", read_only=True)
 
     def on_mount(self) -> None:
@@ -66,14 +76,14 @@ class PluginsConfigTab(Static):
         edit_button = self.query_one("#edit-plugin", Button)
 
         table.clear()
-        table.add_columns("Plugin 名稱", "狀態")
+        table.add_columns(t("ui.plugins.column.name"), t("ui.common.column.status"))
         self._selected_plugin = None
         edit_button.disabled = True
 
         plugins_dir = self._runtime.paths.plugins_dir
         if not plugins_dir.exists():
-            title.update("📦 Plugins (目錄不存在)")
-            table.add_row("❌ plugins 目錄不存在", "")
+            title.update(t("ui.plugins.title.dir_missing"))
+            table.add_row(t("ui.plugins.row.dir_missing"), "")
             return
 
         plugin_files = sorted(
@@ -81,8 +91,8 @@ class PluginsConfigTab(Static):
         )
 
         if not plugin_files:
-            title.update("📦 Plugins (0 個)")
-            table.add_row("(無 Plugin 設定檔)", "")
+            title.update(t("ui.plugins.title.count", count=0))
+            table.add_row(t("ui.plugins.row.no_files"), "")
             return
 
         seen: set[str] = set()
@@ -99,7 +109,7 @@ class PluginsConfigTab(Static):
             status = "sample" if is_sample else "active"
             table.add_row(name, status)
 
-        title.update(f"📦 Plugins ({len(seen)} 個)")
+        title.update(t("ui.plugins.title.count", count=len(seen)))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         table = self.query_one("#plugin-list", DataTable)
@@ -120,19 +130,19 @@ class PluginsConfigTab(Static):
         file_path = normal_path if normal_path.exists() else sample_path
 
         if not file_path.exists():
-            content_widget.load_text("❌ 檔案不存在")
+            content_widget.load_text(t("ui.plugins.content.file_missing"))
             return
 
         try:
             content = file_path.read_text(encoding="utf-8")
             content_widget.load_text(content)
             self.query_one("#plugin-content-title", Static).update(
-                f"📄 {plugin_name} 設定 ✅"
+                t("ui.plugins.content.loaded", plugin=plugin_name)
             )
         except Exception as e:
-            content_widget.load_text(f"❌ 讀取失敗: {e}")
+            content_widget.load_text(t("ui.plugins.content.read_failed", error=e))
             self.query_one("#plugin-content-title", Static).update(
-                f"📄 {plugin_name} 設定 ❌"
+                t("ui.plugins.content.load_error", plugin=plugin_name)
             )
 
     def _plugin_paths(self, plugin_name: str) -> tuple[Path, Path]:
@@ -160,13 +170,13 @@ class PluginsConfigTab(Static):
     def _open_plugin_editor(self) -> None:
         plugin_name = self._selected_plugin
         if not plugin_name:
-            self.app.notify("⚠️ 請先選擇一個 Plugin", severity="warning")
+            self.app.notify(t("ui.plugins.notify.select_first"), severity="warning")
             return
 
         schema = load_plugin_ui_schema(plugin_name, self._runtime.paths.plugins_dir)
         if not schema:
             self.app.notify(
-                f"⚠️ {plugin_name}.yaml.sample 缺少 _ui，回退為唯讀模式",
+                t("ui.plugins.notify.schema_missing", plugin=plugin_name),
                 severity="warning",
             )
             return
@@ -174,7 +184,10 @@ class PluginsConfigTab(Static):
         schema_errors = validate_ui_schema(schema)
         if schema_errors:
             preview = " | ".join(schema_errors[:2])
-            self.app.notify(f"❌ _ui schema 結構錯誤: {preview}", severity="error")
+            self.app.notify(
+                t("ui.plugins.error.schema_invalid", preview=preview),
+                severity="error",
+            )
             return
 
         try:
@@ -208,9 +221,12 @@ class PluginsConfigTab(Static):
             self._selected_plugin = plugin_name
             self._load_plugin_content(plugin_name)
             self.query_one("#edit-plugin", Button).disabled = False
-            self.app.notify(f"✅ 已儲存 {plugin_name}.yaml", severity="information")
+            self.app.notify(
+                t("ui.plugins.notify.saved", plugin=plugin_name),
+                severity="information",
+            )
         except Exception as e:
-            self.app.notify(f"❌ 儲存失敗: {e}", severity="error")
+            self.app.notify(t("ui.common.error.save_failed", error=e), severity="error")
 
     def _write_plugin_config_file(
         self,
@@ -247,8 +263,14 @@ class PluginsConfigTab(Static):
         if failed:
             preview = ", ".join(failed[:2])
             if len(failed) > 2:
-                preview += f" 等 {len(failed)} 個"
-            self.app.notify(f"⚠️ 清理部分失敗: {preview}", severity="warning")
+                preview += t("ui.plugins.cleanup.failed_suffix", count=len(failed))
+            self.app.notify(
+                t("ui.plugins.cleanup.partial_failed", preview=preview),
+                severity="warning",
+            )
             return
 
-        self.app.notify(f"✅ 已清理 {removed} 個備份檔", severity="information")
+        self.app.notify(
+            t("ui.plugins.cleanup.done", count=removed),
+            severity="information",
+        )

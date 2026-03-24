@@ -5,8 +5,11 @@ from outlook_mail_extractor.ui_schema import (
     evaluate_rules,
     flatten_ui_fields,
     load_plugin_ui_schema,
+    schema_text,
     strip_reserved_metadata,
+    validate_ui_schema,
 )
+from outlook_mail_extractor.i18n import set_language
 
 
 def test_flatten_ui_fields_supports_list_item_fields() -> None:
@@ -123,3 +126,35 @@ def test_load_plugin_ui_schema_returns_empty_when_missing_sample(tmp_path) -> No
     """Return empty dict when plugin sample file does not exist."""
     schema = load_plugin_ui_schema("missing", tmp_path)
     assert schema == {}
+
+
+def test_validate_ui_schema_accepts_label_key_and_message_key() -> None:
+    schema = {
+        "schema_version": 1,
+        "buttons": [
+            {
+                "id": "save",
+                "label_key": "ui.main.button.save",
+                "action": "save",
+            }
+        ],
+        "fields": {},
+        "validation_rules": [
+            {
+                "id": "limit_positive",
+                "level": "error",
+                "message_key": "ui.main.rule.limit_positive",
+            }
+        ],
+    }
+
+    assert validate_ui_schema(schema) == []
+
+
+def test_schema_text_prefers_key_when_available() -> None:
+    set_language("zh-TW")
+    payload = {
+        "label_key": "ui.main.button.save",
+        "label": "fallback",
+    }
+    assert schema_text(payload, "label_key", "label", "") == "儲存"
