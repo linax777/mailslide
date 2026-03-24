@@ -66,6 +66,11 @@ _ui:
       action: add_list_item
       target: jobs
       variant: primary
+    - id: edit_job
+      label: "修改 Job"
+      action: edit_list_item
+      target: jobs
+      variant: default
     - id: remove_job
       label: "刪除 Job"
       action: remove_list_item

@@ -137,3 +137,42 @@ def test_main_config_resolve_remove_job_index_falls_back_to_last(
     index = tab._resolve_remove_job_index([{"name": "a"}, {"name": "b"}])
 
     assert index == 1
+
+
+def test_main_config_resolve_edit_job_index_prefers_selected(tmp_path: Path) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._selected_job_index = 1
+
+    index = tab._resolve_edit_job_index([{"name": "a"}, {"name": "b"}])
+
+    assert index == 1
+
+
+def test_main_config_resolve_edit_job_index_requires_valid_selection(
+    tmp_path: Path,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._selected_job_index = 10
+
+    index = tab._resolve_edit_job_index([{"name": "a"}, {"name": "b"}])
+
+    assert index is None
+
+
+def test_main_config_select_job_row_updates_selected_index(tmp_path: Path) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._rendered_job_indices = [3, 5]
+
+    tab._select_job_row(1)
+
+    assert tab._selected_job_index == 5
+
+
+def test_main_config_select_job_row_invalid_clears_selection(tmp_path: Path) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._rendered_job_indices = [2]
+    tab._selected_job_index = 2
+
+    tab._select_job_row(9)
+
+    assert tab._selected_job_index is None

@@ -38,14 +38,18 @@ class AddJobScreen(ModalScreen[dict | None]):
         self,
         plugin_options: list[str],
         defaults: dict | None = None,
+        title: str = "➕ 新增 Job",
+        save_button_label: str = "儲存 Job",
     ):
         super().__init__()
         self._plugin_options = plugin_options
         self._defaults = defaults or {}
+        self._title = title
+        self._save_button_label = save_button_label
 
     def compose(self) -> ComposeResult:
         with Vertical(id="add-job-dialog"):
-            yield Static("➕ 新增 Job", id="add-job-title")
+            yield Static(self._title, id="add-job-title")
             yield Static("工作名稱", classes="add-job-label")
             yield Input(self._default_text("name"), id="add-job-name")
             yield Static("啟用", classes="add-job-label")
@@ -56,6 +60,11 @@ class AddJobScreen(ModalScreen[dict | None]):
             yield Input(self._default_text("source"), id="add-job-source")
             yield Static("目標資料夾（可留空）", classes="add-job-label")
             yield Input(self._default_text("destination"), id="add-job-destination")
+            yield Static("人工判斷資料夾（可留空）", classes="add-job-label")
+            yield Input(
+                self._default_text("manual_review_destination"),
+                id="add-job-manual-review-destination",
+            )
             yield Static("處理上限", classes="add-job-label")
             yield Input(str(self._default_limit()), id="add-job-limit")
             yield Static("Plugins（可多選）", classes="add-job-label")
@@ -74,7 +83,11 @@ class AddJobScreen(ModalScreen[dict | None]):
             yield Static("", id="add-job-error")
             with Horizontal(id="add-job-actions"):
                 yield Button("取消", id="add-job-cancel")
-                yield Button("儲存 Job", id="add-job-save", variant="primary")
+                yield Button(
+                    self._save_button_label,
+                    id="add-job-save",
+                    variant="primary",
+                )
 
     def on_mount(self) -> None:
         self.query_one("#add-job-name", Input).focus()
@@ -114,6 +127,9 @@ class AddJobScreen(ModalScreen[dict | None]):
         account = self.query_one("#add-job-account", Input).value.strip()
         source = self.query_one("#add-job-source", Input).value.strip()
         destination = self.query_one("#add-job-destination", Input).value.strip()
+        manual_review_destination = self.query_one(
+            "#add-job-manual-review-destination", Input
+        ).value.strip()
         limit_text = self.query_one("#add-job-limit", Input).value.strip()
         plugin_selector = self.query_one("#add-job-plugins", SelectionList)
         enable = self.query_one("#add-job-enable", Switch).value
@@ -155,5 +171,7 @@ class AddJobScreen(ModalScreen[dict | None]):
         }
         if destination:
             job["destination"] = destination
+        if manual_review_destination:
+            job["manual_review_destination"] = manual_review_destination
 
         self.dismiss(job)

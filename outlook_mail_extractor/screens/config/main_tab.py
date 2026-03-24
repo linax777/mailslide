@@ -75,7 +75,11 @@ class MainConfigTab(Static):
         with Vertical(id="main-config-split"):
             with Vertical(id="main-jobs-pane"):
                 yield Static("📋 Jobs 清單", id="main-jobs-title")
-                yield DataTable(id="main-jobs-table")
+                yield DataTable(
+                    id="main-jobs-table",
+                    show_cursor=True,
+                    cursor_type="row",
+                )
 
             with Vertical(id="main-schema-pane"):
                 with Horizontal(id="main-schema-actions"):
@@ -156,15 +160,21 @@ class MainConfigTab(Static):
         table.styles.height = visible_rows
         jobs_pane.styles.height = visible_rows + 2
 
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if event.data_table.id != "main-jobs-table":
-            return
-
-        row = int(event.cursor_row)
+    def _select_job_row(self, row: int) -> None:
         if row < 0 or row >= len(self._rendered_job_indices):
             self._selected_job_index = None
             return
         self._selected_job_index = self._rendered_job_indices[row]
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id != "main-jobs-table":
+            return
+        self._select_job_row(int(event.cursor_row))
+
+    def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
+        if event.data_table.id != "main-jobs-table":
+            return
+        self._select_job_row(int(event.coordinate.row))
 
     def _resolve_remove_job_index(self, jobs: list[Any]) -> int:
         if isinstance(
@@ -172,6 +182,13 @@ class MainConfigTab(Static):
         ) and 0 <= self._selected_job_index < len(jobs):
             return self._selected_job_index
         return len(jobs) - 1
+
+    def _resolve_edit_job_index(self, jobs: list[Any]) -> int | None:
+        if isinstance(
+            self._selected_job_index, int
+        ) and 0 <= self._selected_job_index < len(jobs):
+            return self._selected_job_index
+        return None
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if not event.button.id or not event.button.id.startswith("schema-btn-"):
@@ -186,6 +203,9 @@ class MainConfigTab(Static):
             return
         if action == "add_job":
             self._add_job()
+            return
+        if action == "edit_job":
+            self._edit_job()
             return
         if action == "remove_job":
             self._remove_job()
@@ -345,6 +365,79 @@ class MainConfigTab(Static):
             AddJobScreen(plugin_options=plugin_options, defaults=defaults),
             self._handle_add_job_result,
         )
+
+    def _handle_edit_job_result(
+        self,
+        edit_index: int,
+        result: dict | None,
+    ) -> None:
+        if result is None:
+            return
+
+        try:
+            config = self._load_editor_config()
+            jobs = config.get("jobs", [])
+            if not isinstance(jobs, list):
+                raise ValueError("jobs 必須是陣列")
+            if not (0 <= edit_index < len(jobs)):
+                raise ValueError("要修改的 Job 已不存在")
+
+            updated_name = str(result.get("name", "")).strip()
+            for idx, job in enumerate(jobs):
+                if idx == edit_index or not isinstance(job, dict):
+                    continue
+                if str(job.get("name", "")).strip() == updated_name:
+                    raise ValueError(f"Job 名稱重複: {updated_name}")
+
+            jobs[edit_index] = result
+            config["jobs"] = jobs
+            self._selected_job_index = edit_index
+            self._dump_editor_config(config)
+            self._run_schema_validation()
+            self._render_jobs_table(config)
+            self._reset_armed = False
+            self.app.notify(
+                f"✅ 已更新 Job（第 {edit_index + 1} 筆）",
+                severity="information",
+            )
+        except Exception as e:
+            self.app.notify(f"❌ 修改 Job 失敗: {e}", severity="error")
+
+    def _edit_job(self) -> None:
+        try:
+            config = self._load_editor_config()
+            jobs = config.get("jobs", [])
+            if not isinstance(jobs, list):
+                raise ValueError("jobs 必須是陣列")
+            if not jobs:
+                self.app.notify("⚠️ 沒有可修改的 Job", severity="warning")
+                return
+
+            edit_index = self._resolve_edit_job_index(jobs)
+            if edit_index is None:
+                self.app.notify(
+                    "⚠️ 請先在 Jobs 清單選取要修改的 Job", severity="warning"
+                )
+                return
+
+            selected_job = jobs[edit_index]
+            if not isinstance(selected_job, dict):
+                raise ValueError("選取的 Job 內容格式錯誤")
+
+            plugin_options = self._plugin_options_from_schema()
+            defaults = dict(selected_job)
+
+            self.app.push_screen(
+                AddJobScreen(
+                    plugin_options=plugin_options,
+                    defaults=defaults,
+                    title=f"✏️ 修改 Job（第 {edit_index + 1} 筆）",
+                    save_button_label="儲存修改",
+                ),
+                lambda result: self._handle_edit_job_result(edit_index, result),
+            )
+        except Exception as e:
+            self.app.notify(f"❌ 開啟修改 Job 失敗: {e}", severity="error")
 
     def _remove_job(self) -> None:
         try:

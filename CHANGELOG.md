@@ -10,11 +10,14 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 
 - Added per-job `manual_review_destination` routing support so emails with no LLM action outcome are moved to a dedicated manual-review folder.
 - Added high-risk core tests to cover move routing for LLM success -> `destination`, non-action -> `manual_review_destination`, and plugin failure -> `manual_review_destination`.
+- Added a new `修改 Job` action in Main Configuration `_ui` schema so users can update existing jobs from the form-driven workflow instead of editing YAML manually.
+- Added modal/form test coverage for job edit helpers and add/edit payload handling, including `manual_review_destination` field mapping.
 
 ### Changed
 
 - Updated orchestrator move logic to route mails based on LLM plugin result statuses: `SUCCESS` goes to `destination`, while `SKIPPED`/`FAILED`/`RETRIABLE_FAILED` can be routed to `manual_review_destination`.
 - Updated config sample/UI schema and README job fields to document and expose `manual_review_destination` in TUI and YAML workflows.
+- Updated Main Configuration tab to support editing the selected job through a dedicated modal, reusing the structured job form fields (`name/account/source/destination/manual_review_destination/limit/plugins`) and reducing direct YAML edits.
 
 ## [v0.2.7] - 2026-03-24
 
