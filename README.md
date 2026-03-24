@@ -124,6 +124,7 @@ jobs:
     account: "your@email.com"
     source: "收件匣"
     destination: "收件匣/processed"
+    manual_review_destination: "收件匣/manual_review"
     limit: 10
     plugins:
       - add_category
@@ -136,6 +137,7 @@ jobs:
 | account | Outlook 帳號 Email 或資料檔案(pst)名稱 |
 | source | 來源資料夾（如「收件匣」） |
 | destination | 處理後移動到（可省略，若省略則郵件不會移動，可能重複處理，單純測試時可不加） |
+| manual_review_destination | LLM 無 action（skipped）或失敗（failed/retriable_failed）時移動到人工判斷資料夾（可省略） |
 | limit | 處理的郵件數量 |
 | llm_mode | LLM 呼叫模式（`per_plugin` 預設；`share_deprecated` 為舊模式） |
 | plugins | 啟用的插件（可省略） |

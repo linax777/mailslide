@@ -7,6 +7,7 @@
 #   - account: Outlook account email
 #   - source: Source folder path (e.g., "收件匣/microsoft")
 #   - destination: Destination folder for auto-move (optional)
+#   - manual_review_destination: Destination for LLM non-action/failed mails (optional)
 #   - limit: Max emails to process per job
 #   - body_max_length: Max cleaned body length for LLM/input (optional)
 #   - llm_mode: LLM dispatch mode (optional, default: per_plugin)
@@ -18,6 +19,8 @@
 #   - Use "plugins" for LLM analysis (add_category, create_appointment, etc.)
 #   - DO NOT use "move_to_folder" plugin together with "destination"
 #     (they both move emails and will conflict)
+#   - When manual_review_destination is set, mails without LLM action
+#     (skipped/failed/retriable_failed) will move there for manual review
 
 body_max_length: 2500
 llm_mode: per_plugin
@@ -28,6 +31,7 @@ jobs:
     account: "your@email.com"
     source: "收件匣/microsoft"
     destination: "收件匣/microsoft/processed"
+    # manual_review_destination: "收件匣/microsoft/manual_review"
     limit: 10
     # Optional per-job override (falls back to top-level body_max_length)
     # body_max_length: 3000
@@ -127,6 +131,11 @@ _ui:
           label: "目標資料夾"
           required: false
           placeholder: "收件匣/分類/processed"
+        manual_review_destination:
+          type: str
+          label: "人工判斷資料夾"
+          required: false
+          placeholder: "收件匣/分類/manual_review"
         limit:
           type: int
           label: "處理上限"

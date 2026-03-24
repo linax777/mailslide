@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.2.8] - 2026-03-24
+
+### Added
+
+- Added per-job `manual_review_destination` routing support so emails with no LLM action outcome are moved to a dedicated manual-review folder.
+- Added high-risk core tests to cover move routing for LLM success -> `destination`, non-action -> `manual_review_destination`, and plugin failure -> `manual_review_destination`.
+
+### Changed
+
+- Updated orchestrator move logic to route mails based on LLM plugin result statuses: `SUCCESS` goes to `destination`, while `SKIPPED`/`FAILED`/`RETRIABLE_FAILED` can be routed to `manual_review_destination`.
+- Updated config sample/UI schema and README job fields to document and expose `manual_review_destination` in TUI and YAML workflows.
+
 ## [v0.2.7] - 2026-03-24
 
 ### Changed

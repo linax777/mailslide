@@ -19,9 +19,11 @@ from outlook_mail_extractor.runtime import RuntimeContext, RuntimePaths
 class DummyMessage:
     def __init__(self) -> None:
         self.move_calls = 0
+        self.move_destinations: list[str] = []
 
     def Move(self, destination) -> None:  # noqa: N802
         self.move_calls += 1
+        self.move_destinations.append(str(destination))
 
 
 class DummyPlugin:
@@ -377,6 +379,96 @@ def test_shared_alias_maps_to_share_deprecated() -> None:
 
     assert result.success is True
     assert len(llm_client.calls) == 1
+
+
+def test_llm_action_success_moves_to_destination() -> None:
+    message = DummyMessage()
+    processor = _build_processor_with_stubbed_extract(message)
+    llm_client = FakeLLMClient()
+    create_plugin = ActionAwarePlugin(
+        name="create_appointment",
+        prompt="APPOINTMENT_ONLY",
+        expected_action="appointment",
+    )
+
+    result = asyncio.run(
+        processor._process_email(
+            message=message,
+            account_name="acc",
+            llm_client=llm_client,
+            plugins=[create_plugin],
+            dry_run=False,
+            no_move=False,
+            destination_folder_name="destination-folder",
+            manual_review_destination_folder_name="manual-review-folder",
+            body_max_length=500,
+        )
+    )
+
+    assert result.success is True
+    assert message.move_calls == 1
+    assert message.move_destinations == ["destination-folder"]
+
+
+def test_llm_non_action_moves_to_manual_review_destination() -> None:
+    message = DummyMessage()
+    processor = _build_processor_with_stubbed_extract(message)
+    llm_client = FakeLLMClient()
+    non_action_plugin = ActionAwarePlugin(
+        name="move_to_folder",
+        prompt="APPOINTMENT_ONLY",
+        expected_action="move",
+        capabilities={PluginCapability.REQUIRES_LLM},
+    )
+
+    result = asyncio.run(
+        processor._process_email(
+            message=message,
+            account_name="acc",
+            llm_client=llm_client,
+            plugins=[non_action_plugin],
+            dry_run=False,
+            no_move=False,
+            destination_folder_name="destination-folder",
+            manual_review_destination_folder_name="manual-review-folder",
+            body_max_length=500,
+        )
+    )
+
+    assert result.success is True
+    assert message.move_calls == 1
+    assert message.move_destinations == ["manual-review-folder"]
+
+
+def test_llm_failed_moves_to_manual_review_destination() -> None:
+    message = DummyMessage()
+    processor = _build_processor_with_stubbed_extract(message)
+    llm_client = FakeLLMClient()
+    failing_plugin = DummyPlugin(
+        name="add_category",
+        prompt="needs llm",
+        execute_result=False,
+        capabilities={PluginCapability.REQUIRES_LLM},
+    )
+
+    result = asyncio.run(
+        processor._process_email(
+            message=message,
+            account_name="acc",
+            llm_client=llm_client,
+            plugins=[failing_plugin],
+            dry_run=False,
+            no_move=False,
+            destination_folder_name="destination-folder",
+            manual_review_destination_folder_name="manual-review-folder",
+            body_max_length=500,
+        )
+    )
+
+    assert result.success is True
+    assert failing_plugin.execute_calls == 1
+    assert message.move_calls == 1
+    assert message.move_destinations == ["manual-review-folder"]
 
 
 def test_process_config_file_prefers_config_relative_llm_and_plugins(

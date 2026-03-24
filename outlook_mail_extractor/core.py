@@ -337,6 +337,7 @@ class EmailProcessor:
         account_name = account_name_raw
         source_folder = job_config.get("source", "Inbox")
         destination_folder = job_config.get("destination")
+        manual_review_destination = job_config.get("manual_review_destination")
         limit = job_config.get("limit", 10)
         body_max_length = job_config.get("body_max_length", self._max_length)
         logger = get_logger()
@@ -352,6 +353,9 @@ class EmailProcessor:
         # Get destination folder if specified
         destination_folder_name = (
             str(destination_folder) if destination_folder else None
+        )
+        manual_review_destination_folder_name = (
+            str(manual_review_destination) if manual_review_destination else None
         )
 
         # Get messages from source folder (sorted by date, newest first)
@@ -394,6 +398,7 @@ class EmailProcessor:
                 dry_run,
                 no_move,
                 destination_folder_name,
+                manual_review_destination_folder_name,
                 body_max_length,
                 effective_llm_mode,
             )
@@ -410,6 +415,7 @@ class EmailProcessor:
         dry_run: bool,
         no_move: bool,
         destination_folder_name: str | None = None,
+        manual_review_destination_folder_name: str | None = None,
         body_max_length: int | None = None,
         llm_mode: str = LLM_MODE_PER_PLUGIN,
     ) -> EmailAnalysisResult:
@@ -721,16 +727,46 @@ class EmailProcessor:
 
                     llm_response = "\n\n---\n\n".join(llm_responses)
 
-        # Move email to destination folder if specified
-        if (
-            destination_folder_name
-            and success
-            and not dry_run
-            and not no_move
-            and not moved_by_plugin
-        ):
+        llm_plugin_names = {plugin.name for plugin in plugins_needing_llm}
+        llm_plugin_results = [
+            result
+            for result in plugin_results
+            if result.plugin_name in llm_plugin_names
+        ]
+        has_llm_plugin_results = bool(llm_plugin_results)
+        has_llm_success = any(
+            result.status == PluginExecutionStatus.SUCCESS
+            for result in llm_plugin_results
+        )
+        has_llm_non_action = any(
+            result.status
+            in {
+                PluginExecutionStatus.SKIPPED,
+                PluginExecutionStatus.FAILED,
+                PluginExecutionStatus.RETRIABLE_FAILED,
+            }
+            for result in llm_plugin_results
+        )
+
+        move_target_folder: str | None = None
+        if has_llm_plugin_results:
+            if has_llm_success and destination_folder_name:
+                move_target_folder = destination_folder_name
+            elif (
+                not has_llm_success
+                and has_llm_non_action
+                and manual_review_destination_folder_name
+            ):
+                move_target_folder = manual_review_destination_folder_name
+            elif destination_folder_name and success:
+                move_target_folder = destination_folder_name
+        elif destination_folder_name and success:
+            move_target_folder = destination_folder_name
+
+        # Move email to selected folder when orchestrator still owns move behavior.
+        if move_target_folder and not dry_run and not no_move and not moved_by_plugin:
             try:
-                action_port.move_to_folder(destination_folder_name)
+                action_port.move_to_folder(move_target_folder)
             except Exception as e:
                 error_msg = f"Move failed: {e}"
                 logger.error(error_msg)
