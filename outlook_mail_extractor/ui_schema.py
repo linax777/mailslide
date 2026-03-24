@@ -298,6 +298,11 @@ def _rule_output_file_csv(config: dict[str, Any]) -> bool:
     return output_file.endswith(".csv")
 
 
+def _rule_output_file_xlsx(config: dict[str, Any]) -> bool:
+    output_file = str(config.get("output_file", "")).lower()
+    return output_file.endswith(".xlsx")
+
+
 def _rule_include_fields_not_empty(config: dict[str, Any]) -> bool:
     fields = config.get("include_fields")
     return isinstance(fields, list) and len(fields) > 0
@@ -337,6 +342,7 @@ _RULE_EVALUATORS: dict[str, Any] = {
     "timeout_range": _rule_timeout_range,
     "response_format_enum": _rule_response_format_enum,
     "output_file_csv": _rule_output_file_csv,
+    "output_file_xlsx": _rule_output_file_xlsx,
     "include_fields_not_empty": _rule_include_fields_not_empty,
     "required_placeholders": _rule_required_placeholders,
     "recipients_email_like": _rule_recipients_email_like,

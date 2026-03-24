@@ -268,6 +268,7 @@ class EmailProcessor:
             received=str(getattr(message, "ReceivedTime", "")),
             body=clean_body,
             tables=parse_tables(html_body),
+            entry_id=str(getattr(message, "EntryID", "")),
         )
 
     def _normalize_plugin_execution_result(

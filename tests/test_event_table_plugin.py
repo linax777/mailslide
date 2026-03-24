@@ -1,6 +1,7 @@
 import asyncio
-import csv
 import json
+
+from openpyxl import load_workbook
 
 from outlook_mail_extractor.models import (
     EmailDTO,
@@ -30,11 +31,12 @@ def _build_email_data() -> EmailDTO:
         received="2026-03-18 10:30:00",
         body="",
         tables=[],
+        entry_id="00000000123456789ABCDEF",
     )
 
 
-def test_event_table_writes_csv_row(tmp_path) -> None:
-    output_file = tmp_path / "events.csv"
+def test_event_table_writes_excel_row(tmp_path) -> None:
+    output_file = tmp_path / "events.xlsx"
     plugin = EventTablePlugin(config={"output_file": str(output_file)})
 
     llm_response = json.dumps(
@@ -58,22 +60,44 @@ def test_event_table_writes_csv_row(tmp_path) -> None:
     assert result.success is True
     assert output_file.exists()
 
-    with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
-        rows = list(csv.DictReader(f))
+    workbook = load_workbook(output_file)
+    worksheet = workbook.active
+    rows = [row for row in worksheet.iter_rows(values_only=True)]
 
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["email_subject"] == "原始郵件主旨"
-    assert row["event_subject"] == "專案會議"
-    assert row["start"] == "2026-03-20T14:00:00"
-    assert row["end"] == "2026-03-20T15:00:00"
-    assert row["location"] == "Teams"
-    assert row["body"] == "討論里程碑"
-    assert row["logged_at"]
+    assert len(rows) == 2
+    header = rows[0]
+    assert header == (
+        "email_subject",
+        "email_sender",
+        "email_received",
+        "email_entry_id",
+        "outlook_link",
+        "event_subject",
+        "start",
+        "end",
+        "location",
+        "body",
+        "logged_at",
+    )
+    row = rows[1]
+    assert row[0] == "原始郵件主旨"
+    assert row[3] == "00000000123456789ABCDEF"
+    assert row[4] == "Open in Outlook"
+    assert row[5] == "專案會議"
+    assert row[6] == "2026-03-20T14:00:00"
+    assert row[7] == "2026-03-20T15:00:00"
+    assert row[8] == "Teams"
+    assert row[9] == "討論里程碑"
+    assert row[10]
+
+    assert worksheet.cell(row=2, column=5).hyperlink is not None
+    assert worksheet.cell(row=2, column=5).hyperlink.target == (
+        "outlook:00000000123456789ABCDEF"
+    )
 
 
 def test_event_table_accepts_timezone_datetimes(tmp_path) -> None:
-    output_file = tmp_path / "events.csv"
+    output_file = tmp_path / "events.xlsx"
     plugin = EventTablePlugin(config={"output_file": str(output_file)})
 
     llm_response = json.dumps(
@@ -95,17 +119,18 @@ def test_event_table_accepts_timezone_datetimes(tmp_path) -> None:
     assert isinstance(result, PluginExecutionResult)
     assert result.status == PluginExecutionStatus.SUCCESS
 
-    with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
-        rows = list(csv.DictReader(f))
+    workbook = load_workbook(output_file)
+    worksheet = workbook.active
+    rows = [row for row in worksheet.iter_rows(values_only=True)]
 
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["start"] == "2026-03-25T12:00:00+08:00"
-    assert row["end"] == "2026-03-25T13:30:00+08:00"
+    assert len(rows) == 2
+    row = rows[1]
+    assert row[6] == "2026-03-25T12:00:00+08:00"
+    assert row[7] == "2026-03-25T13:30:00+08:00"
 
 
 def test_event_table_noop_when_create_false(tmp_path) -> None:
-    output_file = tmp_path / "events.csv"
+    output_file = tmp_path / "events.xlsx"
     plugin = EventTablePlugin(config={"output_file": str(output_file)})
     llm_response = '{"action":"appointment","create":false}'
 
@@ -119,7 +144,7 @@ def test_event_table_noop_when_create_false(tmp_path) -> None:
 
 
 def test_event_table_appends_without_duplicate_header(tmp_path) -> None:
-    output_file = tmp_path / "events.csv"
+    output_file = tmp_path / "events.xlsx"
     plugin = EventTablePlugin(config={"output_file": str(output_file)})
     llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
 
@@ -135,14 +160,15 @@ def test_event_table_appends_without_duplicate_header(tmp_path) -> None:
     assert first.status == PluginExecutionStatus.SUCCESS
     assert second.status == PluginExecutionStatus.SUCCESS
 
-    with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
-        rows = list(csv.reader(f))
+    workbook = load_workbook(output_file)
+    worksheet = workbook.active
+    rows = [row for row in worksheet.iter_rows(values_only=True)]
 
     assert len(rows) == 3
 
 
 def test_event_table_ignores_custom_fields_config(tmp_path) -> None:
-    output_file = tmp_path / "events.csv"
+    output_file = tmp_path / "events.xlsx"
     plugin = EventTablePlugin(
         config={
             "output_file": str(output_file),
@@ -158,17 +184,20 @@ def test_event_table_ignores_custom_fields_config(tmp_path) -> None:
     assert isinstance(result, PluginExecutionResult)
     assert result.status == PluginExecutionStatus.SUCCESS
 
-    with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
-        rows = list(csv.reader(f))
+    workbook = load_workbook(output_file)
+    worksheet = workbook.active
+    rows = [row for row in worksheet.iter_rows(values_only=True)]
 
-    assert rows[0] == [
+    assert rows[0] == (
         "email_subject",
         "email_sender",
         "email_received",
+        "email_entry_id",
+        "outlook_link",
         "event_subject",
         "start",
         "end",
         "location",
         "body",
         "logged_at",
-    ]
+    )

@@ -173,7 +173,7 @@ model: "llama3"
 | add_category | AI 分析郵件並自動加上分類標籤 |
 | move_to_folder | AI 判斷應該移動到哪個資料夾 |
 | create_appointment | AI 分析郵件內容建立行事曆約會 |
-| event_table | AI 分析郵件內容並將活動資訊追加到 CSV 表格 |
+| event_table | AI 分析郵件內容並將活動資訊追加到 Excel 表格（含 Outlook 開信連結） |
 | write_file | 將郵件資料儲存為 JSON 檔案 |
 | summary_file | AI 產生郵件摘要並追加到 CSV 表格 |
 
@@ -199,12 +199,17 @@ include_fields:                # 要包含的欄位
 
 ```yaml
 enabled: true
-output_file: "output/events.csv"   # 單一 CSV，逐筆 append
+output_file: "output/events.xlsx"   # 單一 Excel，逐筆 append
 ```
 
-CSV 欄位由程式固定，順序為：
-`email_subject`, `email_sender`, `email_received`, `event_subject`,
-`start`, `end`, `location`, `body`, `logged_at`。
+Excel 欄位由程式固定，順序為：
+`email_subject`, `email_sender`, `email_received`, `email_entry_id`,
+`outlook_link`, `event_subject`, `start`, `end`, `location`, `body`, `logged_at`。
+
+- `email_entry_id`：Outlook 郵件 EntryID
+- `outlook_link`：可直接點擊開啟 Outlook classic 對應郵件（`outlook:<EntryID>`）
+
+> 備註：`outlook_link` 主要對 Outlook classic 生效；若郵件來源無法取得 `EntryID`，該欄位會留空。
 
 ### summary_file 插件設定
 

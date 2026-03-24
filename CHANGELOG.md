@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.2.7] - 2026-03-24
+
+### Changed
+
+- Updated `event_table` output from CSV to Excel (`.xlsx`) and changed default output path to `output/events.xlsx`.
+- Updated `event_table` fixed schema to include Outlook message identifiers and deep-link fields: `email_entry_id` and `outlook_link`.
+- Updated `config/plugins/event_table.yaml(.sample)` UI schema and validation rule from `.csv` to `.xlsx` output checks.
+- Updated README plugin documentation for the new Excel-based event table workflow and Outlook classic open-link behavior.
+
+### Added
+
+- Added `EmailDTO.entry_id` and wired message extraction to include Outlook `EntryID` in core processing.
+- Added Excel hyperlink writing in `event_table` so each row includes a clickable `outlook:<EntryID>` link (`Open in Outlook`) for opening the matching mail in Outlook classic.
+- Added `openpyxl` runtime dependency and lockfile update for Excel read/write support.
+- Added/updated tests covering Excel output headers/rows, hyperlink generation, append behavior, timezone datetime parsing, and UI schema rule support for `output_file_xlsx`.
+
 ## [v0.2.6] - 2026-03-23
 
 ### Changed

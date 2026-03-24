@@ -1,10 +1,10 @@
 """Event Table Plugin"""
 
-import csv
 from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
+from openpyxl import Workbook, load_workbook
 
 from ..models import EmailDTO, MailActionPort, PluginExecutionResult
 from .base import BasePlugin, PluginCapability, PluginConfig, register_plugin
@@ -12,7 +12,7 @@ from .base import BasePlugin, PluginCapability, PluginConfig, register_plugin
 
 @register_plugin
 class EventTablePlugin(BasePlugin):
-    """Write extracted appointment data to a CSV table."""
+    """Write extracted appointment data to an Excel table."""
 
     name = "event_table"
     capabilities = {PluginCapability.REQUIRES_LLM}
@@ -23,11 +23,13 @@ class EventTablePlugin(BasePlugin):
         "create_true": '{"action": "appointment", "create": true, "subject": "約會主題", "start": "2024-01-15T14:00:00", "end": "2024-01-15T15:00:00", "location": "會議室或線上連結", "body": "額外備註"}',
         "create_false": '{"action": "appointment", "create": false}',
     }
-    default_output_file = "output/events.csv"
+    default_output_file = "output/events.xlsx"
     default_fields = [
         "email_subject",
         "email_sender",
         "email_received",
+        "email_entry_id",
+        "outlook_link",
         "event_subject",
         "start",
         "end",
@@ -43,7 +45,7 @@ class EventTablePlugin(BasePlugin):
         self.fields = list(self.default_fields)
         if "fields" in config:
             logger.warning(
-                "[event_table] 'fields' config is ignored; CSV schema is fixed"
+                "[event_table] 'fields' config is ignored; Excel schema is fixed"
             )
 
     def _load_config(self, config: dict) -> PluginConfig:
@@ -63,7 +65,7 @@ class EventTablePlugin(BasePlugin):
         llm_response: str,
         action_port: MailActionPort,
     ) -> PluginExecutionResult:
-        """Write appointment data into CSV when LLM asks to create."""
+        """Write appointment data into Excel when LLM asks to create."""
         del action_port
         try:
             response_data = self._parse_response(llm_response)
@@ -97,10 +99,15 @@ class EventTablePlugin(BasePlugin):
                     code="invalid_datetime",
                 )
 
+            entry_id = str(email_data.entry_id).strip()
+            outlook_link = f"outlook:{entry_id}" if entry_id else ""
+
             row = {
                 "email_subject": str(email_data.subject),
                 "email_sender": str(email_data.sender),
                 "email_received": str(email_data.received),
+                "email_entry_id": entry_id,
+                "outlook_link": outlook_link,
                 "event_subject": str(event_subject),
                 "start": start.isoformat(timespec="seconds"),
                 "end": end.isoformat(timespec="seconds"),
@@ -111,16 +118,37 @@ class EventTablePlugin(BasePlugin):
 
             output_path = Path(self.output_file)
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            write_header = not output_path.exists() or output_path.stat().st_size == 0
 
-            with open(output_path, "a", encoding="utf-8-sig", newline="") as f:
-                writer = csv.DictWriter(
-                    f, fieldnames=self.fields, extrasaction="ignore"
+            if output_path.exists() and output_path.stat().st_size > 0:
+                workbook = load_workbook(output_path)
+                worksheet = (
+                    workbook["events"]
+                    if "events" in workbook.sheetnames
+                    else workbook.active
                 )
-                if write_header:
-                    writer.writeheader()
-                writer.writerow(row)
-            return self.success_result(message="Event appended to CSV")
+            else:
+                workbook = Workbook()
+                worksheet = workbook.active
+                worksheet.title = "events"
+
+            if worksheet.max_row == 1 and worksheet.cell(1, 1).value is None:
+                for column_index, field_name in enumerate(self.fields, start=1):
+                    worksheet.cell(row=1, column=column_index, value=field_name)
+
+            row_values = [row[field] for field in self.fields]
+            worksheet.append(row_values)
+            row_index = worksheet.max_row
+
+            if outlook_link:
+                link_col = self.fields.index("outlook_link") + 1
+                link_cell = worksheet.cell(row=row_index, column=link_col)
+                link_cell.value = "Open in Outlook"
+                link_cell.hyperlink = outlook_link
+                link_cell.style = "Hyperlink"
+
+            workbook.save(output_path)
+
+            return self.success_result(message="Event appended to Excel")
         except Exception as e:
             return self.retriable_failed_result(
                 message=f"Unexpected error: {e}",

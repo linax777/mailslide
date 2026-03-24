@@ -1,5 +1,5 @@
 # Event Table Plugin Configuration
-# Action: Extract appointment-like events from emails and append to CSV
+# Action: Extract appointment-like events from emails and append to Excel
 
 enabled: true
 
@@ -29,12 +29,12 @@ response_json_format:
   create_true: '{"action": "appointment", "create": true, "subject": "約會主題", "start": "2024-01-15T14:00:00", "end": "2024-01-15T15:00:00", "location": "會議室或線上連結", "body": "額外備註"}'
   create_false: '{"action": "appointment", "create": false}'
 
-# Output CSV file (single file, append mode)
-output_file: "output/events.csv"
+# Output Excel file (single file, append mode)
+output_file: "output/events.xlsx"
 
-# CSV schema is fixed in code:
-# email_subject, email_sender, email_received, event_subject,
-# start, end, location, body, logged_at
+# Excel schema is fixed in code:
+# email_subject, email_sender, email_received, email_entry_id,
+# outlook_link, event_subject, start, end, location, body, logged_at
 
 # Response format (json, text)
 response_format: "json"
@@ -73,9 +73,9 @@ _ui:
       placeholder: "general_v1:\n  version: 1\n  system_prompt: |"
     output_file:
       type: path
-      label: "CSV 檔案"
+      label: "Excel 檔案"
       required: true
-      placeholder: "output/events.csv"
+      placeholder: "output/events.xlsx"
     response_format:
       type: select
       label: "Response Format"
@@ -85,10 +85,10 @@ _ui:
         - json
         - text
   validation_rules:
-    - id: output_file_csv
+    - id: output_file_xlsx
       level: warning
-      message: "建議 output_file 使用 .csv 副檔名"
-      check: "ends_with(lower(config.output_file),'.csv')"
+      message: "建議 output_file 使用 .xlsx 副檔名"
+      check: "ends_with(lower(config.output_file),'.xlsx')"
     - id: response_format_enum
       level: error
       message: "response_format 僅支援 json/text"

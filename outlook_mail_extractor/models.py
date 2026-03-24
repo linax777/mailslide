@@ -91,6 +91,7 @@ class EmailDTO:
     received: str
     body: str
     tables: list[list[Any]]
+    entry_id: str = ""
 
 
 class MailActionPort(Protocol):
