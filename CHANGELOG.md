@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.3.4] - 2026-03-27
+
+### Changed
+
+- Updated `event_table` Excel schema field name from `outlook_link` to `outlook_open_command`, and changed output behavior from clickable deep links/launcher files to plain PowerShell open commands for better compatibility in locked-down environments.
+- Updated `event_table` open-command generation to use PowerShell `-EncodedCommand` and robust Outlook COM search logic based on subject/received time traversal across stores/folders instead of relying on unstable `EntryID`/protocol handlers.
+- Updated default open-command matching window to subject + received time (within 1 day) and added optional sender matching control.
+
+### Added
+
+- Added `open_command_match_sender` plugin config (and `_ui` schema field) for `event_table` so users can optionally require sender matching when resolving mails from `outlook_open_command`.
+- Added `EmailDTO.store_id` and `EmailDTO.internet_message_id` extraction plumbing in core email extraction to support cross-store identification and future fallback matching strategies.
+- Added/updated `event_table` tests to cover encoded PowerShell command output and sender-match toggle behavior.
+
+## [v0.3.3] - 2026-03-27
+
+### Fixed
+
+- Fixed Home/Job execution logs so runtime messages now follow the selected UI language (`ui_language`) instead of staying hardcoded in Traditional Chinese.
+
+### Changed
+
+- Migrated job-run related log messages to i18n keys across runtime modules (`job_execution`, `core`, `llm_dispatcher`, `logger`) and added matching `zh-TW`/`en-US` locale entries.
+- Updated i18n test expectations in `tests/test_i18n.py` to align with current app branding/copy (`app.title`, `app.subtitle`).
+
+### Added
+
+- Added `tests/test_job_log_i18n.py` regression coverage to verify log message localization changes when switching between `zh-TW` and `en-US`.
+
 ## [v0.3.2] - 2026-03-26
 
 ### Changed

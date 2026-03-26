@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 
 from openpyxl import load_workbook
@@ -32,6 +33,8 @@ def _build_email_data() -> EmailDTO:
         body="",
         tables=[],
         entry_id="00000000123456789ABCDEF",
+        store_id="00000000AAAABBBBCCCC",
+        internet_message_id="<test-message-id@example.com>",
     )
 
 
@@ -71,7 +74,7 @@ def test_event_table_writes_excel_row(tmp_path) -> None:
         "email_sender",
         "email_received",
         "email_entry_id",
-        "outlook_link",
+        "outlook_open_command",
         "event_subject",
         "start",
         "end",
@@ -82,7 +85,11 @@ def test_event_table_writes_excel_row(tmp_path) -> None:
     row = rows[1]
     assert row[0] == "原始郵件主旨"
     assert row[3] == "00000000123456789ABCDEF"
-    assert row[4] == "Open in Outlook"
+    assert row[4].startswith("powershell -NoProfile -STA -EncodedCommand ")
+    encoded = row[4].split("-EncodedCommand ", 1)[1]
+    script = base64.b64decode(encoded).decode("utf-16le")
+    assert "$matchSender=$false" in script
+    assert "if($delta -gt 1440){continue}" in script
     assert row[5] == "專案會議"
     assert row[6] == "2026-03-20T14:00:00"
     assert row[7] == "2026-03-20T15:00:00"
@@ -90,10 +97,32 @@ def test_event_table_writes_excel_row(tmp_path) -> None:
     assert row[9] == "討論里程碑"
     assert row[10]
 
-    assert worksheet.cell(row=2, column=5).hyperlink is not None
-    assert worksheet.cell(row=2, column=5).hyperlink.target == (
-        "outlook:00000000123456789ABCDEF"
+    assert worksheet.cell(row=2, column=5).hyperlink is None
+
+
+def test_event_table_open_command_can_enable_sender_match(tmp_path) -> None:
+    output_file = tmp_path / "events.xlsx"
+    plugin = EventTablePlugin(
+        config={
+            "output_file": str(output_file),
+            "open_command_match_sender": True,
+        }
     )
+    llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
+
+    result = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
+
+    assert isinstance(result, PluginExecutionResult)
+    assert result.status == PluginExecutionStatus.SUCCESS
+
+    workbook = load_workbook(output_file)
+    worksheet = workbook.active
+    row = [row for row in worksheet.iter_rows(values_only=True)][1]
+    encoded = row[4].split("-EncodedCommand ", 1)[1]
+    script = base64.b64decode(encoded).decode("utf-16le")
+    assert "$matchSender=$true" in script
 
 
 def test_event_table_accepts_timezone_datetimes(tmp_path) -> None:
@@ -193,7 +222,7 @@ def test_event_table_ignores_custom_fields_config(tmp_path) -> None:
         "email_sender",
         "email_received",
         "email_entry_id",
-        "outlook_link",
+        "outlook_open_command",
         "event_subject",
         "start",
         "end",

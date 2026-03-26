@@ -8,6 +8,7 @@ from typing import Any
 
 from ..config import load_config
 from ..core import EmailProcessor, OutlookClient
+from ..i18n import t
 from ..llm import LLMClient, load_llm_config
 from ..logger import get_default_logger_manager, get_logger
 from ..models import DomainError, InfrastructureError, UserVisibleError
@@ -68,11 +69,11 @@ class JobExecutionService:
         logger = get_logger()
         existing_log_path = self._logger_manager.get_current_log_path()
         if existing_log_path:
-            logger.info(f"使用現有日誌 session: {existing_log_path}")
+            logger.info(t("log.job_execution.reuse_session", path=existing_log_path))
             return
 
         log_path = self._logger_manager.start_session(enable_ui_sink=False)
-        logger.info(f"開始執行，日誌文件: {log_path}")
+        logger.info(t("log.job_execution.started", path=log_path))
 
     async def process_config_file(
         self,
@@ -101,15 +102,20 @@ class JobExecutionService:
 
         self._ensure_log_session()
         logger.info(
-            f"Config: {config_file}, Dry-run: {dry_run}, No-move: {no_move}, "
-            f"Preserve-reply-thread: {preserve_reply_thread}"
+            t(
+                "log.job_execution.config",
+                path=config_file,
+                dry_run=dry_run,
+                no_move=no_move,
+                preserve_reply_thread=preserve_reply_thread,
+            )
         )
 
         _config_path, resolved_llm_config, resolved_plugin_dir = (
             self._resolve_runtime_paths(config_file)
         )
-        logger.info(f"LLM config path: {resolved_llm_config}")
-        logger.info(f"Plugin config dir: {resolved_plugin_dir}")
+        logger.info(t("log.job_execution.llm_config_path", path=resolved_llm_config))
+        logger.info(t("log.job_execution.plugin_config_dir", path=resolved_plugin_dir))
 
         try:
             config = self._config_loader(config_file)
@@ -119,7 +125,12 @@ class JobExecutionService:
             if isinstance(configured_plugin_modules, list):
                 loaded_modules = load_plugin_modules(configured_plugin_modules)
                 if loaded_modules:
-                    logger.info(f"已載入額外插件模組: {', '.join(loaded_modules)}")
+                    logger.info(
+                        t(
+                            "log.job_execution.plugin_modules_loaded",
+                            modules=", ".join(loaded_modules),
+                        )
+                    )
 
             client = self._client_factory()
             client.connect()
@@ -127,10 +138,17 @@ class JobExecutionService:
             llm_config = self._llm_config_loader(str(resolved_llm_config))
             if llm_config.api_base:
                 llm_client = self._llm_client_factory(llm_config)
-                logger.info(f"LLM 客戶端已初始化: {llm_config.model}")
+                logger.info(
+                    t(
+                        "log.job_execution.llm_client_initialized",
+                        model=llm_config.model,
+                    )
+                )
 
             plugin_configs = self._plugin_config_loader(resolved_plugin_dir)
-            logger.info(f"已載入 {len(plugin_configs)} 個插件配置")
+            logger.info(
+                t("log.job_execution.plugin_config_loaded", count=len(plugin_configs))
+            )
 
             processor = self._processor_factory(
                 client,
@@ -142,11 +160,11 @@ class JobExecutionService:
             for job in config.get("jobs", []):
                 if job.get("enable", True) is False:
                     job_name = job.get("name", "Unnamed Job")
-                    logger.info(f"跳过 Job (已停用): {job_name}")
+                    logger.info(t("log.job_execution.job_skipped", name=job_name))
                     continue
 
                 job_name = job.get("name", "Unnamed Job")
-                logger.info(f"開始處理 Job: {job_name}")
+                logger.info(t("log.job_execution.job_started", name=job_name))
                 job_started_at = perf_counter()
                 results = await processor.process_job(
                     job,
@@ -157,22 +175,28 @@ class JobExecutionService:
                     llm_mode=default_llm_mode,
                 )
                 all_results[job_name] = results
-                logger.info(f"Job {job_name} 完成，處理 {len(results)} 封郵件")
+                logger.info(
+                    t(
+                        "log.job_execution.job_finished",
+                        name=job_name,
+                        count=len(results),
+                    )
+                )
                 logger.info(
                     f"METRIC job_execution {json.dumps({'job_name': job_name, 'job_elapsed_ms': round((perf_counter() - job_started_at) * 1000, 2), 'mail_count': len(results)}, ensure_ascii=False)}"
                 )
 
-            logger.info("執行完成")
+            logger.info(t("log.job_execution.completed"))
             return clean_invisible_chars(all_results)
         except (DomainError, InfrastructureError, UserVisibleError) as e:
-            logger.exception(f"執行失敗: {e}")
+            logger.exception(t("log.job_execution.failed", error=e))
             raise
         except Exception as e:
-            logger.exception(f"執行失敗: {e}")
+            logger.exception(t("log.job_execution.failed", error=e))
             raise InfrastructureError(f"Unhandled processing failure: {e}") from e
         finally:
             if llm_client:
                 llm_client.close()
             if client and client.is_connected:
                 client.disconnect()
-                logger.info("已斷開 Outlook 連接")
+                logger.info(t("log.job_execution.outlook_disconnected"))

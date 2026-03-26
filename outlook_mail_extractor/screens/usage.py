@@ -32,5 +32,5 @@ class UsageScreen(Static):
         root = self._runtime.paths.project_root
         default_readme = self._runtime.paths.readme_file
         if language == "en-US":
-            return (root / "README.en.md", default_readme)
-        return (default_readme,)
+            return (root / "GUIDE.en.md", root / "README.en.md", default_readme)
+        return (root / "GUIDE.md", default_readme)

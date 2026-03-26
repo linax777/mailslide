@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any
 
+from .i18n import t
 from .models import PluginExecutionStatus, PluginResult
 from .plugin_runner import build_plugin_result, execute_plugin
 
@@ -28,11 +29,17 @@ def resolve_llm_mode(raw_mode: Any, logger: Any) -> str:
         return LLM_MODE_SHARE_DEPRECATED
     if normalized in LLM_MODE_ALIASES:
         mapped = LLM_MODE_ALIASES[normalized]
-        logger.warning(f"llm_mode '{raw_mode}' is deprecated; use '{mapped}' instead")
+        logger.warning(
+            t("log.llm_dispatcher.llm_mode_deprecated", mode=raw_mode, mapped=mapped)
+        )
         return mapped
 
     logger.warning(
-        f"Unknown llm_mode '{raw_mode}'; fallback to '{LLM_MODE_PER_PLUGIN}'"
+        t(
+            "log.llm_dispatcher.llm_mode_unknown",
+            mode=raw_mode,
+            fallback=LLM_MODE_PER_PLUGIN,
+        )
     )
     return LLM_MODE_PER_PLUGIN
 
@@ -69,7 +76,7 @@ async def dispatch_llm_plugins(
     if not llm_client:
         result.success = False
         result.error_message = "LLM client not available"
-        logger.warning("略過需 LLM 的插件：LLM client not available")
+        logger.warning(t("log.llm_dispatcher.llm_unavailable_skip"))
         for plugin in plugins:
             result.plugin_results.append(
                 PluginResult(
@@ -85,9 +92,7 @@ async def dispatch_llm_plugins(
     resolved_llm_mode = resolve_llm_mode(llm_mode, logger)
 
     if resolved_llm_mode == LLM_MODE_SHARE_DEPRECATED:
-        logger.warning(
-            "llm_mode=share_deprecated is deprecated; prefer per_plugin to avoid action mismatch"
-        )
+        logger.warning(t("log.llm_dispatcher.share_deprecated_warning"))
         combined_system = "\n\n---\n\n".join(
             [plugin.build_effective_prompt() for plugin in plugins]
         )
@@ -104,7 +109,7 @@ async def dispatch_llm_plugins(
             result.llm_elapsed_ms += (perf_counter() - started_at) * 1000
             result.success = False
             result.error_message = str(error)
-            logger.error(f"LLM 呼叫失敗: {error}")
+            logger.error(t("log.llm_dispatcher.llm_call_failed", error=error))
             return result
 
         if dry_run:
@@ -115,10 +120,16 @@ async def dispatch_llm_plugins(
             if skip_result:
                 plugin_result = build_plugin_result(plugin.name, skip_result)
                 result.plugin_results.append(plugin_result)
-                logger.info(f"跳過 Plugin {plugin.name}: {plugin_result.message}")
+                logger.info(
+                    t(
+                        "log.llm_dispatcher.plugin_skipped",
+                        plugin=plugin.name,
+                        message=plugin_result.message,
+                    )
+                )
                 continue
 
-            logger.info(f"執行 Plugin: {plugin.name}")
+            logger.info(t("log.llm_dispatcher.plugin_started", plugin=plugin.name))
             plugin_result, moved = await execute_plugin(
                 plugin,
                 email_data,
@@ -147,7 +158,13 @@ async def dispatch_llm_plugins(
             result.llm_elapsed_ms += (perf_counter() - started_at) * 1000
             result.success = False
             result.error_message = str(error)
-            logger.error(f"LLM 呼叫失敗 ({plugin.name}): {error}")
+            logger.error(
+                t(
+                    "log.llm_dispatcher.llm_call_failed_plugin",
+                    plugin=plugin.name,
+                    error=error,
+                )
+            )
             result.plugin_results.append(
                 PluginResult(
                     plugin_name=plugin.name,
@@ -166,10 +183,16 @@ async def dispatch_llm_plugins(
         if skip_result:
             plugin_result = build_plugin_result(plugin.name, skip_result)
             result.plugin_results.append(plugin_result)
-            logger.info(f"跳過 Plugin {plugin.name}: {plugin_result.message}")
+            logger.info(
+                t(
+                    "log.llm_dispatcher.plugin_skipped",
+                    plugin=plugin.name,
+                    message=plugin_result.message,
+                )
+            )
             continue
 
-        logger.info(f"執行 Plugin: {plugin.name}")
+        logger.info(t("log.llm_dispatcher.plugin_started", plugin=plugin.name))
         plugin_result, moved = await execute_plugin(
             plugin,
             email_data,

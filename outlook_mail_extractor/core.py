@@ -1,6 +1,7 @@
 """Outlook connection and email processing core module"""
 
 import json
+import re
 from pathlib import Path
 from time import perf_counter
 from collections.abc import Callable
@@ -10,6 +11,7 @@ import pythoncom
 import win32com.client
 
 from .adapters import OutlookMailActionAdapter
+from .i18n import t
 from .llm import LLMClient, load_llm_config
 from .llm_dispatcher import (
     LLM_MODE_PER_PLUGIN,
@@ -187,8 +189,11 @@ def _resolve_plugin_prompt(
                 return resolved
         else:
             logger.warning(
-                f"Job 指定了不存在的 prompt profile '{job_profile}' for plugin '{plugin_name}'，"
-                f"將 fallback 到預設行為"
+                t(
+                    "log.core.prompt_profile_missing",
+                    profile=job_profile,
+                    plugin=plugin_name,
+                )
             )
 
     default_profile = raw_config.get("default_prompt_profile")
@@ -244,11 +249,52 @@ class EmailProcessor:
             else plain_clean_body
         )
         logger.debug(
-            "郵件內文清理完成: plain=%d chars, html=%d chars, cleaned=%d chars",
-            len(raw_body),
-            len(html_body),
-            len(clean_body),
+            t(
+                "log.core.mail_body_cleaned",
+                plain=len(raw_body),
+                html=len(html_body),
+                cleaned=len(clean_body),
+            )
         )
+
+        store_id = ""
+        try:
+            parent = getattr(message, "Parent", None)
+            store_id = str(getattr(parent, "StoreID", ""))
+        except Exception:
+            store_id = ""
+
+        internet_message_id = str(getattr(message, "InternetMessageID", "")).strip()
+        if not internet_message_id:
+            try:
+                property_accessor = getattr(message, "PropertyAccessor", None)
+                if property_accessor is not None:
+                    internet_message_id = str(
+                        property_accessor.GetProperty(
+                            "http://schemas.microsoft.com/mapi/proptag/0x1035001F"
+                        )
+                    ).strip()
+            except Exception:
+                internet_message_id = ""
+
+        if not internet_message_id:
+            try:
+                property_accessor = getattr(message, "PropertyAccessor", None)
+                if property_accessor is not None:
+                    transport_headers = str(
+                        property_accessor.GetProperty(
+                            "http://schemas.microsoft.com/mapi/proptag/0x007D001F"
+                        )
+                    )
+                    match = re.search(
+                        r"^Message-ID:\s*(.+)$",
+                        transport_headers,
+                        flags=re.IGNORECASE | re.MULTILINE,
+                    )
+                    if match:
+                        internet_message_id = match.group(1).strip()
+            except Exception:
+                internet_message_id = ""
 
         return EmailDTO(
             subject=str(getattr(message, "Subject", "")),
@@ -261,6 +307,8 @@ class EmailProcessor:
             body=clean_body,
             tables=parsed_html.tables,
             entry_id=str(getattr(message, "EntryID", "")),
+            store_id=store_id,
+            internet_message_id=internet_message_id,
         )
 
     async def process_job(
@@ -324,7 +372,12 @@ class EmailProcessor:
             msg = messages.GetNext()
 
         if not msg_list:
-            logger.info(f"Job {job_config.get('name', 'Unnamed Job')} 沒有可處理的郵件")
+            logger.info(
+                t(
+                    "log.core.job_no_messages",
+                    name=job_config.get("name", "Unnamed Job"),
+                )
+            )
 
         # Initialize plugins (optional, for backward compatibility)
         plugin_names = job_config.get("plugins", [])
@@ -451,7 +504,7 @@ class EmailProcessor:
         )
 
         subject = email_data.subject or "Unknown"
-        logger.info(f"處理郵件: {subject}")
+        logger.info(t("log.core.processing_mail", subject=subject))
 
         # Split plugins by LLM requirement
         plugins_needing_llm = []
@@ -470,7 +523,7 @@ class EmailProcessor:
         moved_by_plugin = False
         if not dry_run:
             for plugin in plugins_no_llm:
-                logger.info(f"執行 Plugin (無需 LLM): {plugin.name}")
+                logger.info(t("log.core.run_plugin_without_llm", plugin=plugin.name))
                 plugin_result, moved = await execute_plugin(
                     plugin,
                     email_data,

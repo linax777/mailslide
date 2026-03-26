@@ -34,10 +34,13 @@ output_file: "output/events.xlsx"
 
 # Excel schema is fixed in code:
 # email_subject, email_sender, email_received, email_entry_id,
-# outlook_link, event_subject, start, end, location, body, logged_at
+# outlook_open_command, event_subject, start, end, location, body, logged_at
 
 # Response format (json, text)
 response_format: "json"
+
+# Whether outlook_open_command should also require sender match
+open_command_match_sender: false
 
 _ui:
   schema_version: 1
@@ -84,6 +87,11 @@ _ui:
       options:
         - json
         - text
+    open_command_match_sender:
+      type: bool
+      label: "開信命令比對寄件者"
+      required: false
+      default: false
   validation_rules:
     - id: output_file_xlsx
       level: warning

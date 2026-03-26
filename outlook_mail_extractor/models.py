@@ -92,6 +92,8 @@ class EmailDTO:
     body: str
     tables: list[list[Any]]
     entry_id: str = ""
+    store_id: str = ""
+    internet_message_id: str = ""
 
 
 class MailActionPort(Protocol):

@@ -7,6 +7,8 @@ from pathlib import Path
 import yaml
 from loguru import logger
 
+from .i18n import t
+
 DEFAULT_DISPLAY_LEVEL = "INFO"
 
 
@@ -76,7 +78,7 @@ class LogSessionManager:
                 format="{time:HH:mm:ss} | {level} | {message}",
             )
 
-        logger.info(f"日誌 session 開始，display_level: {self._display_level}")
+        logger.info(t("log.logger.session_started", level=self._display_level))
         return log_path
 
     def get_current_log_path(self) -> Path | None:

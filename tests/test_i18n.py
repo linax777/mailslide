@@ -7,13 +7,13 @@ from outlook_mail_extractor.i18n import resolve_language, set_language, t
 
 def test_translate_by_key_in_zh_tw() -> None:
     set_language("zh-TW")
-    assert t("app.title") == "mailslide"
+    assert t("app.title") == "mailslide for Outlook Classic"
     assert t("app.confirm_quit.message") == "確定要結束程式嗎？"
 
 
 def test_translate_by_key_in_en_us() -> None:
     set_language("en-US")
-    assert t("app.subtitle") == "Extract email body content"
+    assert t("app.subtitle") == "AI powered mail organizer"
     assert t("app.confirm_quit.yes") == "Quit"
 
 

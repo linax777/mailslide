@@ -1,5 +1,6 @@
 """Event Table Plugin"""
 
+import base64
 from datetime import datetime
 from pathlib import Path
 
@@ -29,7 +30,7 @@ class EventTablePlugin(BasePlugin):
         "email_sender",
         "email_received",
         "email_entry_id",
-        "outlook_link",
+        "outlook_open_command",
         "event_subject",
         "start",
         "end",
@@ -42,6 +43,9 @@ class EventTablePlugin(BasePlugin):
         config = config or {}
         self.config = self._load_config(config)
         self.output_file = config.get("output_file", self.default_output_file)
+        self.open_command_match_sender = bool(
+            config.get("open_command_match_sender", False)
+        )
         self.fields = list(self.default_fields)
         self._batch_flush_enabled = False
         self._pending_rows: list[dict[str, str]] = []
@@ -127,14 +131,24 @@ class EventTablePlugin(BasePlugin):
                 )
 
             entry_id = str(email_data.entry_id).strip()
-            outlook_link = f"outlook:{entry_id}" if entry_id else ""
+            store_id = str(email_data.store_id).strip()
+            internet_message_id = str(email_data.internet_message_id).strip()
+            outlook_open_command = self._build_outlook_open_command(
+                entry_id,
+                store_id,
+                internet_message_id,
+                str(email_data.subject),
+                str(email_data.received),
+                str(email_data.sender),
+                self.open_command_match_sender,
+            )
 
             row = {
                 "email_subject": str(email_data.subject),
                 "email_sender": str(email_data.sender),
                 "email_received": str(email_data.received),
                 "email_entry_id": entry_id,
-                "outlook_link": outlook_link,
+                "outlook_open_command": outlook_open_command,
                 "event_subject": str(event_subject),
                 "start": start.isoformat(timespec="seconds"),
                 "end": end.isoformat(timespec="seconds"),
@@ -178,17 +192,12 @@ class EventTablePlugin(BasePlugin):
             for column_index, field_name in enumerate(self.fields, start=1):
                 worksheet.cell(row=1, column=column_index, value=field_name)
 
-        link_col = self.fields.index("outlook_link") + 1
+        command_col = self.fields.index("outlook_open_command") + 1
         for row in rows:
             row_values = [row[field] for field in self.fields]
             worksheet.append(row_values)
             row_index = worksheet.max_row
-            outlook_link = str(row.get("outlook_link", "")).strip()
-            if outlook_link:
-                link_cell = worksheet.cell(row=row_index, column=link_col)
-                link_cell.value = "Open in Outlook"
-                link_cell.hyperlink = outlook_link
-                link_cell.style = "Hyperlink"
+            worksheet.cell(row=row_index, column=command_col).style = "Normal"
 
         workbook.save(output_path)
 
@@ -216,3 +225,75 @@ class EventTablePlugin(BasePlugin):
             except ValueError:
                 continue
         return None
+
+    def _build_outlook_open_command(
+        self,
+        entry_id: str,
+        store_id: str = "",
+        internet_message_id: str = "",
+        email_subject: str = "",
+        email_received: str = "",
+        email_sender: str = "",
+        match_sender: bool = False,
+    ) -> str:
+        del entry_id
+        del store_id
+        del internet_message_id
+        normalized_subject = email_subject.strip()
+        normalized_received = email_received.strip()
+        normalized_sender = email_sender.strip()
+        if not normalized_subject:
+            return ""
+
+        escaped_subject = normalized_subject.replace("'", "''")
+        escaped_received = normalized_received.replace("'", "''")
+        escaped_sender = normalized_sender.replace("'", "''")
+        script = (
+            "$ErrorActionPreference='Stop'\n"
+            f"$targetSubject='{escaped_subject}'\n"
+            f"$targetReceivedRaw='{escaped_received}'\n"
+            f"$targetSender='{escaped_sender}'\n"
+            f"$matchSender={'$true' if match_sender else '$false'}\n"
+            "$subjectCore=($targetSubject -replace '^(?i)(RE|FW|FWD)\\s*:\\s*','').Trim().ToLowerInvariant()\n"
+            "$senderCore=$targetSender.Trim().ToLowerInvariant()\n"
+            "$app=New-Object -ComObject Outlook.Application\n"
+            "$item=$null\n"
+            "$targetReceived=$null\n"
+            "if(-not [string]::IsNullOrWhiteSpace($targetReceivedRaw)){\n"
+            "  try{$targetReceived=[datetime]::Parse($targetReceivedRaw)}catch{}\n"
+            "}\n"
+            "$stack=New-Object System.Collections.ArrayList\n"
+            "foreach($store in $app.Session.Stores){$null=$stack.Add($store.GetRootFolder())}\n"
+            "while($stack.Count -gt 0 -and $null -eq $item){\n"
+            "  $folder=$stack[$stack.Count-1]\n"
+            "  $stack.RemoveAt($stack.Count-1)\n"
+            "  try{\n"
+            "    $items=$folder.Items\n"
+            "    $items.Sort('[ReceivedTime]', $true)\n"
+            "    $limit=[Math]::Min($items.Count, 5000)\n"
+            "    for($i=1; $i -le $limit -and $null -eq $item; $i++){\n"
+            "      $candidate=$items.Item($i)\n"
+            "      if($null -eq $candidate){continue}\n"
+            "      if($candidate.Class -ne 43){continue}\n"
+            "      $candidateSubject=([string]$candidate.Subject).Trim()\n"
+            "      if([string]::IsNullOrWhiteSpace($candidateSubject)){continue}\n"
+            "      $candidateCore=($candidateSubject -replace '^(?i)(RE|FW|FWD)\\s*:\\s*','').Trim().ToLowerInvariant()\n"
+            "      if($candidateCore -ne $subjectCore -and -not $candidateCore.Contains($subjectCore) -and -not $subjectCore.Contains($candidateCore)){continue}\n"
+            "      if($null -ne $targetReceived){\n"
+            "        $delta=[Math]::Abs((([datetime]$candidate.ReceivedTime)-$targetReceived).TotalMinutes)\n"
+            "        if($delta -gt 1440){continue}\n"
+            "      }\n"
+            "      if($matchSender -and -not [string]::IsNullOrWhiteSpace($senderCore)){\n"
+            "        $candidateSender=((([string]$candidate.SenderEmailAddress)+' '+([string]$candidate.SenderName))).ToLowerInvariant()\n"
+            "        if(-not [string]::IsNullOrWhiteSpace($candidateSender) -and -not $candidateSender.Contains($senderCore)){continue}\n"
+            "      }\n"
+            "      $item=$candidate\n"
+            "    }\n"
+            "  }catch{}\n"
+            "  foreach($sub in $folder.Folders){$null=$stack.Add($sub)}\n"
+            "}\n"
+            'if($null -eq $item){throw "Unable to open message by subject/received time."}\n'
+            "$item.Display()\n"
+        )
+        encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        return f"powershell -NoProfile -STA -EncodedCommand {encoded}"
