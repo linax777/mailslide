@@ -1,4 +1,4 @@
-"""Plugin system for Outlook Mail Extractor"""
+"""Plugin system for mailslide."""
 
 import importlib
 

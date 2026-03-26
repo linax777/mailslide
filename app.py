@@ -1,11 +1,11 @@
-"""Outlook Mail Extractor - 應用程式入口"""
+"""mailslide - 應用程式入口"""
 
 from pathlib import Path
 
 import yaml
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Center, Horizontal, Middle
+from textual.containers import Center, Container, Horizontal, Middle, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
@@ -19,6 +19,7 @@ from textual.widgets import (
 )
 
 from outlook_mail_extractor.i18n import get_language, resolve_language, set_language, t
+from outlook_mail_extractor.runtime import get_runtime_context
 from outlook_mail_extractor.screens import (
     AboutScreen,
     ConfigScreen,
@@ -26,15 +27,46 @@ from outlook_mail_extractor.screens import (
     ScheduleScreen,
     UsageScreen,
 )
-from outlook_mail_extractor.runtime import get_runtime_context
 
 
 class ConfirmScreen(ModalScreen[bool]):
+    DEFAULT_CSS = """
+    ConfirmScreen {
+        layers: base dialog;
+    }
+
+    #confirm-overlay {
+        layer: dialog;
+        position: absolute;
+        dock: top;
+        width: 100%;
+        height: 100%;
+        align: center middle;
+    }
+
+    #confirm-dialog {
+        width: auto;
+        height: auto;
+        padding: 1 2;
+    }
+
+    #confirm-message {
+        text-align: center;
+    }
+
+    #confirm-actions {
+        width: auto;
+    }
+    """
+
     def compose(self) -> ComposeResult:
-        with Middle():
-            with Center():
-                yield Label(f"{t('app.confirm_quit.message')}\n")
-                with Horizontal():
+        with Container(id="confirm-overlay"):
+            with Vertical(id="confirm-dialog"):
+                yield Label(
+                    f"\n\n\n\n\n\n{t('app.confirm_quit.message')}\n",
+                    id="confirm-message",
+                )
+                with Horizontal(id="confirm-actions"):
                     yield Button(t("app.confirm_quit.yes"), variant="error", id="yes")
                     yield Button(t("app.confirm_quit.no"), variant="primary", id="no")
 

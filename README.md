@@ -1,4 +1,4 @@
-# Outlook Mail Extractor
+# mailslide
 
 從 Outlook 提取郵件工具，支援 LLM 分析與自動化處理
 
@@ -100,20 +100,42 @@ copy config\plugins\*.yaml.sample config\plugins\
 
 ```bash
 # 使用預設設定檔
-uv run outlook-extract
+uv run mailslide
 
 # 指定自訂設定檔
-uv run outlook-extract --config path/to/config.yaml
+uv run mailslide --config path/to/config.yaml
 
 # 測試模式（僅讀取，不移動郵件）
-uv run outlook-extract --dry-run
+uv run mailslide --dry-run
 
 # 輸出結果至 JSON 檔案
-uv run outlook-extract --output result.json
+uv run mailslide --output result.json
 
 # 不移動郵件，僅擷取資料
-uv run outlook-extract --no-move
+uv run mailslide --no-move
 ```
+
+## Python import 遷移
+
+新的 import path 建議使用 `mailslide`：
+
+```python
+from mailslide import load_config, LLMClient
+```
+
+最小可執行範例：
+
+```python
+from pathlib import Path
+
+from mailslide import load_config
+
+
+config = load_config(Path("config/config.yaml"))
+print(f"jobs: {len(config.get('jobs', []))}")
+```
+
+相容期內舊路徑 `outlook_mail_extractor` 仍可使用，但後續 major 版本將移除。
 
 ## 如何設定 config.yaml
 
@@ -175,7 +197,7 @@ jobs:
 CLI 可用 `--lang` 暫時覆蓋語言（`zh-TW` / `en-US`）：
 
 ```bash
-uv run outlook-extract --lang en-US
+uv run mailslide --lang en-US
 ```
 
 或在 `config/config.yaml` 設定：
@@ -400,6 +422,10 @@ jobs:
 - Windows 作業系統
 - Outlook Classic（不是 New Outlook）
 - Outlook 必須在執行期間開啟
+
+## 授權
+
+本專案採用 `GPL-3.0-or-later` 授權，詳見 `LICENSE`。
 
 ## 本地 LLM（ llama.cpp）
 

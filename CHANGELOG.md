@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.3.2] - 2026-03-26
+
+### Changed
+
+- Renamed project/package distribution branding from `outlook-mail-extractor` to `mailslide` in package metadata, UI title strings, and README documents.
+- Replaced CLI command references with `mailslide` and removed the legacy `outlook-extract` script entry from packaging.
+- Updated About screen repository URL to `https://github.com/linax777/mailslide`.
+- Added Phase 1 import-path compatibility by introducing `mailslide` package re-exports while keeping `outlook_mail_extractor` available during migration.
+
+### Licensing
+
+- Declared package licensing metadata as `GPL-3.0-or-later` and updated user-facing license text to match the existing GPLv3 license file.
+
 ## [v0.3.1] - 2026-03-26
 
 ### Added

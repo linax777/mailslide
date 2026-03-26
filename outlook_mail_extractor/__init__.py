@@ -1,4 +1,7 @@
-"""Outlook Mail Extractor - Read emails from Outlook Classic"""
+"""mailslide - Organize emails in Outlook Classic."""
+
+import os
+import warnings
 
 from .config import load_config, validate_config
 from .core import (
@@ -35,7 +38,14 @@ from .runtime import (
     get_runtime_context,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.3.2"
+
+if os.environ.get("MAILSLIDE_IMPORT_WARNING") == "1":
+    warnings.warn(
+        "Import path 'outlook_mail_extractor' is deprecated; prefer 'mailslide'.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
 __all__ = [
     # Exceptions

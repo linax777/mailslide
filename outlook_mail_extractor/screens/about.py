@@ -16,9 +16,18 @@ class AboutScreen(Container):
     """About 標籤頁 - 系統狀態檢查"""
 
     SAMPLE_SUFFIX = ".yaml.sample"
-    VERSION = "0.3.0"
+    VERSION = "0.3.2"
     AUTHOR = "linax777"
-    REPO_URL = "https://github.com/linax777/outlook-mail-extractor"
+    REPO_URL = "https://github.com/linax777/mailslide"
+    BRAND_ASCII_ART = """
+              _ _     _ _     _
+    _ __ ___   __ _(_) |___| (_) __| | ___
+   | '_ ` _ \\ / _` | | / __| | |/ _` |/ _ \\
+   | | | | | | (_| | | \\__ \\ | | (_| |  __/
+   |_| |_| |_|\\__,_|_|_|___/_|_|\\__,_|\\___|
+ ============================================
+      for Outlook Classic
+"""
 
     def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
@@ -36,6 +45,10 @@ class AboutScreen(Container):
         yield Static("", id="about-info")
 
     def on_mount(self) -> None:
+        about_info = self.query_one("#about-info", Static)
+        about_info.styles.text_align = "center"
+        about_info.styles.dock = "top"
+        about_info.styles.height = "auto"
         self._update_init_button()
         self._show_about_info()
         self.run_check()
@@ -47,7 +60,9 @@ class AboutScreen(Container):
             author=self.AUTHOR,
             repo_url=self.REPO_URL,
         )
-        self.query_one("#about-info", Static).update(info)
+        self.query_one("#about-info", Static).update(
+            f"\n\n\n{self.BRAND_ASCII_ART}\n{info}"
+        )
 
     def _update_init_button(self) -> None:
         all_exist = self._check_all_configs_exist()

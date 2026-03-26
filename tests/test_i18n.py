@@ -7,7 +7,7 @@ from outlook_mail_extractor.i18n import resolve_language, set_language, t
 
 def test_translate_by_key_in_zh_tw() -> None:
     set_language("zh-TW")
-    assert t("app.title") == "Outlook Mail Extractor"
+    assert t("app.title") == "mailslide"
     assert t("app.confirm_quit.message") == "確定要結束程式嗎？"
 
 

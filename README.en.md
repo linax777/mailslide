@@ -1,4 +1,4 @@
-# Outlook Mail Extractor
+# mailslide
 
 Extract, analyze, and automate Outlook emails on Windows, with optional LLM-powered plugins.
 
@@ -70,20 +70,42 @@ Use CLI for one-off runs:
 
 ```bash
 # default config
-uv run outlook-extract
+uv run mailslide
 
 # custom config file
-uv run outlook-extract --config path/to/config.yaml
+uv run mailslide --config path/to/config.yaml
 
 # dry run (read only, do not move mails)
-uv run outlook-extract --dry-run
+uv run mailslide --dry-run
 
 # write run result to JSON
-uv run outlook-extract --output result.json
+uv run mailslide --output result.json
 
 # extract only, do not move mails
-uv run outlook-extract --no-move
+uv run mailslide --no-move
 ```
+
+## Python Import Migration
+
+Use the new import path `mailslide` for new code:
+
+```python
+from mailslide import load_config, LLMClient
+```
+
+Minimal runnable example:
+
+```python
+from pathlib import Path
+
+from mailslide import load_config
+
+
+config = load_config(Path("config/config.yaml"))
+print(f"jobs: {len(config.get('jobs', []))}")
+```
+
+The legacy path `outlook_mail_extractor` is still supported during the compatibility window and will be removed in a future major release.
 
 ## Core `config.yaml` Example
 
@@ -138,7 +160,7 @@ The project uses key-based i18n (for example `app.title`).
 Temporarily override language in CLI:
 
 ```bash
-uv run outlook-extract --lang en-US
+uv run mailslide --lang en-US
 ```
 
 Or set in `config/config.yaml`:
@@ -256,6 +278,10 @@ Run `uv run app.py` to open the TUI.
 - Windows
 - Outlook Classic (not New Outlook)
 - Outlook must remain open during execution
+
+## License
+
+This project is licensed under `GPL-3.0-or-later`. See `LICENSE` for details.
 
 ## Local LLM via `llama.cpp`
 

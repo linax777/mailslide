@@ -399,6 +399,55 @@ wheels = [
 ]
 
 [[package]]
+name = "mailslide"
+version = "0.3.2"
+source = { editable = "." }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "httpx" },
+    { name = "loguru" },
+    { name = "openpyxl" },
+    { name = "pycron" },
+    { name = "pywin32" },
+    { name = "pyyaml" },
+    { name = "textual" },
+    { name = "textual-dev" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "babel" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruff" },
+    { name = "types-pywin32" },
+    { name = "types-pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "beautifulsoup4", specifier = ">=4.14.3" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "loguru", specifier = ">=0.7.0" },
+    { name = "openpyxl", specifier = ">=3.1.5" },
+    { name = "pycron", specifier = ">=0.2.2" },
+    { name = "pywin32", specifier = ">=311" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "textual", specifier = ">=8.1.1" },
+    { name = "textual-dev", specifier = ">=1.8.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "babel", specifier = ">=2.17.0" },
+    { name = "mypy", specifier = ">=1.19.1" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "ruff", specifier = ">=0.15.6" },
+    { name = "types-pywin32", specifier = ">=311.0.0.20260317" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
+]
+
+[[package]]
 name = "markdown-it-py"
 version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -650,55 +699,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/3d/f9/88d94a75de065ea32619465d2f77b29a0469500e99012523b91cc4141cd1/openpyxl-3.1.5.tar.gz", hash = "sha256:cf0e3cf56142039133628b5acffe8ef0c12bc902d2aadd3e0fe5878dc08d1050", size = 186464, upload-time = "2024-06-28T14:03:44.161Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c0/da/977ded879c29cbd04de313843e76868e6e13408a94ed6b987245dc7c8506/openpyxl-3.1.5-py2.py3-none-any.whl", hash = "sha256:5282c12b107bffeef825f4617dc029afaf41d0ea60823bbb665ef3079dc79de2", size = 250910, upload-time = "2024-06-28T14:03:41.161Z" },
-]
-
-[[package]]
-name = "outlook-mail-extractor"
-version = "0.3.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "beautifulsoup4" },
-    { name = "httpx" },
-    { name = "loguru" },
-    { name = "openpyxl" },
-    { name = "pycron" },
-    { name = "pywin32" },
-    { name = "pyyaml" },
-    { name = "textual" },
-    { name = "textual-dev" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "babel" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "ruff" },
-    { name = "types-pywin32" },
-    { name = "types-pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "beautifulsoup4", specifier = ">=4.14.3" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "loguru", specifier = ">=0.7.0" },
-    { name = "openpyxl", specifier = ">=3.1.5" },
-    { name = "pycron", specifier = ">=0.2.2" },
-    { name = "pywin32", specifier = ">=311" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-    { name = "textual", specifier = ">=8.1.1" },
-    { name = "textual-dev", specifier = ">=1.8.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "babel", specifier = ">=2.17.0" },
-    { name = "mypy", specifier = ">=1.19.1" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "ruff", specifier = ">=0.15.6" },
-    { name = "types-pywin32", specifier = ">=311.0.0.20260317" },
-    { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
 ]
 
 [[package]]
