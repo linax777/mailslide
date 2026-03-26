@@ -1,7 +1,9 @@
 """Application service that orchestrates config-driven job execution."""
 
+import json
 from collections.abc import Callable
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from ..config import load_config
@@ -10,7 +12,7 @@ from ..llm import LLMClient, load_llm_config
 from ..logger import get_default_logger_manager, get_logger
 from ..models import DomainError, InfrastructureError, UserVisibleError
 from ..parser import clean_invisible_chars
-from ..plugins import load_plugin_configs
+from ..plugins import load_plugin_configs, load_plugin_modules
 from ..runtime import LoggerManagerProtocol
 
 
@@ -113,6 +115,11 @@ class JobExecutionService:
             config = self._config_loader(config_file)
             configured_max_length = config.get("body_max_length", max_length)
             default_llm_mode = config.get("llm_mode", "per_plugin")
+            configured_plugin_modules = config.get("plugin_modules", [])
+            if isinstance(configured_plugin_modules, list):
+                loaded_modules = load_plugin_modules(configured_plugin_modules)
+                if loaded_modules:
+                    logger.info(f"已載入額外插件模組: {', '.join(loaded_modules)}")
 
             client = self._client_factory()
             client.connect()
@@ -140,6 +147,7 @@ class JobExecutionService:
 
                 job_name = job.get("name", "Unnamed Job")
                 logger.info(f"開始處理 Job: {job_name}")
+                job_started_at = perf_counter()
                 results = await processor.process_job(
                     job,
                     llm_client=llm_client,
@@ -150,6 +158,9 @@ class JobExecutionService:
                 )
                 all_results[job_name] = results
                 logger.info(f"Job {job_name} 完成，處理 {len(results)} 封郵件")
+                logger.info(
+                    f"METRIC job_execution {json.dumps({'job_name': job_name, 'job_elapsed_ms': round((perf_counter() - job_started_at) * 1000, 2), 'mail_count': len(results)}, ensure_ascii=False)}"
+                )
 
             logger.info("執行完成")
             return clean_invisible_chars(all_results)

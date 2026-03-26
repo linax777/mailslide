@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.3.1] - 2026-03-26
+
+### Added
+
+- Added Phase 1 architecture split modules: `outlook_mail_extractor/llm_dispatcher.py`, `outlook_mail_extractor/plugin_runner.py`, and `outlook_mail_extractor/move_policy.py` to isolate LLM dispatch, plugin execution normalization/error wrapping, and move-target policy decisions.
+- Added plugin lifecycle hooks (`begin_job` / `end_job`) to support job-scoped buffering and flush workflows for writable plugins.
+- Added optional parser-level HTML artifact reuse (`parse_email_html(..., use_cache=True)`) so body extraction and table parsing can share one HTML parse per email.
+- Added metrics logging payloads for observability: per-mail summary (`METRIC mail_summary`) and per-job summaries (`METRIC job_summary`, `METRIC job_execution`) including elapsed time, LLM call counts, and plugin status distributions.
+- Added UI schema evaluator registry APIs (`register_rule_evaluator`, `get_rule_evaluator`, `list_rule_evaluators`) to support extensible rule wiring without editing the core evaluator map.
+- Added optional dynamic plugin discovery support via top-level config `plugin_modules` (runtime import for custom plugin modules).
+- Added new tests for Phase 1/2 behavior, including `tests/test_llm_dispatcher.py`, `tests/test_plugin_runner.py`, `tests/test_move_policy.py`, parser HTML parse bundle coverage, plugin batch-flush workflows, and runtime rule-registry registration.
+
+### Changed
+
+- Refactored `EmailProcessor` orchestration to call shared dispatch/execution/policy helpers instead of duplicating shared/per-plugin/no-LLM branches, while preserving existing external behavior.
+- Updated `EmailProcessor.extract_email_data` to parse HTML once and reuse parsed artifacts for cleaned body and table extraction.
+- Updated `event_table` and `summary_file` output strategy from immediate per-mail writes to default job-level batch flush (configurable per job with `batch_flush_enabled`, default `true`, with fallback switch-off support).
+- Updated changelog/version consistency by aligning package `__version__` with `pyproject.toml` and documenting current config/runtime knobs in samples and README.
+- Updated workspace hygiene by ignoring `*.bak` files to reduce backup-noise in local working trees.
+
 ## [v0.3.0] - 2026-03-24
 
 ### Added

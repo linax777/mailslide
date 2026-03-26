@@ -1,6 +1,10 @@
 """Tests for email body parsing helpers."""
 
-from outlook_mail_extractor.parser import clean_content, extract_main_content
+from outlook_mail_extractor.parser import (
+    clean_content,
+    extract_main_content,
+    parse_email_html,
+)
 
 
 def test_clean_content_keeps_forwarded_body_for_short_comment() -> None:
@@ -153,3 +157,21 @@ Body text
     assert "Quick note" in result
     assert "Body text" in result
     assert "Date: Tue, 17 Mar 2026 08:00:00 +0800" not in result
+
+
+def test_parse_email_html_returns_text_and_tables() -> None:
+    html = """
+<html><body>
+<p>Hello</p>
+<table>
+  <tr><th>Name</th><th>Value</th></tr>
+  <tr><td>A</td><td>1</td></tr>
+</table>
+</body></html>
+"""
+
+    parsed = parse_email_html(html, use_cache=True)
+
+    assert "Hello" in parsed.text
+    assert len(parsed.tables) == 1
+    assert parsed.tables[0][0]["Name"] == "A"

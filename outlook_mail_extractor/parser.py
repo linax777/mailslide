@@ -1,6 +1,8 @@
 """HTML 與文字解析工具模組"""
 
 import re
+from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -81,6 +83,14 @@ FOOTER_KEYWORDS = [
 ]
 
 
+@dataclass
+class ParsedHtmlContent:
+    """Parsed HTML artifacts shared by multiple extraction steps."""
+
+    text: str
+    tables: list[list[dict]]
+
+
 def clean_invisible_chars(obj: Any) -> Any:
     """
     遞迴移除常見的 Unicode 不可見字元
@@ -102,59 +112,55 @@ def clean_invisible_chars(obj: Any) -> Any:
     return obj
 
 
+def _soup_to_text(soup: BeautifulSoup) -> str:
+    """Convert parsed soup into readable text while preserving paragraphs."""
+    for tag in soup(["script", "style", "head", "title", "meta", "noscript"]):
+        tag.decompose()
+
+    for tag in soup.find_all(style=True):
+        raw_style = tag.get("style")
+        if isinstance(raw_style, list):
+            style = " ".join(str(value) for value in raw_style)
+        elif isinstance(raw_style, str):
+            style = raw_style
+        else:
+            style = ""
+        style = style.replace(" ", "").lower()
+        if "display:none" in style or "visibility:hidden" in style:
+            tag.decompose()
+
+    for tag in soup.find_all(attrs={"aria-hidden": "true"}):
+        tag.decompose()
+
+    for tag_name in BLOCK_TAGS:
+        for tag in soup.find_all(tag_name):
+            if tag_name == "br":
+                tag.replace_with("\n")
+            elif tag_name == "li":
+                tag.insert_before("\n- ")
+            elif tag_name == "tr":
+                tag.insert_before("\n")
+                cells = tag.find_all(["th", "td"])
+                if cells:
+                    row_text = " | ".join(
+                        cell.get_text(" ", strip=True) for cell in cells
+                    )
+                    tag.replace_with(f"{row_text}\n")
+            else:
+                tag.insert_before("\n")
+                tag.insert_after("\n")
+
+    return soup.get_text(" ", strip=False)
+
+
 def html_to_text(html: str) -> str:
-    """
-    Convert HTML email content into readable text while preserving paragraphs.
-
-    Args:
-        html: HTML body content
-
-    Returns:
-        Extracted plain text
-    """
+    """Convert HTML email content into readable text while preserving paragraphs."""
     if not html:
         return ""
 
     try:
         soup = BeautifulSoup(html, "html.parser")
-
-        for tag in soup(["script", "style", "head", "title", "meta", "noscript"]):
-            tag.decompose()
-
-        for tag in soup.find_all(style=True):
-            raw_style = tag.get("style")
-            if isinstance(raw_style, list):
-                style = " ".join(str(value) for value in raw_style)
-            elif isinstance(raw_style, str):
-                style = raw_style
-            else:
-                style = ""
-            style = style.replace(" ", "").lower()
-            if "display:none" in style or "visibility:hidden" in style:
-                tag.decompose()
-
-        for tag in soup.find_all(attrs={"aria-hidden": "true"}):
-            tag.decompose()
-
-        for tag_name in BLOCK_TAGS:
-            for tag in soup.find_all(tag_name):
-                if tag_name == "br":
-                    tag.replace_with("\n")
-                elif tag_name == "li":
-                    tag.insert_before("\n- ")
-                elif tag_name == "tr":
-                    tag.insert_before("\n")
-                    cells = tag.find_all(["th", "td"])
-                    if cells:
-                        row_text = " | ".join(
-                            cell.get_text(" ", strip=True) for cell in cells
-                        )
-                        tag.replace_with(f"{row_text}\n")
-                else:
-                    tag.insert_before("\n")
-                    tag.insert_after("\n")
-
-        return soup.get_text(" ", strip=False)
+        return _soup_to_text(soup)
     except Exception:
         return ""
 
@@ -432,6 +438,63 @@ def clean_content(
     return text[:max_length]
 
 
+def _extract_tables_from_soup(soup: BeautifulSoup) -> list[list[dict]]:
+    """Extract normalized table rows from a parsed soup object."""
+    results: list[list[dict]] = []
+    for table in soup.find_all("table"):
+        rows = table.find_all("tr")
+        if not rows:
+            continue
+        headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
+        headers = [
+            header if header else f"Col_{index}" for index, header in enumerate(headers)
+        ]
+
+        data: list[dict] = []
+        for row in rows[1:]:
+            cells = row.find_all("td")
+            if len(cells) == len(headers):
+                row_dict = dict(zip(headers, [td.get_text(strip=True) for td in cells]))
+                if any(row_dict.values()):
+                    data.append(row_dict)
+
+        if data:
+            results.append(data)
+
+    return results
+
+
+def _parse_html_content(html: str) -> ParsedHtmlContent:
+    """Parse HTML once and produce both plain text and table payloads."""
+    if not html:
+        return ParsedHtmlContent(text="", tables=[])
+
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        tables = _extract_tables_from_soup(soup)
+        return ParsedHtmlContent(
+            text=_soup_to_text(soup),
+            tables=tables,
+        )
+    except Exception:
+        return ParsedHtmlContent(text="", tables=[])
+
+
+@lru_cache(maxsize=128)
+def _parse_html_content_cached(html: str) -> ParsedHtmlContent:
+    """Cached HTML parser for repeated identical bodies."""
+    return _parse_html_content(html)
+
+
+def parse_email_html(html: str, use_cache: bool = False) -> ParsedHtmlContent:
+    """Parse email HTML and optionally reuse cached parsed artifacts."""
+    parsed = (
+        _parse_html_content_cached(html) if use_cache else _parse_html_content(html)
+    )
+    copied_tables = [list(table) for table in parsed.tables]
+    return ParsedHtmlContent(text=parsed.text, tables=copied_tables)
+
+
 def extract_main_content(
     plain_text: str = "",
     html: str = "",
@@ -480,32 +543,4 @@ def parse_tables(html: str) -> list[list[dict]]:
     Returns:
         表格資料列表，每個表格為一個列表包含多個字典
     """
-    if not html:
-        return []
-    try:
-        soup = BeautifulSoup(html, "html.parser")
-        results = []
-        for table in soup.find_all("table"):
-            rows = table.find_all("tr")
-            if not rows:
-                continue
-            headers = [th.get_text(strip=True) for th in rows[0].find_all(["th", "td"])]
-            # 過濾掉寬度過大的空標頭雜訊
-            headers = [h if h else f"Col_{i}" for i, h in enumerate(headers)]
-
-            data = []
-            for r in rows[1:]:
-                cells = r.find_all("td")
-                if len(cells) == len(headers):
-                    row_dict = dict(
-                        zip(headers, [td.get_text(strip=True) for td in cells])
-                    )
-                    # 過濾：如果整列都是空值則不加入
-                    if any(row_dict.values()):
-                        data.append(row_dict)
-
-            if data:
-                results.append(data)
-        return results
-    except Exception:
-        return []
+    return parse_email_html(html, use_cache=False).tables

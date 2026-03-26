@@ -136,7 +136,7 @@ def evaluate_rules(
             default="",
         )
 
-        evaluator = _RULE_EVALUATORS.get(rule_id)
+        evaluator = get_rule_evaluator(rule_id)
         if evaluator is None:
             results.append(
                 UiRuleResult(
@@ -378,3 +378,23 @@ _RULE_EVALUATORS: dict[str, Any] = {
     "recipients_email_like": _rule_recipients_email_like,
     "display_level_enum": _rule_display_level_enum,
 }
+
+
+def register_rule_evaluator(rule_id: str, evaluator: Any) -> None:
+    """Register or replace a UI schema rule evaluator."""
+    key = str(rule_id).strip()
+    if not key:
+        raise ValueError("rule_id is required")
+    if not callable(evaluator):
+        raise ValueError("evaluator must be callable")
+    _RULE_EVALUATORS[key] = evaluator
+
+
+def get_rule_evaluator(rule_id: str) -> Any | None:
+    """Get a registered UI schema rule evaluator by id."""
+    return _RULE_EVALUATORS.get(str(rule_id).strip())
+
+
+def list_rule_evaluators() -> list[str]:
+    """List currently registered UI schema rule evaluator ids."""
+    return sorted(_RULE_EVALUATORS.keys())

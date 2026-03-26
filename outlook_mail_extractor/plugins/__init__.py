@@ -1,5 +1,7 @@
 """Plugin system for Outlook Mail Extractor"""
 
+import importlib
+
 from .base import (
     BasePlugin,
     PluginCapability,
@@ -21,6 +23,19 @@ from . import (  # noqa: F401, E402
     write_file,
 )
 
+
+def load_plugin_modules(module_paths: list[str]) -> list[str]:
+    """Dynamically import additional plugin modules and return loaded names."""
+    loaded_modules: list[str] = []
+    for module_path in module_paths:
+        module_name = str(module_path).strip()
+        if not module_name:
+            continue
+        importlib.import_module(module_name)
+        loaded_modules.append(module_name)
+    return loaded_modules
+
+
 __all__ = [
     "BasePlugin",
     "PluginCapability",
@@ -29,5 +44,6 @@ __all__ = [
     "get_plugin",
     "list_plugins",
     "load_plugin_configs",
+    "load_plugin_modules",
     "register_plugin",
 ]

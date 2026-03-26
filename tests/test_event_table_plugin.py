@@ -201,3 +201,32 @@ def test_event_table_ignores_custom_fields_config(tmp_path) -> None:
         "body",
         "logged_at",
     )
+
+
+def test_event_table_batch_flush_writes_rows_on_end_job(tmp_path) -> None:
+    output_file = tmp_path / "events.xlsx"
+    plugin = EventTablePlugin(config={"output_file": str(output_file)})
+    plugin.begin_job({"batch_flush_enabled": True})
+
+    llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
+    first = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
+    second = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
+
+    assert first.status == PluginExecutionStatus.SUCCESS
+    assert second.status == PluginExecutionStatus.SUCCESS
+    assert output_file.exists() is False
+
+    flush_result = plugin.end_job()
+
+    assert isinstance(flush_result, PluginExecutionResult)
+    assert flush_result.status == PluginExecutionStatus.SUCCESS
+    assert output_file.exists()
+
+    workbook = load_workbook(output_file)
+    worksheet = workbook.active
+    rows = [row for row in worksheet.iter_rows(values_only=True)]
+    assert len(rows) == 3

@@ -121,6 +121,8 @@ uv run outlook-extract --no-move
 
 ```yaml
 llm_mode: per_plugin
+plugin_modules:
+  - custom_plugins.my_plugin_module
 
 jobs:
   - name: "我的工作"
@@ -128,6 +130,7 @@ jobs:
     source: "收件匣"
     destination: "收件匣/processed"
     manual_review_destination: "收件匣/manual_review"
+    batch_flush_enabled: true
     limit: 10
     plugins:
       - add_category
@@ -143,7 +146,9 @@ jobs:
 | manual_review_destination | LLM 無 action（skipped）或失敗（failed/retriable_failed）時移動到人工判斷資料夾（可省略） |
 | limit | 處理的郵件數量 |
 | llm_mode | LLM 呼叫模式（`per_plugin` 預設；`share_deprecated` 為舊模式） |
+| plugin_modules | 額外 plugin 模組路徑清單（啟動時動態 import，供註冊自訂 plugins） |
 | ui_language | 介面語言（`zh-TW` / `en-US`，預設 `zh-TW`） |
+| batch_flush_enabled | Job 級批次寫入開關（預設 `true`；影響 `event_table`/`summary_file`） |
 | plugins | 啟用的插件（可省略） |
 
 > 💡 提示：若使用 `move_to_folder` 插件讓 LLM 決定移動目錄，則可省略 `destination`，由插件負責移動。
@@ -248,7 +253,7 @@ include_fields:                # 要包含的欄位
 
 ```yaml
 enabled: true
-output_file: "output/events.xlsx"   # 單一 Excel，逐筆 append
+output_file: "output/events.xlsx"   # 單一 Excel，預設 job 級批次 flush
 ```
 
 Excel 欄位由程式固定，順序為：
@@ -260,13 +265,15 @@ Excel 欄位由程式固定，順序為：
 
 > 備註：`outlook_link` 主要對 Outlook classic 生效；若郵件來源無法取得 `EntryID`，該欄位會留空。
 
+若想回到逐筆即時寫入，可在對應 job 設定 `batch_flush_enabled: false`。
+
 ### summary_file 插件設定
 
 建議在 **Configuration → Plugin 設定** 選取 `summary_file` 後編輯；也可手動改 `config/plugins/summary_file.yaml`：
 
 ```yaml
 enabled: true
-output_file: "output/email_summaries.csv"   # 單一 CSV，逐筆 append
+output_file: "output/email_summaries.csv"   # 單一 CSV，預設 job 級批次 flush
 ```
 
 CSV 欄位由程式固定，順序為：
@@ -284,6 +291,8 @@ CSV 欄位由程式固定，順序為：
 ```
 
 `priority` 欄位可省略；若提供，建議使用 `high`、`medium`、`low`。
+
+若想回到逐筆即時寫入，可在對應 job 設定 `batch_flush_enabled: false`。
 
 ## 圖形介面
 

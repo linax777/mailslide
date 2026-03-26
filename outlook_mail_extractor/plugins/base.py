@@ -136,6 +136,14 @@ class BasePlugin(ABC):
         del llm_response
         return None
 
+    def begin_job(self, context: dict | None = None) -> None:
+        """Hook called once before processing a job."""
+        del context
+
+    def end_job(self) -> PluginExecutionResult | None:
+        """Hook called once after processing a job for optional flush logic."""
+        return None
+
     def success_result(
         self,
         message: str = "Success",

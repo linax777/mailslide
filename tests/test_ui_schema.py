@@ -4,7 +4,9 @@ from outlook_mail_extractor.ui_schema import (
     build_default_list_item,
     evaluate_rules,
     flatten_ui_fields,
+    list_rule_evaluators,
     load_plugin_ui_schema,
+    register_rule_evaluator,
     schema_text,
     strip_reserved_metadata,
     validate_ui_schema,
@@ -158,3 +160,22 @@ def test_schema_text_prefers_key_when_available() -> None:
         "label": "fallback",
     }
     assert schema_text(payload, "label_key", "label", "") == "儲存"
+
+
+def test_evaluate_rules_supports_runtime_registered_evaluator() -> None:
+    register_rule_evaluator(
+        "custom_runtime_rule", lambda config: config.get("ok") is True
+    )
+
+    rules = [
+        {
+            "id": "custom_runtime_rule",
+            "level": "error",
+            "message": "custom",
+        }
+    ]
+    results = evaluate_rules({"ok": True}, rules)
+
+    assert "custom_runtime_rule" in list_rule_evaluators()
+    assert len(results) == 1
+    assert results[0].passed is True

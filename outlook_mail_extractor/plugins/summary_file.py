@@ -35,6 +35,33 @@ class SummaryFilePlugin(BasePlugin):
         self.config = self._load_config(config)
         self.output_file = config.get("output_file", self.default_output_file)
         self.fields = list(self.default_fields)
+        self._batch_flush_enabled = False
+        self._pending_rows: list[dict[str, str]] = []
+
+    def begin_job(self, context: dict | None = None) -> None:
+        context = context or {}
+        self._batch_flush_enabled = bool(context.get("batch_flush_enabled", False))
+        self._pending_rows = []
+
+    def end_job(self) -> PluginExecutionResult | None:
+        if not self._batch_flush_enabled or not self._pending_rows:
+            return None
+
+        try:
+            self._append_rows_to_csv(self._pending_rows)
+            flushed_count = len(self._pending_rows)
+            self._pending_rows = []
+            return self.success_result(
+                message=f"Flushed {flushed_count} buffered rows to CSV",
+                code="batch_flushed",
+                details={"flushed_rows": flushed_count},
+            )
+        except Exception as error:
+            return self.retriable_failed_result(
+                message=f"Batch flush failed: {error}",
+                code="batch_flush_failed",
+                details={"pending_rows": len(self._pending_rows)},
+            )
 
     def _load_config(self, config: dict) -> PluginConfig:
         return PluginConfig(
@@ -84,21 +111,28 @@ class SummaryFilePlugin(BasePlugin):
                 "logged_at": datetime.now().isoformat(timespec="seconds"),
             }
 
-            output_path = Path(self.output_file)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            write_header = not output_path.exists() or output_path.stat().st_size == 0
+            if self._batch_flush_enabled:
+                self._pending_rows.append(row)
+                return self.success_result(message="Summary buffered for batch flush")
 
-            with open(output_path, "a", encoding="utf-8-sig", newline="") as f:
-                writer = csv.DictWriter(
-                    f, fieldnames=self.fields, extrasaction="ignore"
-                )
-                if write_header:
-                    writer.writeheader()
-                writer.writerow(row)
-
+            self._append_rows_to_csv([row])
             return self.success_result(message="Summary appended to CSV")
         except Exception as e:
             return self.retriable_failed_result(
                 message=f"Unexpected error: {e}",
                 code="unexpected_error",
             )
+
+    def _append_rows_to_csv(self, rows: list[dict[str, str]]) -> None:
+        if not rows:
+            return
+
+        output_path = Path(self.output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        write_header = not output_path.exists() or output_path.stat().st_size == 0
+
+        with open(output_path, "a", encoding="utf-8-sig", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self.fields, extrasaction="ignore")
+            if write_header:
+                writer.writeheader()
+            writer.writerows(rows)

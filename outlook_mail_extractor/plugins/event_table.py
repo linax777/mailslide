@@ -43,9 +43,36 @@ class EventTablePlugin(BasePlugin):
         self.config = self._load_config(config)
         self.output_file = config.get("output_file", self.default_output_file)
         self.fields = list(self.default_fields)
+        self._batch_flush_enabled = False
+        self._pending_rows: list[dict[str, str]] = []
         if "fields" in config:
             logger.warning(
                 "[event_table] 'fields' config is ignored; Excel schema is fixed"
+            )
+
+    def begin_job(self, context: dict | None = None) -> None:
+        context = context or {}
+        self._batch_flush_enabled = bool(context.get("batch_flush_enabled", False))
+        self._pending_rows = []
+
+    def end_job(self) -> PluginExecutionResult | None:
+        if not self._batch_flush_enabled or not self._pending_rows:
+            return None
+
+        try:
+            self._append_rows_to_excel(self._pending_rows)
+            flushed_count = len(self._pending_rows)
+            self._pending_rows = []
+            return self.success_result(
+                message=f"Flushed {flushed_count} buffered rows to Excel",
+                code="batch_flushed",
+                details={"flushed_rows": flushed_count},
+            )
+        except Exception as error:
+            return self.retriable_failed_result(
+                message=f"Batch flush failed: {error}",
+                code="batch_flush_failed",
+                details={"pending_rows": len(self._pending_rows)},
             )
 
     def _load_config(self, config: dict) -> PluginConfig:
@@ -116,44 +143,54 @@ class EventTablePlugin(BasePlugin):
                 "logged_at": datetime.now().isoformat(timespec="seconds"),
             }
 
-            output_path = Path(self.output_file)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            if self._batch_flush_enabled:
+                self._pending_rows.append(row)
+                return self.success_result(message="Event buffered for batch flush")
 
-            if output_path.exists() and output_path.stat().st_size > 0:
-                workbook = load_workbook(output_path)
-                worksheet = (
-                    workbook["events"]
-                    if "events" in workbook.sheetnames
-                    else workbook.active
-                )
-            else:
-                workbook = Workbook()
-                worksheet = workbook.active
-                worksheet.title = "events"
-
-            if worksheet.max_row == 1 and worksheet.cell(1, 1).value is None:
-                for column_index, field_name in enumerate(self.fields, start=1):
-                    worksheet.cell(row=1, column=column_index, value=field_name)
-
-            row_values = [row[field] for field in self.fields]
-            worksheet.append(row_values)
-            row_index = worksheet.max_row
-
-            if outlook_link:
-                link_col = self.fields.index("outlook_link") + 1
-                link_cell = worksheet.cell(row=row_index, column=link_col)
-                link_cell.value = "Open in Outlook"
-                link_cell.hyperlink = outlook_link
-                link_cell.style = "Hyperlink"
-
-            workbook.save(output_path)
-
+            self._append_rows_to_excel([row])
             return self.success_result(message="Event appended to Excel")
         except Exception as e:
             return self.retriable_failed_result(
                 message=f"Unexpected error: {e}",
                 code="unexpected_error",
             )
+
+    def _append_rows_to_excel(self, rows: list[dict[str, str]]) -> None:
+        if not rows:
+            return
+
+        output_path = Path(self.output_file)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if output_path.exists() and output_path.stat().st_size > 0:
+            workbook = load_workbook(output_path)
+            worksheet = (
+                workbook["events"]
+                if "events" in workbook.sheetnames
+                else workbook.active
+            )
+        else:
+            workbook = Workbook()
+            worksheet = workbook.active
+            worksheet.title = "events"
+
+        if worksheet.max_row == 1 and worksheet.cell(1, 1).value is None:
+            for column_index, field_name in enumerate(self.fields, start=1):
+                worksheet.cell(row=1, column=column_index, value=field_name)
+
+        link_col = self.fields.index("outlook_link") + 1
+        for row in rows:
+            row_values = [row[field] for field in self.fields]
+            worksheet.append(row_values)
+            row_index = worksheet.max_row
+            outlook_link = str(row.get("outlook_link", "")).strip()
+            if outlook_link:
+                link_cell = worksheet.cell(row=row_index, column=link_col)
+                link_cell.value = "Open in Outlook"
+                link_cell.hyperlink = outlook_link
+                link_cell.style = "Hyperlink"
+
+        workbook.save(output_path)
 
     def _parse_datetime(self, dt_str: str) -> datetime | None:
         """Parse ISO-like datetime string."""

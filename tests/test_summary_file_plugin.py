@@ -148,3 +148,31 @@ def test_summary_file_skips_when_action_mismatch(tmp_path) -> None:
     assert result.status == PluginExecutionStatus.SKIPPED
     assert result.code == "action_mismatch"
     assert output_file.exists() is False
+
+
+def test_summary_file_batch_flush_writes_rows_on_end_job(tmp_path) -> None:
+    output_file = tmp_path / "summaries.csv"
+    plugin = SummaryFilePlugin(config={"output_file": str(output_file)})
+    plugin.begin_job({"batch_flush_enabled": True})
+
+    llm_response = '{"action":"summary","summary":"A","priority":"high"}'
+    first = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
+    second = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
+
+    assert first.status == PluginExecutionStatus.SUCCESS
+    assert second.status == PluginExecutionStatus.SUCCESS
+    assert output_file.exists() is False
+
+    flush_result = plugin.end_job()
+
+    assert isinstance(flush_result, PluginExecutionResult)
+    assert flush_result.status == PluginExecutionStatus.SUCCESS
+    assert output_file.exists()
+
+    with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
+        rows = list(csv.reader(f))
+    assert len(rows) == 3

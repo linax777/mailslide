@@ -151,3 +151,4 @@ class EmailAnalysisResult:
     plugin_results: list[PluginResult] = field(default_factory=list)
     success: bool = True
     error_message: str = ""
+    metrics: dict[str, Any] = field(default_factory=dict)

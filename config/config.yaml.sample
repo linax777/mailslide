@@ -12,7 +12,9 @@
 #   - body_max_length: Max cleaned body length for LLM/input (optional)
 #   - llm_mode: LLM dispatch mode (optional, default: per_plugin)
 #   - ui_language: UI language (optional, zh-TW/en-US, default: zh-TW)
+#   - plugin_modules: Extra Python modules to import for plugin discovery (optional)
 #   - plugins: List of plugins to run (LLM analysis)
+#   - batch_flush_enabled: Flush writable plugin outputs at job end (default: true)
 #   - plugin_prompt_profiles: Per-job prompt profile mapping (optional)
 #
 # IMPORTANT:
@@ -26,6 +28,9 @@
 body_max_length: 2500
 llm_mode: per_plugin
 ui_language: zh-TW
+# Optional dynamic plugin discovery modules
+# plugin_modules:
+#   - custom_plugins.my_plugin_module
 
 jobs:
   - name: "處理microsoft郵件"
@@ -39,6 +44,8 @@ jobs:
     # body_max_length: 3000
     # Optional per-job override (per_plugin | share_deprecated)
     # llm_mode: per_plugin
+    # Optional per-job override (default: true)
+    # batch_flush_enabled: true
     plugins:
       - add_category
 
@@ -48,6 +55,7 @@ jobs:
     source: "收件匣/bills"
     destination: "收件匣/bills/processed"
     limit: 5
+    batch_flush_enabled: true
     plugins:
       - add_category
       - create_appointment
@@ -113,6 +121,13 @@ _ui:
         - per_plugin
         - share_deprecated
       help: "per_plugin: 每個 plugin 各自呼叫 LLM；share_deprecated: 共用一次回覆（舊模式）"
+    plugin_modules:
+      type: textarea
+      label: "Plugin 模組載入清單"
+      required: false
+      rows: 3
+      placeholder: "custom_plugins.my_plugin_module"
+      help: "每行一個 Python 模組路徑，啟動時會動態 import 以註冊額外 plugins"
     jobs:
       type: list
       label: "工作清單"
@@ -168,6 +183,12 @@ _ui:
           options:
             - per_plugin
             - share_deprecated
+        batch_flush_enabled:
+          type: bool
+          label: "批次寫入"
+          required: false
+          default: true
+          help: "啟用後，event_table/summary_file 會在 job 結束時一次寫入"
         plugins:
           type: multiselect
           label: "Plugins"

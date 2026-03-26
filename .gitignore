@@ -22,6 +22,7 @@ opencode.jsonc
 # config
 config/*.yaml
 config/plugins/*.yaml
+*.bak
 
 # log
 logs/
