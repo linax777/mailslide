@@ -28,6 +28,7 @@ config/plugins/*.yaml
 logs/
 output/
 
-# test
+# local planning notes
+task/
 tasks/
 ARCHITECTURE_IMPROVEMENTS.md
