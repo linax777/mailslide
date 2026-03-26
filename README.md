@@ -37,11 +37,9 @@ uv run app.py
 - Configuration 表單化設定：展示 Jobs / LLM / Plugins 設定頁
 - Plugin 編輯器：展示 Prompt Profiles 與驗證/儲存流程
 
-```md
 ![Home Run](docs/assets/home-run.png)
 ![Configuration](docs/assets/configuration.png)
 ![Plugin Editor](docs/assets/plugin-editor.png)
-```
 
 ## 插件能力對照
 

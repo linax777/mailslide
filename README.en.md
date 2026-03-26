@@ -37,12 +37,9 @@ Then in TUI:
 - Configuration forms: show Jobs / LLM / Plugins setup screens
 - Plugin editor: show Prompt Profiles and validate/save flow
 
-
-```md
 ![Home Run](docs/assets/home-run.png)
 ![Configuration](docs/assets/configuration.png)
 ![Plugin Editor](docs/assets/plugin-editor.png)
-```
 
 ## Plugin Capability Matrix
 
