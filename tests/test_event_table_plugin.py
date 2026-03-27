@@ -62,6 +62,7 @@ def test_event_table_writes_excel_row(tmp_path) -> None:
     assert result.status == PluginExecutionStatus.SUCCESS
     assert result.success is True
     assert output_file.exists()
+    assert result.details.get("path") == str(output_file)
 
     workbook = load_workbook(output_file)
     worksheet = workbook.active

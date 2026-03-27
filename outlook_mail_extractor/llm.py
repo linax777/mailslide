@@ -5,6 +5,8 @@ from typing import Any
 
 import httpx
 
+from .secrets import llm_api_key_secret_path, load_llm_api_key
+
 
 class LLMError(Exception):
     """LLM API error"""
@@ -153,9 +155,19 @@ def load_llm_config(config_file: str | None = None) -> LLMConfig:
     with open(config_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
+    raw_api_key = data.get("api_key", "")
+    api_key = raw_api_key if isinstance(raw_api_key, str) else ""
+    if not api_key:
+        secret_path = llm_api_key_secret_path(config_path)
+        if secret_path.exists():
+            try:
+                api_key = load_llm_api_key(secret_path)
+            except Exception as e:
+                raise LLMError(f"Failed to decrypt API key: {e}") from e
+
     return LLMConfig(
         api_base=data.get("api_base", "http://localhost:11434/v1"),
-        api_key=data.get("api_key", ""),
+        api_key=api_key,
         model=data.get("model", "llama3"),
         timeout=data.get("timeout", 30),
     )

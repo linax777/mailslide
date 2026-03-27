@@ -201,6 +201,7 @@ class PluginsConfigTab(Static):
                 plugin_name=plugin_name,
                 schema=schema,
                 current_config=strip_reserved_metadata(payload),
+                base_dir=self._runtime.paths.config_dir,
             ),
             self._handle_plugin_editor_result,
         )

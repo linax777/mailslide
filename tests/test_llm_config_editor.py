@@ -3,6 +3,7 @@ from typing import Any
 
 import yaml
 
+from outlook_mail_extractor.llm import load_llm_config
 from outlook_mail_extractor.runtime import RuntimeContext, RuntimePaths
 from outlook_mail_extractor.screens import LLMConfigTab, PluginConfigEditorModal
 
@@ -79,7 +80,7 @@ def test_llm_config_editor_collect_secret_and_int_fields() -> None:
     assert payload["timeout"] == 45
 
 
-def test_llm_config_tab_write_file_with_backup(tmp_path: Path) -> None:
+def test_llm_config_tab_write_file_with_backup(tmp_path: Path, monkeypatch) -> None:
     runtime = _runtime_context(tmp_path)
     runtime.paths.config_dir.mkdir(parents=True, exist_ok=True)
     target = runtime.paths.llm_config_file
@@ -87,11 +88,30 @@ def test_llm_config_tab_write_file_with_backup(tmp_path: Path) -> None:
         "api_base: http://localhost:11434/v1\ntimeout: 30\n", encoding="utf-8"
     )
 
+    stored: dict[str, Any] = {}
+
+    def fake_store(api_key: str, secret_path: Path) -> Path:
+        stored["api_key"] = api_key
+        secret_path.write_bytes(b"ciphertext")
+        return secret_path
+
+    def fake_clear(secret_path: Path) -> None:
+        stored["cleared"] = secret_path
+
+    monkeypatch.setattr(
+        "outlook_mail_extractor.screens.config.llm_tab.store_llm_api_key",
+        fake_store,
+    )
+    monkeypatch.setattr(
+        "outlook_mail_extractor.screens.config.llm_tab.clear_llm_api_key",
+        fake_clear,
+    )
+
     tab = LLMConfigTab(runtime_context=runtime)
     written = tab._write_llm_config_file(
         {
             "api_base": "http://localhost:11434/v1",
-            "api_key": "",
+            "api_key": "sk-test",
             "model": "llama3",
             "timeout": 60,
         }
@@ -100,6 +120,9 @@ def test_llm_config_tab_write_file_with_backup(tmp_path: Path) -> None:
     assert written == target
     content = yaml.safe_load(target.read_text(encoding="utf-8"))
     assert content["timeout"] == 60
+    assert content["api_key"] == ""
+    assert stored["api_key"] == "sk-test"
+    assert (runtime.paths.config_dir / "llm-api-key.bin").exists()
 
     backup = runtime.paths.config_dir / "llm-config.yaml.bak"
     assert backup.exists()
@@ -107,3 +130,103 @@ def test_llm_config_tab_write_file_with_backup(tmp_path: Path) -> None:
         backup.read_text(encoding="utf-8")
         == "api_base: http://localhost:11434/v1\ntimeout: 30\n"
     )
+
+
+def test_load_llm_config_reads_api_key_from_secret_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_file = config_dir / "llm-config.yaml"
+    config_file.write_text(
+        'api_base: http://localhost:11434/v1\napi_key: ""\nmodel: llama3\ntimeout: 30\n',
+        encoding="utf-8",
+    )
+    secret_file = config_dir / "llm-api-key.bin"
+    secret_file.write_bytes(b"ciphertext")
+
+    monkeypatch.setattr(
+        "outlook_mail_extractor.llm.load_llm_api_key",
+        lambda _path: "sk-from-secret",
+    )
+
+    loaded = load_llm_config(str(config_file))
+
+    assert loaded.api_key == "sk-from-secret"
+
+
+def test_llm_config_tab_preserves_existing_secret_when_api_key_blank(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.config_dir.mkdir(parents=True, exist_ok=True)
+    runtime.paths.llm_config_file.write_text(
+        'api_base: http://localhost:11434/v1\napi_key: ""\nmodel: llama3\ntimeout: 30\n',
+        encoding="utf-8",
+    )
+    secret_file = runtime.paths.config_dir / "llm-api-key.bin"
+    secret_file.write_bytes(b"ciphertext")
+
+    state: dict[str, bool] = {"cleared": False}
+
+    def fake_store(_api_key: str, _secret_path: Path) -> Path:
+        raise AssertionError("store should not be called")
+
+    def fake_clear(_secret_path: Path) -> None:
+        state["cleared"] = True
+
+    monkeypatch.setattr(
+        "outlook_mail_extractor.screens.config.llm_tab.store_llm_api_key",
+        fake_store,
+    )
+    monkeypatch.setattr(
+        "outlook_mail_extractor.screens.config.llm_tab.clear_llm_api_key",
+        fake_clear,
+    )
+
+    tab = LLMConfigTab(runtime_context=runtime)
+    tab._write_llm_config_file(
+        {
+            "api_base": "http://localhost:11434/v1",
+            "api_key": "",
+            "model": "llama3.1",
+            "timeout": 45,
+        }
+    )
+
+    assert state["cleared"] is False
+    assert secret_file.exists()
+
+
+def test_llm_config_tab_scrubs_plaintext_api_key_before_backup(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.config_dir.mkdir(parents=True, exist_ok=True)
+    runtime.paths.llm_config_file.write_text(
+        'api_base: http://localhost:11434/v1\napi_key: "sk-old"\nmodel: llama3\ntimeout: 30\n',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        "outlook_mail_extractor.screens.config.llm_tab.store_llm_api_key",
+        lambda _api_key, secret_path: secret_path,
+    )
+    monkeypatch.setattr(
+        "outlook_mail_extractor.screens.config.llm_tab.clear_llm_api_key",
+        lambda _secret_path: None,
+    )
+
+    tab = LLMConfigTab(runtime_context=runtime)
+    tab._write_llm_config_file(
+        {
+            "api_base": "http://localhost:11434/v1",
+            "api_key": "sk-new",
+            "model": "llama3.1",
+            "timeout": 45,
+        }
+    )
+
+    backup = runtime.paths.config_dir / "llm-config.yaml.bak"
+    backup_payload = yaml.safe_load(backup.read_text(encoding="utf-8"))
+    assert backup_payload["api_key"] == ""

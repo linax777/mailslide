@@ -2,6 +2,7 @@
 
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 from textual.app import ComposeResult
@@ -90,10 +91,12 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         schema: dict[str, Any],
         current_config: dict[str, Any],
         entity_label: str = "Plugin",
+        base_dir: Path | None = None,
     ):
         super().__init__()
         self._plugin_name = plugin_name
         self._entity_label = entity_label
+        self._base_dir = Path(base_dir) if base_dir is not None else None
         fields = schema.get("fields", {})
         self._fields = fields if isinstance(fields, dict) else {}
         buttons = schema.get("buttons", [])
@@ -528,11 +531,32 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
 
     def _resolve_initial_text(self, field_name: str, spec: dict[str, Any]) -> str:
         value = self._resolve_default(field_name, spec)
+        field_type = str(spec.get("type", "str")).lower()
+        if field_type == "path":
+            return self._resolve_initial_path(value)
         if isinstance(value, list):
             return "\n".join(str(item) for item in value)
         if value is None:
             return ""
         return str(value)
+
+    def _resolve_initial_path(self, value: Any) -> str:
+        if value is None:
+            return ""
+
+        raw = str(value).strip()
+        if not raw:
+            return ""
+
+        # Keep env-var style paths unchanged to avoid breaking intent.
+        if re.search(r"\$\{[^}]+\}|%[^%]+%", raw):
+            return raw
+
+        candidate = Path(raw).expanduser()
+        if candidate.is_absolute() or self._base_dir is None:
+            return str(candidate)
+
+        return str((self._base_dir / candidate).resolve())
 
     def _resolve_initial_selection(
         self,

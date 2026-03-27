@@ -31,7 +31,7 @@ async def async_main() -> int:
         "--config",
         "-c",
         type=Path,
-        default=Path("config/config.yaml"),
+        default=runtime.paths.config_file,
         help=t("cli.arg.config"),
     )
     parser.add_argument(

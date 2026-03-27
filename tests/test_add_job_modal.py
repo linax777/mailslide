@@ -72,4 +72,7 @@ def test_add_job_modal_submit_blocks_move_plugin_with_destination() -> None:
     screen._submit()
 
     assert dismissed["called"] is False
-    assert "不要設定 destination" in error.content
+    assert (
+        "不要設定 destination" in error.content
+        or "Do not set destination" in error.content
+    )

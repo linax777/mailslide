@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import ctypes
 from collections.abc import Mapping
 from pathlib import Path
 from string import Formatter
+import sys
 
 import gettext
 import yaml
 
-DEFAULT_LANGUAGE = "zh-TW"
+DEFAULT_LANGUAGE = "en-US"
 SUPPORTED_LANGUAGES = {"zh-TW", "en-US"}
 
 _LANGUAGE = DEFAULT_LANGUAGE
@@ -43,6 +45,25 @@ def _normalize_language(language: str | None) -> str:
 
 def _to_babel_language(language: str) -> str:
     return language.replace("-", "_")
+
+
+def detect_system_language() -> str:
+    """Detect system UI language and normalize to supported language."""
+    if sys.platform != "win32":
+        return DEFAULT_LANGUAGE
+
+    try:
+        locale_name_max_length = 85
+        buffer = ctypes.create_unicode_buffer(locale_name_max_length)
+        result = ctypes.windll.kernel32.GetUserDefaultLocaleName(
+            buffer, locale_name_max_length
+        )
+        if result > 0 and buffer.value:
+            return _normalize_language(buffer.value)
+    except Exception:
+        pass
+
+    return DEFAULT_LANGUAGE
 
 
 def _locales_dir() -> Path:
@@ -112,18 +133,21 @@ def resolve_language(config_path: Path, explicit_language: str | None = None) ->
         return _normalize_language(explicit_language)
 
     if not config_path.exists():
-        return DEFAULT_LANGUAGE
+        return detect_system_language()
 
     try:
         with open(config_path, encoding="utf-8") as f:
             payload = yaml.safe_load(f) or {}
     except Exception:
-        return DEFAULT_LANGUAGE
+        return detect_system_language()
 
     if not isinstance(payload, dict):
-        return DEFAULT_LANGUAGE
+        return detect_system_language()
 
-    return _normalize_language(payload.get("ui_language"))
+    if "ui_language" in payload:
+        return _normalize_language(payload.get("ui_language"))
+
+    return detect_system_language()
 
 
 def t(key: str, **kwargs: object) -> str:

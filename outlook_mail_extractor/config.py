@@ -2,7 +2,11 @@
 
 from pathlib import Path
 
-import yaml
+from .config_migration import (
+    LATEST_CONFIG_VERSION,
+    MigrationResult,
+    migrate_config_file,
+)
 
 
 _ALLOWED_LLM_MODES = {
@@ -16,6 +20,8 @@ _ALLOWED_UI_LANGUAGES = {
     "zh-TW",
     "en-US",
 }
+
+_LAST_MIGRATION_RESULT: MigrationResult | None = None
 
 
 def _validate_body_max_length(value: int, location: str) -> None:
@@ -82,6 +88,16 @@ def validate_config(config: dict) -> None:
     if "jobs" not in config:
         raise ValueError("Config missing 'jobs' field")
 
+    if "config_version" in config:
+        version = config["config_version"]
+        if not isinstance(version, int):
+            raise ValueError("Config.config_version must be an integer")
+        if version != LATEST_CONFIG_VERSION:
+            raise ValueError(
+                "Config.config_version mismatch: "
+                f"expected {LATEST_CONFIG_VERSION}, got {version}"
+            )
+
     if "body_max_length" in config:
         _validate_body_max_length(config["body_max_length"], "Config")
 
@@ -109,8 +125,12 @@ def load_config(config_file: Path | str = "config/config.yaml") -> dict:
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_file}")
 
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = yaml.safe_load(f)
+    global _LAST_MIGRATION_RESULT
+    config, _LAST_MIGRATION_RESULT = migrate_config_file(config_path)
 
     validate_config(config)
     return config
+
+
+def get_last_migration_result() -> MigrationResult | None:
+    return _LAST_MIGRATION_RESULT

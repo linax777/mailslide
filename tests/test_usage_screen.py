@@ -45,8 +45,7 @@ def _runtime_context(tmp_path: Path) -> RuntimeContext:
 
 def test_usage_prefers_english_guide_for_en_us(tmp_path: Path) -> None:
     runtime = _runtime_context(tmp_path)
-    runtime.paths.readme_file.write_text("zh readme", encoding="utf-8")
-    (tmp_path / "README.en.md").write_text("en readme", encoding="utf-8")
+    runtime.paths.readme_file.write_text("en readme", encoding="utf-8")
     (tmp_path / "GUIDE.en.md").write_text("en guide", encoding="utf-8")
     set_language("en-US")
 
@@ -55,12 +54,11 @@ def test_usage_prefers_english_guide_for_en_us(tmp_path: Path) -> None:
     assert screen._get_usage_content() == "en guide"
 
 
-def test_usage_falls_back_to_english_readme_when_english_guide_missing(
+def test_usage_falls_back_to_default_readme_when_english_guide_missing(
     tmp_path: Path,
 ) -> None:
     runtime = _runtime_context(tmp_path)
-    runtime.paths.readme_file.write_text("zh readme", encoding="utf-8")
-    (tmp_path / "README.en.md").write_text("en readme", encoding="utf-8")
+    runtime.paths.readme_file.write_text("en readme", encoding="utf-8")
     set_language("en-US")
 
     screen = UsageScreen(runtime_context=runtime)
@@ -68,24 +66,76 @@ def test_usage_falls_back_to_english_readme_when_english_guide_missing(
     assert screen._get_usage_content() == "en readme"
 
 
-def test_usage_falls_back_to_default_readme_when_en_guide_and_readme_missing(
+def test_usage_falls_back_to_legacy_english_readme_when_default_readme_missing(
     tmp_path: Path,
 ) -> None:
-    runtime = _runtime_context(tmp_path)
-    runtime.paths.readme_file.write_text("zh readme", encoding="utf-8")
+    config_dir = tmp_path / "config"
+    paths = RuntimePaths(
+        project_root=tmp_path,
+        config_dir=config_dir,
+        config_file=config_dir / "config.yaml",
+        llm_config_file=config_dir / "llm-config.yaml",
+        plugins_dir=config_dir / "plugins",
+        logging_config_file=config_dir / "logging.yaml",
+        logs_dir=tmp_path / "logs",
+        readme_file=tmp_path / "MISSING.md",
+    )
+    runtime = RuntimeContext(
+        paths=paths,
+        logger_manager=_FakeLoggerManager(),
+        client_factory=lambda: None,
+    )
+    (tmp_path / "README.en.md").write_text("legacy en readme", encoding="utf-8")
     set_language("en-US")
 
     screen = UsageScreen(runtime_context=runtime)
 
-    assert screen._get_usage_content() == "zh readme"
+    assert screen._get_usage_content() == "legacy en readme"
 
 
 def test_usage_prefers_guide_for_non_en_locale(tmp_path: Path) -> None:
     runtime = _runtime_context(tmp_path)
-    runtime.paths.readme_file.write_text("zh readme", encoding="utf-8")
+    runtime.paths.readme_file.write_text("en readme", encoding="utf-8")
+    (tmp_path / "README.zh-TW.md").write_text("zh readme", encoding="utf-8")
     (tmp_path / "GUIDE.md").write_text("zh guide", encoding="utf-8")
     set_language("zh-TW")
 
     screen = UsageScreen(runtime_context=runtime)
 
     assert screen._get_usage_content() == "zh guide"
+
+
+def test_usage_zh_tw_falls_back_to_traditional_chinese_readme(tmp_path: Path) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.readme_file.write_text("en readme", encoding="utf-8")
+    (tmp_path / "README.zh-TW.md").write_text("zh readme", encoding="utf-8")
+    set_language("zh-TW")
+
+    screen = UsageScreen(runtime_context=runtime)
+
+    assert screen._get_usage_content() == "zh readme"
+
+
+def test_usage_reads_packaged_english_guide_when_local_docs_missing(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime_context(tmp_path)
+    set_language("en-US")
+
+    screen = UsageScreen(runtime_context=runtime)
+
+    assert (
+        "Extract, analyze, and automate Outlook emails on Windows"
+        in screen._get_usage_content()
+    )
+
+
+def test_usage_reads_packaged_zh_tw_guide_when_local_docs_missing(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime_context(tmp_path)
+    set_language("zh-TW")
+
+    screen = UsageScreen(runtime_context=runtime)
+
+    assert "從 Outlook 提取郵件工具" in screen._get_usage_content()

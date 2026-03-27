@@ -116,7 +116,10 @@ class SummaryFilePlugin(BasePlugin):
                 return self.success_result(message="Summary buffered for batch flush")
 
             self._append_rows_to_csv([row])
-            return self.success_result(message="Summary appended to CSV")
+            return self.success_result(
+                message="Summary appended to CSV",
+                details={"path": str(Path(self.output_file))},
+            )
         except Exception as e:
             return self.retriable_failed_result(
                 message=f"Unexpected error: {e}",

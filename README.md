@@ -1,70 +1,91 @@
 # Mailslide
 
-專為 Windows + Outlook Classic 設計的郵件自動化工具。
-用可配置流程與 LLM plugins，幫你把「看信、分類、彙整、後續處理」變成可重複執行的工作流。
+A Windows + Outlook Classic automation tool for turning repetitive email work into reliable workflows.
+Use configurable jobs and optional LLM plugins to classify, route, summarize, and structure email processing.
 
-Language: Traditional Chinese (`README.md`) | English (`README.en.md`)
+Language: [English](README.md) | [Traditional Chinese](README.zh-TW.md)
 
-## 為什麼是 Mailslide
+> Warning: AI reads your emails. Make sure emails processed by AI do not contain personal privacy data or business confidential information, or use a local model for processing.
+>
+> Disclaimer: This project is provided as-is and does not guarantee the security of data processed by third-party or local AI models. The project authors are not liable for any data breach, confidential information leakage, or related damages resulting from user inputs or model services. Users are responsible for risk assessment and compliance with organizational policies and applicable laws.
 
-- 把 Outlook 信件處理流程標準化：可建立多個 Job，固定規則執行。
-- 不只分類：可移動資料夾、建立行事曆、輸出 JSON/CSV/Excel。
-- LLM 可選：支援 OpenAI 相容 API，也可用本地模型（如 Ollama、llama.cpp）。
-- 對非工程使用者友善：TUI 介面可直接初始化與編輯設定。
+## Why Mailslide
 
-## 常見使用場景
+- Standardize Outlook processing with repeatable job-based workflows.
+- Go beyond classification: move folders, create appointments, export JSON/CSV/Excel.
+- Keep deployment flexible: OpenAI-compatible APIs or local models (Ollama, llama.cpp).
+- Friendly for non-developers: initialize and edit configs directly in the TUI.
 
-- 行政/助理：自動整理通知信、會議信、待辦信。
-- PM/業務：把客戶往來轉成可追蹤事件與摘要。
-- 研發/客服：依主題或優先度自動分類，降低 inbox 噪音。
+## Typical use cases
 
-## 30 秒開始
+- Operations and assistants: triage meeting requests, alerts, and routine inbox traffic.
+- PMs and sales: convert email streams into trackable events and summaries.
+- Engineering and support: auto-tag and prioritize incoming threads.
+
+## 30-second start (End users)
+
+```bash
+uv tool install mailslide
+mailslide-tui
+```
+
+After first launch, open **About** and click **Initialize Config**.
+
+Upgrade:
+
+```bash
+uv tool upgrade mailslide
+```
+
+When a release changes `config` schema, the app auto-migrates `config/config.yaml` on load and writes a timestamped backup (for example: `config.yaml.bak.20260327_153000`).
+
+## 30-second start (Developers / source mode)
 
 ```bash
 uv sync
 uv run app.py
 ```
 
-接著在 TUI：
+Then in TUI:
 
-1. 進入 **About**，點 **初始化設定**。
-2. 進入 **Configuration**，設定 Jobs / LLM / Plugins。
-3. 回到 **Home** 執行 Job。
+1. Open **About** and click **Initialize Config**.
+2. Open **Configuration** and set Jobs / LLM / Plugins.
+3. Return to **Home** and run a job (`Preserve RE/FW` is `ON` by default and can be toggled on Home).
 
-## 成果展示
+## Results Preview
 
-- Home 執行與日誌：展示一次 Job 執行結果與處理統計
-- Configuration 表單化設定：展示 Jobs / LLM / Plugins 設定頁
-- Plugin 編輯器：展示 Prompt Profiles 與驗證/儲存流程
+- Home run and logs: show one job run with processing summary (includes quick `Preserve RE/FW` toggle, default `ON`)
+- Configuration forms: show Jobs / LLM / Plugins setup screens
+- Plugin editor: show Prompt Profiles and validate/save flow
 
 ![Home Run](docs/assets/home-run.png)
 ![Configuration](docs/assets/configuration.png)
 ![Plugin Editor](docs/assets/plugin-editor.png)
 
-## 插件能力對照
+## Plugin Capability Matrix
 
-| 插件 | 主要用途 | 是否需要 LLM | 典型輸出 |
+| Plugin | Primary purpose | LLM required | Typical output |
 |---|---|---|---|
-| `add_category` | 郵件分類並加標籤 | 是 | Outlook 分類標籤 |
-| `move_to_folder` | 決定並移動資料夾 | 是 | 郵件移動結果 |
-| `create_appointment` | 從郵件建立行事曆 | 是 | Outlook 行事曆項目 |
-| `event_table` | 萃取活動資訊到表格 | 是 | `output/events.xlsx` |
-| `summary_file` | 產生摘要與優先度 | 是 | `output/email_summaries.csv` |
-| `write_file` | 匯出郵件原始資料 | 否 | `output/*.json` |
+| `add_category` | Classify emails and add categories | Yes | Outlook category tags |
+| `move_to_folder` | Decide and move target folders | Yes | Folder move result |
+| `create_appointment` | Create calendar items from email content | Yes | Outlook calendar items |
+| `event_table` | Extract event data into a table | Yes | `output/events.xlsx` |
+| `summary_file` | Generate summaries and priorities | Yes | `output/email_summaries.csv` |
+| `write_file` | Export raw email data | No | `output/*.json` |
 
-## 完整使用手冊
+## Full Guide
 
-- 繁中：`GUIDE.md`
 - English: `GUIDE.en.md`
+- Traditional Chinese: `GUIDE.md`
 
-`Guide` 分頁會優先顯示 `GUIDE.md` / `GUIDE.en.md`，找不到時才回退到 `README`。
+The TUI `Guide` tab now prefers `GUIDE.en.md` / `GUIDE.md` and falls back to `README` files for compatibility.
 
-## 系統需求
+## Requirements
 
 - Windows
-- Outlook Classic（非 New Outlook）
-- 執行期間 Outlook 需保持開啟
+- Outlook Classic (not New Outlook)
+- Outlook must stay open while running
 
-## 授權
+## License
 
-`GPL-3.0-or-later`，詳見 `LICENSE`。
+`GPL-3.0-or-later`. See `LICENSE`.

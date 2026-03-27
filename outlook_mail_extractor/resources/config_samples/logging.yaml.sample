@@ -1,0 +1,33 @@
+# 日誌配置
+logging:
+  # UI 顯示的最低級別 (DEBUG, INFO, WARNING, ERROR)
+  display_level: "DEBUG"
+
+_ui:
+  schema_version: 1
+  title: "日誌設定"
+  buttons:
+    - id: validate
+      label: "驗證"
+      action: validate
+      variant: default
+    - id: save
+      label: "儲存"
+      action: save
+      variant: success
+  fields:
+    logging.display_level:
+      type: select
+      label: "顯示等級"
+      required: true
+      default: DEBUG
+      options:
+        - DEBUG
+        - INFO
+        - WARNING
+        - ERROR
+  validation_rules:
+    - id: display_level_enum
+      level: error
+      message: "display_level 必須是 DEBUG/INFO/WARNING/ERROR"
+      check: "in(config.logging.display_level,['DEBUG','INFO','WARNING','ERROR'])"

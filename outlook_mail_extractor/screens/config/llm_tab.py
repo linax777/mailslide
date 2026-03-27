@@ -12,13 +12,14 @@ from textual.widgets import Button, DataTable, Static, TextArea
 from ...i18n import resolve_language, set_language, t
 from ...llm import load_llm_config
 from ...runtime import RuntimeContext, get_runtime_context
+from ...secrets import clear_llm_api_key, llm_api_key_secret_path, store_llm_api_key
 from ...ui_schema import (
     evaluate_rules,
     load_ui_schema,
     strip_reserved_metadata,
     validate_ui_schema,
 )
-from .io_helpers import write_yaml_with_backup
+from .io_helpers import dump_yaml_text, write_yaml_with_backup
 from .validation_helpers import collect_rule_failures, preview_messages
 from ..modals.plugin_config_editor import PluginConfigEditorModal
 
@@ -184,9 +185,36 @@ class LLMConfigTab(Static):
 
     def _write_llm_config_file(self, payload: dict[str, Any]) -> Path:
         """Write LLM config and create `.bak` when original exists."""
+        payload_to_write = dict(payload)
+        target_path = self._runtime.paths.llm_config_file
+        secret_path = llm_api_key_secret_path(target_path)
+
+        raw_api_key = payload_to_write.get("api_key", "")
+        api_key = raw_api_key if isinstance(raw_api_key, str) else ""
+        if api_key:
+            store_llm_api_key(api_key, secret_path)
+        elif not secret_path.exists():
+            clear_llm_api_key(secret_path)
+
+        payload_to_write["api_key"] = ""
+
+        if target_path.exists():
+            try:
+                current_payload = (
+                    yaml.safe_load(target_path.read_text(encoding="utf-8")) or {}
+                )
+                if isinstance(current_payload, dict) and current_payload.get("api_key"):
+                    current_payload["api_key"] = ""
+                    target_path.write_text(
+                        dump_yaml_text(current_payload),
+                        encoding="utf-8",
+                    )
+            except Exception:
+                pass
+
         return write_yaml_with_backup(
-            self._runtime.paths.llm_config_file,
-            payload,
+            target_path,
+            payload_to_write,
         )
 
     def _test_llm_connection(self) -> None:

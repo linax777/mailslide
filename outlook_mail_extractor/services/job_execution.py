@@ -75,6 +75,33 @@ class JobExecutionService:
         log_path = self._logger_manager.start_session(enable_ui_sink=False)
         logger.info(t("log.job_execution.started", path=log_path))
 
+    def _normalize_plugin_output_paths(
+        self,
+        plugin_configs: dict[str, dict[str, Any]],
+        base_dir: Path,
+    ) -> dict[str, dict[str, Any]]:
+        """Resolve relative plugin output paths against config directory."""
+        normalized: dict[str, dict[str, Any]] = {}
+        for plugin_name, plugin_config in plugin_configs.items():
+            if not isinstance(plugin_config, dict):
+                normalized[plugin_name] = {}
+                continue
+
+            next_config = dict(plugin_config)
+            for key in ("output_file", "output_dir"):
+                raw_path = next_config.get(key)
+                if not isinstance(raw_path, str) or not raw_path.strip():
+                    continue
+
+                candidate = Path(raw_path).expanduser()
+                if candidate.is_absolute():
+                    continue
+
+                next_config[key] = str((base_dir / candidate).resolve())
+
+            normalized[plugin_name] = next_config
+        return normalized
+
     async def process_config_file(
         self,
         config_file: Path | str = "config/config.yaml",
@@ -111,7 +138,7 @@ class JobExecutionService:
             )
         )
 
-        _config_path, resolved_llm_config, resolved_plugin_dir = (
+        config_path, resolved_llm_config, resolved_plugin_dir = (
             self._resolve_runtime_paths(config_file)
         )
         logger.info(t("log.job_execution.llm_config_path", path=resolved_llm_config))
@@ -146,6 +173,10 @@ class JobExecutionService:
                 )
 
             plugin_configs = self._plugin_config_loader(resolved_plugin_dir)
+            plugin_configs = self._normalize_plugin_output_paths(
+                plugin_configs,
+                base_dir=config_path.parent,
+            )
             logger.info(
                 t("log.job_execution.plugin_config_loaded", count=len(plugin_configs))
             )

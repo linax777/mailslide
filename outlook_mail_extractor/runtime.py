@@ -2,9 +2,11 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Any, Protocol
 
+from .config_templates import ensure_config_samples
 from .logger import LogSessionManager
 
 
@@ -49,10 +51,38 @@ def _default_project_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _default_user_data_root() -> Path:
+    override = os.environ.get("MAILSLIDE_DATA_DIR")
+    if override:
+        return Path(override).expanduser()
+
+    try:
+        from platformdirs import user_data_dir
+
+        return Path(
+            user_data_dir(
+                appname="Mailslide",
+                appauthor=False,
+                roaming=(os.name == "nt"),
+            )
+        )
+    except Exception:
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            return Path(appdata) / "Mailslide"
+        return Path.home() / ".mailslide"
+
+
 def build_runtime_paths(project_root: Path | None = None) -> RuntimePaths:
     """Create runtime paths from project root."""
     root = project_root or _default_project_root()
-    config_dir = root / "config"
+    if project_root is None:
+        data_root = _default_user_data_root()
+        config_dir = data_root / "config"
+        logs_dir = data_root / "logs"
+    else:
+        config_dir = root / "config"
+        logs_dir = root / "logs"
     return RuntimePaths(
         project_root=root,
         config_dir=config_dir,
@@ -60,7 +90,7 @@ def build_runtime_paths(project_root: Path | None = None) -> RuntimePaths:
         llm_config_file=config_dir / "llm-config.yaml",
         plugins_dir=config_dir / "plugins",
         logging_config_file=config_dir / "logging.yaml",
-        logs_dir=root / "logs",
+        logs_dir=logs_dir,
         readme_file=root / "README.md",
     )
 
@@ -74,6 +104,7 @@ def _default_client_factory() -> Any:
 def create_runtime_context(project_root: Path | None = None) -> RuntimeContext:
     """Build a default runtime context for current environment."""
     paths = build_runtime_paths(project_root=project_root)
+    ensure_config_samples(paths.config_dir, project_root=paths.project_root)
     logger_manager = LogSessionManager(
         log_dir=paths.logs_dir,
         log_config_path=paths.logging_config_file,

@@ -129,6 +129,50 @@ def test_plugin_config_editor_collect_payload_success() -> None:
     }
 
 
+def test_plugin_config_editor_path_field_resolves_to_absolute_with_base_dir(
+    tmp_path: Path,
+) -> None:
+    schema = {
+        "fields": {
+            "output_file": {"type": "path", "required": True},
+        },
+        "validation_rules": [],
+    }
+    base_dir = tmp_path / "config"
+    modal = PluginConfigEditorModal(
+        "event_table",
+        schema,
+        {"output_file": "output/events.xlsx"},
+        base_dir=base_dir,
+    )
+
+    resolved = modal._resolve_initial_text(
+        "output_file", schema["fields"]["output_file"]
+    )
+
+    assert resolved == str((base_dir / "output" / "events.xlsx").resolve())
+
+
+def test_plugin_config_editor_path_field_keeps_relative_without_base_dir() -> None:
+    schema = {
+        "fields": {
+            "output_file": {"type": "path", "required": True},
+        },
+        "validation_rules": [],
+    }
+    modal = PluginConfigEditorModal(
+        "event_table",
+        schema,
+        {"output_file": "output/events.xlsx"},
+    )
+
+    resolved = modal._resolve_initial_text(
+        "output_file", schema["fields"]["output_file"]
+    )
+
+    assert resolved == str(Path("output/events.xlsx"))
+
+
 def test_plugin_config_editor_collect_payload_invalid_int() -> None:
     schema = {
         "fields": {
@@ -146,7 +190,7 @@ def test_plugin_config_editor_collect_payload_invalid_int() -> None:
     }
     modal.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
 
-    with pytest.raises(ValueError, match="逾時 必須是整數"):
+    with pytest.raises(ValueError, match=r"(逾時 必須是整數|逾時 must be an integer)"):
         modal._collect_payload()
 
 
@@ -372,5 +416,8 @@ def test_plugin_config_editor_yaml_field_invalid_raises() -> None:
     }
     modal.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
 
-    with pytest.raises(ValueError, match="不是有效的 YAML"):
+    with pytest.raises(
+        ValueError,
+        match=r"(不是有效的 YAML|is not valid YAML)",
+    ):
         modal._collect_payload()

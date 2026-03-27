@@ -52,6 +52,7 @@ def test_summary_file_writes_csv_row(tmp_path) -> None:
     assert isinstance(result, PluginExecutionResult)
     assert result.status == PluginExecutionStatus.SUCCESS
     assert output_file.exists()
+    assert result.details.get("path") == str(output_file)
 
     with open(output_file, "r", encoding="utf-8-sig", newline="") as f:
         rows = list(csv.DictReader(f))

@@ -4,6 +4,66 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.3.7] - 2026-03-27
+
+### Added
+
+- Added packaged Guide documentation resources under `outlook_mail_extractor/resources/docs/` (`GUIDE.md`, `GUIDE.en.md`) so installed/tool environments can render Guide content without repository-local markdown files.
+- Added `scripts/sync_guides.ps1` to sync/check root `GUIDE*.md` files against packaged docs resources, with `-CheckOnly` mode for CI/release validation.
+- Added Guide loading regression coverage in `tests/test_usage_screen.py` for packaged-resource fallbacks in both `en-US` and `zh-TW` locales.
+
+### Changed
+
+- Changed Guide tab content loading (`outlook_mail_extractor/screens/usage.py`) to fall back to packaged docs via `importlib.resources` when filesystem Guide/README candidates are unavailable.
+- Changed package data configuration (`pyproject.toml`) to include `resources/docs/*.md` in built distributions.
+- Changed PyPI release preflight (`scripts/release_pypi.ps1`) to enforce Guide resource sync before tests/build.
+
+## [v0.3.6] - 2026-03-27
+
+### Added
+
+- Added a Home-tab run-status ASCII animation above the jobs table (`outlook_mail_extractor/screens/home.py`) with a two-frame loop that switches every 0.5 seconds while jobs are executing.
+- Added packaged config-template resources under `outlook_mail_extractor/resources/config_samples/**` and runtime seeding utilities (`config_templates.py`) so `uv tool` installs can initialize config files without relying on repository-local `config/` files.
+- Added a dedicated TUI entrypoint module (`outlook_mail_extractor/tui.py`) and script command `mailslide-tui` for tool-install execution (`uv tool install mailslide` + `mailslide-tui`).
+- Added release automation/docs artifacts for PyPI-first distribution, including `scripts/release_pypi.ps1`, `tasks/release_checklist_pypi.md`, and `MANIFEST.in` (`prune tests`) to keep source distributions lean.
+- Added job-execution path-normalization tests and service coverage (`tests/test_job_execution_service.py`) for plugin output-path resolution behavior.
+- Added plugin-editor path-resolution tests in `tests/test_plugin_config_editor.py` to cover absolute-path rendering for `path` fields with/without runtime base directory context.
+- Added Windows DPAPI-backed secret storage for `llm-config` API keys via `outlook_mail_extractor/secrets.py`, writing encrypted key material to `config/llm-api-key.bin` instead of plaintext YAML.
+- Added PyPI-based app update checks (`outlook_mail_extractor/services/update_check.py`) with startup delayed-check behavior (20s), plus About-tab update status display and a manual "Check Updates" action.
+- Added config-schema migration scaffolding (`outlook_mail_extractor/config_migration.py`) so legacy configs are upgraded in-place (`v0 -> v2`) with timestamped backups and `jobs[].batch_flush_enabled` default backfill.
+
+### Changed
+
+- Changed runtime path defaults for packaged/tool mode to user data directories (via `platformdirs`, with `MAILSLIDE_DATA_DIR` override), while preserving repo-root behavior for explicit source-mode runtime contexts.
+- Changed CLI default `--config` path resolution to use runtime context (`runtime.paths.config_file`) instead of hardcoded `config/config.yaml`.
+- Changed docs (`README*`, `GUIDE*`, task plans/checklists) to make PyPI/`uv tool` the primary distribution path and de-emphasize GitHub Releases as a release channel.
+- Changed About-tab `Initialize Config` feedback to use Textual `notify(...)` toast messages instead of inline status replacement, so users can reliably see setup results.
+- Changed Home-tab `Preserve RE/FW` toggle default to `ON` (while keeping the existing one-click toggle behavior) so first-run execution preserves reply/forward context by default.
+- Changed docs (`README*`, `GUIDE*`) to explicitly document Home `Preserve RE/FW` default-on behavior.
+- Changed README language filenames so English is now `README.md` and Traditional Chinese is `README.zh-TW.md` (previously `README.en.md` and `README.md`).
+- Changed LLM config save/load flow to keep `api_key` blank in `config/llm-config.yaml`, transparently loading from DPAPI secret storage when available and scrubbing legacy plaintext keys before backup writes.
+- Changed update notifications to use `notify(...)` when newer PyPI stable versions are detected, guiding users to upgrade with `uv tool upgrade mailslide`.
+- Changed `load_config` to auto-run config migration before validation and persist `config_version` back to `config/config.yaml` after successful migration.
+
+### Fixed
+
+- Fixed Home-tab run animation alignment/rendering so the ASCII block is right-aligned as a single block (without shifting the jobs table) and literal `[@]` characters render correctly instead of being interpreted as Rich markup.
+- Fixed plugin output-file discoverability in `uv tool` runtime by resolving relative `output_dir` / `output_file` values against the active config directory (not process CWD), preventing writes to unexpected locations.
+- Fixed plugin success observability for writable outputs by attaching output path details to `summary_file` / `event_table` success results.
+- Fixed first-run initialization UX by adding an explicit restart reminder toast after creating config files from About > Initialize Config.
+- Fixed plugin-config editor path-field clarity by converting relative `output_dir` / `output_file` values to absolute paths (based on active `config` directory) before editing/saving, so users can see and persist exact output locations.
+
+## [v0.3.5] - 2026-03-27
+
+### Changed
+
+- Updated both README language variants (`README.md`, `README.en.md`) with a clear AI-processing warning to avoid sending emails containing personal privacy data or business confidential information.
+- Updated both README language variants to explicitly recommend using local models when handling sensitive emails.
+- Added an explicit disclaimer in both README files stating that the project is provided as-is and project authors are not liable for data breaches or confidential information leakage caused by user inputs or model services.
+- Updated i18n default behavior to use `en-US` as the base language while auto-detecting Windows UI locale on first run; when locale resolves to Traditional Chinese, the app now defaults to `zh-TW` if no explicit/configured language is set.
+- Updated plugin config examples to English-first content across built-in plugin samples (`add_category`, `move_to_folder`, `create_appointment`, `event_table`, `summary_file`, `write_file`), including system prompts, profile descriptions, JSON example values, and `_ui` labels/messages.
+- Updated language-sensitive tests to accept bilingual validation messages where applicable and added coverage for first-run system-language fallback in TUI language initialization.
+
 ## [v0.3.4] - 2026-03-27
 
 ### Changed

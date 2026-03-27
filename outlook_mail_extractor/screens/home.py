@@ -2,12 +2,14 @@
 
 import asyncio
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.timer import Timer
 from textual.widgets import Button, DataTable, Log, Static
 from textual.worker import Worker
 
-from ..config import load_config
+from ..config import get_last_migration_result, load_config
 from ..core import OutlookConnectionError
 from ..i18n import resolve_language, set_language, t
 from ..runtime import RuntimeContext, get_runtime_context
@@ -16,12 +18,23 @@ from ..services.preflight import PreflightCheckService
 from .common import truncate
 
 
+FRAME_1 = """  [@]"
+=#=#=#=#"""
+
+FRAME_2 = """  [@]'
+#=#=#=#="""
+
+
 class HomeScreen(Static):
     """Home 標籤頁 - 執行 Jobs"""
 
     CSS = """
     #home-actions {
         height: auto;
+    }
+    #jobs-animation {
+        height: auto;
+        width: 100%;
     }
     #toggle-preserve-reply-thread {
         margin: 0 0 0 2;
@@ -36,8 +49,10 @@ class HomeScreen(Static):
         self._cron_expression = "0 * * * *"
         self._last_run_time = None
         self._polling = False
-        self._preserve_reply_thread = False
+        self._preserve_reply_thread = True
         self._job_worker: Worker | None = None
+        self._animation_timer: Timer | None = None
+        self._animation_frame_idx = 0
 
     def compose(self) -> ComposeResult:
         with Vertical(id="home-container"):
@@ -56,11 +71,12 @@ class HomeScreen(Static):
                 )
                 yield Button(t("ui.home.button.refresh"), id="refresh-jobs")
                 yield Button(
-                    t("ui.home.button.preserve.off"),
+                    t("ui.home.button.preserve.on"),
                     id="toggle-preserve-reply-thread",
                     variant="default",
                 )
             yield Static(t("ui.home.jobs.title"), id="jobs-title")
+            yield Static("", id="jobs-animation")
             yield DataTable(id="jobs-table")
             yield Static(t("ui.home.log.title"), id="log-title")
             yield Log(id="log-output", auto_scroll=True)
@@ -68,6 +84,9 @@ class HomeScreen(Static):
     def on_mount(self) -> None:
         self._update_preserve_reply_button()
         self._load_jobs()
+
+    def on_unmount(self) -> None:
+        self._stop_jobs_animation()
 
     def _load_jobs(self) -> None:
         table = self.query_one("#jobs-table", DataTable)
@@ -90,6 +109,22 @@ class HomeScreen(Static):
 
         try:
             config = load_config(config_path)
+            migration_result = get_last_migration_result()
+            if migration_result and migration_result.changed:
+                backup = (
+                    str(migration_result.backup_path)
+                    if migration_result.backup_path
+                    else "-"
+                )
+                self.app.notify(
+                    t(
+                        "ui.config.migration.applied",
+                        from_version=migration_result.from_version,
+                        to_version=migration_result.to_version,
+                        backup=backup,
+                    ),
+                    severity="information",
+                )
             status.update("")
             table.add_columns(
                 "#",
@@ -279,3 +314,47 @@ class HomeScreen(Static):
         stop_button = self.query_one("#stop-jobs", Button)
         run_button.disabled = is_running
         stop_button.disabled = not is_running
+        if is_running:
+            self._start_jobs_animation()
+        else:
+            self._stop_jobs_animation()
+
+    def _start_jobs_animation(self) -> None:
+        if self._animation_timer is not None:
+            return
+        self._animation_frame_idx = 0
+        self._render_jobs_animation()
+        self._animation_timer = self.set_interval(0.5, self._advance_jobs_animation)
+
+    def _stop_jobs_animation(self) -> None:
+        if self._animation_timer is not None:
+            self._animation_timer.stop()
+            self._animation_timer = None
+        self._animation_frame_idx = 0
+        try:
+            animation = self.query_one("#jobs-animation", Static)
+            animation.update("")
+        except Exception:
+            pass
+
+    def _advance_jobs_animation(self) -> None:
+        self._animation_frame_idx = 1 - self._animation_frame_idx
+        self._render_jobs_animation()
+
+    def _render_jobs_animation(self) -> None:
+        frame = FRAME_1 if self._animation_frame_idx == 0 else FRAME_2
+        try:
+            animation = self.query_one("#jobs-animation", Static)
+            width = animation.content_region.width
+            if width <= 0:
+                animation.update(Text(frame))
+                return
+
+            lines = frame.splitlines()
+            block_width = max((len(line) for line in lines), default=0)
+            left_padding = max(width - block_width, 0)
+            prefix = " " * left_padding
+            padded = "\n".join(f"{prefix}{line}" for line in lines)
+            animation.update(Text(padded))
+        except Exception:
+            pass

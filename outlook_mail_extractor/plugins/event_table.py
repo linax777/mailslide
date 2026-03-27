@@ -162,7 +162,10 @@ class EventTablePlugin(BasePlugin):
                 return self.success_result(message="Event buffered for batch flush")
 
             self._append_rows_to_excel([row])
-            return self.success_result(message="Event appended to Excel")
+            return self.success_result(
+                message="Event appended to Excel",
+                details={"path": str(Path(self.output_file))},
+            )
         except Exception as e:
             return self.retriable_failed_result(
                 message=f"Unexpected error: {e}",

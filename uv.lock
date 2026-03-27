@@ -400,18 +400,19 @@ wheels = [
 
 [[package]]
 name = "mailslide"
-version = "0.3.2"
+version = "0.3.7"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
     { name = "httpx" },
     { name = "loguru" },
     { name = "openpyxl" },
+    { name = "packaging" },
+    { name = "platformdirs" },
     { name = "pycron" },
-    { name = "pywin32" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "pyyaml" },
     { name = "textual" },
-    { name = "textual-dev" },
 ]
 
 [package.dev-dependencies]
@@ -420,6 +421,7 @@ dev = [
     { name = "mypy" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "textual-dev" },
     { name = "types-pywin32" },
     { name = "types-pyyaml" },
 ]
@@ -430,11 +432,12 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
+    { name = "packaging", specifier = ">=24.2" },
+    { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pycron", specifier = ">=0.2.2" },
-    { name = "pywin32", specifier = ">=311" },
+    { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=311" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "textual", specifier = ">=8.1.1" },
-    { name = "textual-dev", specifier = ">=1.8.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -443,6 +446,7 @@ dev = [
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "ruff", specifier = ">=0.15.6" },
+    { name = "textual-dev", specifier = ">=1.8.0" },
     { name = "types-pywin32", specifier = ">=311.0.0.20260317" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
 ]
