@@ -31,6 +31,7 @@ from .screens import (
     UsageScreen,
 )
 from .services.update_check import UpdateCheckResult, UpdateCheckService
+from .terminal_title import resolve_terminal_title, set_terminal_title
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -159,6 +160,7 @@ class OutlookMailExtractor(App):
 
     def on_mount(self) -> None:
         runtime = get_runtime_context()
+        set_terminal_title(resolve_terminal_title(runtime.paths.config_file))
         self.title = t("app.title")
         self.sub_title = t("app.subtitle")
         if not runtime.paths.config_file.exists():

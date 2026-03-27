@@ -12,6 +12,7 @@
 #   - body_max_length: Max cleaned body length for LLM/input (optional)
 #   - llm_mode: LLM dispatch mode (optional, default: per_plugin)
 #   - ui_language: UI language (optional, zh-TW/en-US, default: zh-TW)
+#   - terminal_title: Terminal tab/window title (optional, default: Mailslide)
 #   - plugin_modules: Extra Python modules to import for plugin discovery (optional)
 #   - plugins: List of plugins to run (LLM analysis)
 #   - batch_flush_enabled: Flush writable plugin outputs at job end (default: true)
@@ -29,6 +30,7 @@ config_version: 2
 body_max_length: 2500
 llm_mode: per_plugin
 ui_language: zh-TW
+# terminal_title: "Mailslide"
 # Optional dynamic plugin discovery modules
 # plugin_modules:
 #   - custom_plugins.my_plugin_module

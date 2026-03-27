@@ -12,11 +12,13 @@ from .logger import get_logger
 from .runtime import get_runtime_context
 from .services.job_execution import JobExecutionService
 from .services.preflight import PreflightCheckService
+from .terminal_title import resolve_terminal_title, set_terminal_title
 
 
 async def async_main() -> int:
     """CLI 主函式"""
     runtime = get_runtime_context()
+    set_terminal_title(resolve_terminal_title(runtime.paths.config_file))
     lang_override = _detect_lang_arg(sys.argv[1:])
     set_language(
         resolve_language(runtime.paths.config_file, explicit_language=lang_override)

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.3.8] - 2026-03-27
+
+### Added
+
+- Added terminal window title handling via `outlook_mail_extractor/terminal_title.py`, with Windows Console API support (`SetConsoleTitleW`) and ANSI fallback for TTY terminals.
+- Added config-driven terminal title override via `terminal_title` in `config/config.yaml` (default: `Mailslide`) for both CLI (`mailslide`) and TUI (`mailslide-tui`) startup flows.
+- Added terminal-title regression tests in `tests/test_terminal_title.py` covering Windows, ANSI, and config fallback behavior.
+
+### Changed
+
+- Updated config samples (`config/config.yaml.sample`, `outlook_mail_extractor/resources/config_samples/config.yaml.sample`) to document the new optional `terminal_title` key.
+
 ## [v0.3.7] - 2026-03-27
 
 ### Added

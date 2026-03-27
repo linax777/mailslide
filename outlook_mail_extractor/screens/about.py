@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 class AboutScreen(Container):
     """About 標籤頁 - 系統狀態檢查"""
 
-    VERSION = "0.3.7"
+    VERSION = "0.3.8"
     AUTHOR = "linax777"
     REPO_URL = "https://github.com/linax777/mailslide"
     BRAND_ASCII_ART = """
