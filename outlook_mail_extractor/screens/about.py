@@ -1,5 +1,7 @@
 """About tab screen."""
 
+from typing import TYPE_CHECKING, cast
+
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.widgets import Button, Static
@@ -12,6 +14,9 @@ from ..i18n import resolve_language, set_language, t
 from ..models import CheckStatus, ConfigStatus, OutlookStatus, SystemStatus
 from ..runtime import RuntimeContext, get_runtime_context
 from ..services.preflight import PreflightCheckService
+
+if TYPE_CHECKING:
+    from ..tui import OutlookMailExtractor
 
 
 class AboutScreen(Container):
@@ -184,10 +189,8 @@ class AboutScreen(Container):
         status_content.update("\n".join(lines))
 
     def refresh_update_status(self) -> None:
-        phase = "idle"
-        result = None
-        if hasattr(self.app, "get_update_check_state"):
-            phase, result = self.app.get_update_check_state()
+        app = cast("OutlookMailExtractor", self.app)
+        phase, result = app.get_update_check_state()
 
         if phase == "checking":
             text = t("ui.about.update.checking")
@@ -243,5 +246,5 @@ class AboutScreen(Container):
         elif event.button.id == "refresh-check":
             self.run_check()
         elif event.button.id == "refresh-update":
-            if hasattr(self.app, "trigger_update_check"):
-                self.app.trigger_update_check(manual=True)
+            app = cast("OutlookMailExtractor", self.app)
+            app.trigger_update_check(manual=True)
