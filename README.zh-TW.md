@@ -52,11 +52,7 @@ uv run app.py
 2. 進入 **Configuration**，設定 Jobs / LLM / Plugins。
 3. 回到 **Home** 執行 Job（`保留 RE/FW` 預設為 `ON`，可在 Home 直接切換）。
 
-## 成果展示
-
-- Home 執行與日誌：展示一次 Job 執行結果與處理統計（含 `保留 RE/FW` 快速切換，預設 `ON`）
-- Configuration 表單化設定：展示 Jobs / LLM / Plugins 設定頁
-- Plugin 編輯器：展示 Prompt Profiles 與驗證/儲存流程
+## 截圖
 
 ![Home Run](docs/assets/home-run.png)
 ![Configuration](docs/assets/configuration.png)

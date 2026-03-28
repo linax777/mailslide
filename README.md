@@ -52,11 +52,7 @@ Then in TUI:
 2. Open **Configuration** and set Jobs / LLM / Plugins.
 3. Return to **Home** and run a job (`Preserve RE/FW` is `ON` by default and can be toggled on Home).
 
-## Results Preview
-
-- Home run and logs: show one job run with processing summary (includes quick `Preserve RE/FW` toggle, default `ON`)
-- Configuration forms: show Jobs / LLM / Plugins setup screens
-- Plugin editor: show Prompt Profiles and validate/save flow
+## Screenshots
 
 ![Home Run](docs/assets/home-run.png)
 ![Configuration](docs/assets/configuration.png)
