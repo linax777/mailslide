@@ -3,12 +3,17 @@
 import base64
 from datetime import datetime
 from pathlib import Path
+from time import sleep
 
 from loguru import logger
 from openpyxl import Workbook, load_workbook
 
 from ..models import EmailDTO, MailActionPort, PluginExecutionResult
 from .base import BasePlugin, PluginCapability, PluginConfig, register_plugin
+
+
+class ExcelFileLockedError(Exception):
+    """Raised when the target Excel file stays locked after retries."""
 
 
 @register_plugin
@@ -46,6 +51,14 @@ class EventTablePlugin(BasePlugin):
         self.open_command_match_sender = bool(
             config.get("open_command_match_sender", False)
         )
+        self.excel_write_retries = self._coerce_non_negative_int(
+            config.get("excel_write_retries", 3),
+            default=3,
+        )
+        self.excel_write_retry_delay_seconds = self._coerce_non_negative_int(
+            config.get("excel_write_retry_delay_seconds", 1),
+            default=1,
+        )
         self.fields = list(self.default_fields)
         self._batch_flush_enabled = False
         self._pending_rows: list[dict[str, str]] = []
@@ -71,6 +84,15 @@ class EventTablePlugin(BasePlugin):
                 message=f"Flushed {flushed_count} buffered rows to Excel",
                 code="batch_flushed",
                 details={"flushed_rows": flushed_count},
+            )
+        except ExcelFileLockedError as error:
+            return self.retriable_failed_result(
+                message=str(error),
+                code="excel_file_locked",
+                details={
+                    "pending_rows": len(self._pending_rows),
+                    "path": str(Path(self.output_file)),
+                },
             )
         except Exception as error:
             return self.retriable_failed_result(
@@ -166,6 +188,12 @@ class EventTablePlugin(BasePlugin):
                 message="Event appended to Excel",
                 details={"path": str(Path(self.output_file))},
             )
+        except ExcelFileLockedError as error:
+            return self.retriable_failed_result(
+                message=str(error),
+                code="excel_file_locked",
+                details={"path": str(Path(self.output_file))},
+            )
         except Exception as e:
             return self.retriable_failed_result(
                 message=f"Unexpected error: {e}",
@@ -179,30 +207,75 @@ class EventTablePlugin(BasePlugin):
         output_path = Path(self.output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if output_path.exists() and output_path.stat().st_size > 0:
-            workbook = load_workbook(output_path)
-            worksheet = (
-                workbook["events"]
-                if "events" in workbook.sheetnames
-                else workbook.active
-            )
-        else:
-            workbook = Workbook()
-            worksheet = workbook.active
-            worksheet.title = "events"
+        total_attempts = self.excel_write_retries + 1
+        for attempt in range(1, total_attempts + 1):
+            workbook = None
+            try:
+                if output_path.exists() and output_path.stat().st_size > 0:
+                    workbook = load_workbook(output_path)
+                    worksheet = (
+                        workbook["events"]
+                        if "events" in workbook.sheetnames
+                        else workbook.active
+                    )
+                else:
+                    workbook = Workbook()
+                    worksheet = workbook.active
+                    worksheet.title = "events"
 
-        if worksheet.max_row == 1 and worksheet.cell(1, 1).value is None:
-            for column_index, field_name in enumerate(self.fields, start=1):
-                worksheet.cell(row=1, column=column_index, value=field_name)
+                if worksheet.max_row == 1 and worksheet.cell(1, 1).value is None:
+                    for column_index, field_name in enumerate(self.fields, start=1):
+                        worksheet.cell(row=1, column=column_index, value=field_name)
 
-        command_col = self.fields.index("outlook_open_command") + 1
-        for row in rows:
-            row_values = [row[field] for field in self.fields]
-            worksheet.append(row_values)
-            row_index = worksheet.max_row
-            worksheet.cell(row=row_index, column=command_col).style = "Normal"
+                command_col = self.fields.index("outlook_open_command") + 1
+                for row in rows:
+                    row_values = [row[field] for field in self.fields]
+                    worksheet.append(row_values)
+                    row_index = worksheet.max_row
+                    worksheet.cell(row=row_index, column=command_col).style = "Normal"
 
-        workbook.save(output_path)
+                workbook.save(output_path)
+                return
+            except (PermissionError, OSError) as error:
+                if not self._is_file_lock_error(error):
+                    raise
+
+                if attempt >= total_attempts:
+                    break
+
+                logger.warning(
+                    "[event_table] Excel file is locked: {} "
+                    "(retry {}/{} in {} second(s))",
+                    output_path,
+                    attempt,
+                    self.excel_write_retries,
+                    self.excel_write_retry_delay_seconds,
+                )
+                sleep(self.excel_write_retry_delay_seconds)
+            finally:
+                if workbook is not None:
+                    workbook.close()
+
+        raise ExcelFileLockedError(
+            "[event_table] Excel file is locked and cannot be written: "
+            f"{output_path}. Please close it in Excel and retry."
+        )
+
+    @staticmethod
+    def _coerce_non_negative_int(value: object, default: int) -> int:
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _is_file_lock_error(error: PermissionError | OSError) -> bool:
+        if isinstance(error, PermissionError):
+            return True
+
+        winerror = getattr(error, "winerror", None)
+        errno = getattr(error, "errno", None)
+        return winerror in {32, 33} or errno == 13
 
     def _parse_datetime(self, dt_str: str) -> datetime | None:
         """Parse ISO-like datetime string."""

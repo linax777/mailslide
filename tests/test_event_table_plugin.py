@@ -260,3 +260,99 @@ def test_event_table_batch_flush_writes_rows_on_end_job(tmp_path) -> None:
     worksheet = workbook.active
     rows = [row for row in worksheet.iter_rows(values_only=True)]
     assert len(rows) == 3
+
+
+def test_event_table_retries_when_excel_file_is_locked(tmp_path, monkeypatch) -> None:
+    output_file = tmp_path / "events.xlsx"
+    plugin = EventTablePlugin(
+        config={
+            "output_file": str(output_file),
+            "excel_write_retries": 2,
+            "excel_write_retry_delay_seconds": 0,
+        }
+    )
+    llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
+
+    from openpyxl.workbook.workbook import Workbook
+
+    original_save = Workbook.save
+    attempts = {"count": 0}
+
+    def flaky_save(self, filename) -> None:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise PermissionError("The process cannot access the file")
+        original_save(self, filename)
+
+    monkeypatch.setattr(Workbook, "save", flaky_save)
+
+    result = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
+
+    assert result.status == PluginExecutionStatus.SUCCESS
+    assert attempts["count"] == 2
+    assert output_file.exists()
+
+
+def test_event_table_returns_retriable_failed_when_excel_stays_locked(
+    tmp_path, monkeypatch
+) -> None:
+    output_file = tmp_path / "events.xlsx"
+    plugin = EventTablePlugin(
+        config={
+            "output_file": str(output_file),
+            "excel_write_retries": 1,
+            "excel_write_retry_delay_seconds": 0,
+        }
+    )
+    llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
+
+    from openpyxl.workbook.workbook import Workbook
+
+    def always_locked(self, filename) -> None:
+        del filename
+        raise PermissionError("The process cannot access the file")
+
+    monkeypatch.setattr(Workbook, "save", always_locked)
+
+    result = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
+
+    assert result.status == PluginExecutionStatus.RETRIABLE_FAILED
+    assert result.code == "excel_file_locked"
+    assert "Please close it in Excel and retry" in result.message
+    assert output_file.exists() is False
+
+
+def test_event_table_batch_flush_reports_lock_error(tmp_path, monkeypatch) -> None:
+    output_file = tmp_path / "events.xlsx"
+    plugin = EventTablePlugin(
+        config={
+            "output_file": str(output_file),
+            "excel_write_retries": 1,
+            "excel_write_retry_delay_seconds": 0,
+        }
+    )
+    plugin.begin_job({"batch_flush_enabled": True})
+    llm_response = '{"action":"appointment","create":true,"subject":"A","start":"2026-03-20T09:00:00","end":"2026-03-20T10:00:00"}'
+
+    from openpyxl.workbook.workbook import Workbook
+
+    def always_locked(self, filename) -> None:
+        del filename
+        raise PermissionError("The process cannot access the file")
+
+    monkeypatch.setattr(Workbook, "save", always_locked)
+
+    buffered = asyncio.run(
+        plugin.execute(_build_email_data(), llm_response, _FakeActionPort())
+    )
+    flush_result = plugin.end_job()
+
+    assert buffered.status == PluginExecutionStatus.SUCCESS
+    assert isinstance(flush_result, PluginExecutionResult)
+    assert flush_result.status == PluginExecutionStatus.RETRIABLE_FAILED
+    assert flush_result.code == "excel_file_locked"
+    assert "Please close it in Excel and retry" in flush_result.message

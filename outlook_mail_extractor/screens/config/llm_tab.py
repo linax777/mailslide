@@ -34,6 +34,12 @@ class LLMConfigTab(Static):
     #llm-examples {
         width: 100%;
     }
+    #llm-privacy-warning {
+        width: 100%;
+    }
+    #llm-disclaimer {
+        width: 100%;
+    }
     """
 
     def __init__(self, runtime_context: RuntimeContext | None = None):
@@ -69,6 +75,12 @@ class LLMConfigTab(Static):
                     variant="primary",
                 )
                 yield Button(t("ui.llm.button.edit"), id="edit-llm-config")
+            yield Static(
+                t("ui.llm.privacy_warning.title"), id="llm-privacy-warning-title"
+            )
+            yield Static(t("ui.llm.privacy_warning.body"), id="llm-privacy-warning")
+            yield Static(t("ui.llm.disclaimer.title"), id="llm-disclaimer-title")
+            yield Static(t("ui.llm.disclaimer.body"), id="llm-disclaimer")
 
     def on_mount(self) -> None:
         self._load_llm_config()

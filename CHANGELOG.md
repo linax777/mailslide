@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.3.9] - 2026-03-28
+
+### Changed
+
+- Updated the LLM Configuration tab UI (`outlook_mail_extractor/screens/config/llm_tab.py`) to show an in-app AI mail-reading privacy warning and disclaimer directly below the LLM settings actions.
+- Added localized warning/disclaimer copy for both `zh-TW` and `en-US` in `outlook_mail_extractor/locales/zh-TW.yaml` and `outlook_mail_extractor/locales/en-US.yaml` so the legal/privacy notice follows the selected UI language.
+- Updated git ignore/tracking hygiene by untracking local release helper scripts (`scripts/release_pypi.ps1`, `scripts/sync_guides.ps1`) and adding them to `.gitignore`.
+- Updated `event_table` Excel writing (`outlook_mail_extractor/plugins/event_table.py`) to retry when files are locked by Excel, with configurable retry count/delay (`excel_write_retries`, `excel_write_retry_delay_seconds`) and explicit lock warning logs during retries.
+- Updated `event_table` config samples (`config/plugins/event_table.yaml.sample`, `outlook_mail_extractor/resources/config_samples/plugins/event_table.yaml.sample`) to expose the new Excel lock-retry settings in both runtime config and `_ui` schema.
+
+### Fixed
+
+- Fixed `event_table` lock contention handling so locked `.xlsx` writes now return `retriable_failed` with `code="excel_file_locked"` and a clear actionable message instead of a generic unexpected error.
+- Fixed malformed `uv.lock` content that broke `uv run`/test execution by restoring a valid `[[package]]` entry for `mailslide`.
+
 ## [v0.3.8] - 2026-03-27
 
 ### Added

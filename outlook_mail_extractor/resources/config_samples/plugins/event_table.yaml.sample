@@ -42,6 +42,12 @@ response_format: "json"
 # Whether outlook_open_command should also require sender match
 open_command_match_sender: false
 
+# Retries when Excel file is locked by another process (e.g. opened in Excel)
+excel_write_retries: 3
+
+# Delay between retries in seconds
+excel_write_retry_delay_seconds: 1
+
 _ui:
   schema_version: 1
   title: "Plugin: event_table"
@@ -92,6 +98,16 @@ _ui:
       label: "Match sender in open command"
       required: false
       default: false
+    excel_write_retries:
+      type: int
+      label: "Excel write retries"
+      required: false
+      default: 3
+    excel_write_retry_delay_seconds:
+      type: int
+      label: "Excel retry delay (sec)"
+      required: false
+      default: 1
   validation_rules:
     - id: output_file_xlsx
       level: warning
