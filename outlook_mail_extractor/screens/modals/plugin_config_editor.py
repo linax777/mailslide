@@ -114,6 +114,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         self._active_prompt_profile = (
             self._prompt_profile_order[0] if self._prompt_profile_order else ""
         )
+        self._prompt_profile_renames: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
         with Vertical(id="plugin-editor-dialog"):
@@ -323,7 +324,6 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 yield Input(
                     self._active_prompt_profile,
                     id="plugin-prompt-key",
-                    disabled=True,
                 )
                 yield Static(
                     t("ui.plugin_editor.field.version"), classes="plugin-field-label"
@@ -597,6 +597,8 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         if response_json_format:
             payload["response_json_format"] = response_json_format
 
+        self._apply_prompt_profile_renames(payload)
+
         return payload
 
     def _collect_field_value(
@@ -612,6 +614,8 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         if self._is_prompt_profiles_field(field_name, spec):
             try:
                 return self._collect_prompt_profiles_from_editor()
+            except ValueError:
+                raise
             except Exception:
                 pass
 
@@ -678,7 +682,13 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         if event.option_list.id != "plugin-prompt-profile-list":
             return
 
-        self._save_active_prompt_profile_fields()
+        try:
+            self._save_active_prompt_profile_fields()
+        except ValueError as exc:
+            self._show_error(str(exc))
+            self._refresh_prompt_profile_list()
+            return
+
         if event.option_index < 0 or event.option_index >= len(
             self._prompt_profile_order
         ):
@@ -737,10 +747,72 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         value = profile.get(field, "")
         return "" if value is None else str(value)
 
+    def _record_prompt_profile_rename(self, old_key: str, new_key: str) -> None:
+        if old_key == new_key:
+            return
+
+        rewrites: dict[str, str] = {}
+        for source, target in self._prompt_profile_renames.items():
+            rewrites[source] = new_key if target == old_key else target
+        rewrites[old_key] = new_key
+
+        for source in list(rewrites.keys()):
+            seen = {source}
+            target = rewrites[source]
+            while target in rewrites and target not in seen:
+                seen.add(target)
+                target = rewrites[target]
+            rewrites[source] = target
+
+        self._prompt_profile_renames = {
+            source: target
+            for source, target in rewrites.items()
+            if source and target and source != target
+        }
+
+    def _resolve_prompt_profile_rename(self, profile_key: str) -> str:
+        current = str(profile_key).strip()
+        if not current:
+            return ""
+
+        seen = {current}
+        while current in self._prompt_profile_renames:
+            current = self._prompt_profile_renames[current]
+            if current in seen:
+                break
+            seen.add(current)
+        return current
+
     def _save_active_prompt_profile_fields(self) -> None:
         key = self._active_prompt_profile
         if not key or key not in self._prompt_profiles_state:
             return
+
+        typed_key = self.query_one("#plugin-prompt-key", Input).value.strip()
+        if not typed_key:
+            raise ValueError(t("ui.plugin_editor.error.profile_key_required"))
+        if typed_key != key:
+            if typed_key in self._prompt_profiles_state:
+                raise ValueError(
+                    t(
+                        "ui.plugin_editor.error.profile_key_duplicate",
+                        profile_key=typed_key,
+                    )
+                )
+            profile_payload = self._prompt_profiles_state.pop(key)
+            self._prompt_profiles_state[typed_key] = profile_payload
+            try:
+                index = self._prompt_profile_order.index(key)
+                self._prompt_profile_order[index] = typed_key
+            except ValueError:
+                self._prompt_profile_order.append(typed_key)
+            self._active_prompt_profile = typed_key
+            self._record_prompt_profile_rename(key, typed_key)
+            try:
+                self._refresh_prompt_profile_list()
+            except Exception:
+                pass
+            key = typed_key
 
         version_text = self.query_one("#plugin-prompt-version", Input).value.strip()
         version = 1
@@ -785,6 +857,19 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 "system_prompt": str(profile.get("system_prompt", "")).strip(),
             }
         return payload
+
+    def _apply_prompt_profile_renames(self, payload: dict[str, Any]) -> None:
+        if not self._prompt_profile_renames:
+            return
+
+        default_profile = payload.get("default_prompt_profile")
+        if isinstance(default_profile, str):
+            resolved = self._resolve_prompt_profile_rename(default_profile)
+            if resolved:
+                payload["default_prompt_profile"] = resolved
+
+        payload["_plugin_name"] = self._plugin_name
+        payload["_prompt_profile_renames"] = dict(self._prompt_profile_renames)
 
     def _validate_field_value(
         self,
@@ -876,7 +961,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 raise ValueError(
                     t(
                         "ui.plugin_editor.error.template_int_required",
-                        key=key,
+                        template_key=key,
                         field=field_name,
                     )
                 )
@@ -886,7 +971,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 raise ValueError(
                     t(
                         "ui.plugin_editor.error.template_int_required",
-                        key=key,
+                        template_key=key,
                         field=field_name,
                     )
                 ) from exc
@@ -896,7 +981,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 raise ValueError(
                     t(
                         "ui.plugin_editor.error.template_number_required",
-                        key=key,
+                        template_key=key,
                         field=field_name,
                     )
                 )
@@ -906,7 +991,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                 raise ValueError(
                     t(
                         "ui.plugin_editor.error.template_number_required",
-                        key=key,
+                        template_key=key,
                         field=field_name,
                     )
                 ) from exc

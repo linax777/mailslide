@@ -212,22 +212,58 @@ class PluginsConfigTab(Static):
 
         plugin_name = self._selected_plugin
         if not plugin_name:
+            fallback_name = str(result.get("_plugin_name", "")).strip()
+            plugin_name = fallback_name or None
+        if not plugin_name:
             return
 
+        prompt_profile_renames = self._extract_prompt_profile_renames(result)
         sanitized = strip_reserved_metadata(result)
+        inferred_renames = self._infer_prompt_profile_renames(plugin_name, sanitized)
+        if inferred_renames:
+            merged_renames = dict(inferred_renames)
+            merged_renames.update(prompt_profile_renames)
+            prompt_profile_renames = merged_renames
 
         try:
             self._write_plugin_config_file(plugin_name, sanitized)
-            self._load_plugins()
-            self._selected_plugin = plugin_name
-            self._load_plugin_content(plugin_name)
-            self.query_one("#edit-plugin", Button).disabled = False
-            self.app.notify(
-                t("ui.plugins.notify.saved", plugin=plugin_name),
-                severity="information",
-            )
         except Exception as e:
             self.app.notify(t("ui.common.error.save_failed", error=e), severity="error")
+            return
+
+        synced_refs = 0
+        if prompt_profile_renames:
+            try:
+                synced_refs = self._sync_job_prompt_profile_refs(
+                    plugin_name, prompt_profile_renames
+                )
+            except Exception as e:
+                self.app.notify(
+                    t(
+                        "ui.plugins.warn.job_profile_refs_sync_failed",
+                        plugin=plugin_name,
+                        error=e,
+                    ),
+                    severity="warning",
+                )
+
+        self._load_plugins()
+        self._selected_plugin = plugin_name
+        self._load_plugin_content(plugin_name)
+        self.query_one("#edit-plugin", Button).disabled = False
+        self.app.notify(
+            t("ui.plugins.notify.saved", plugin=plugin_name),
+            severity="information",
+        )
+        if synced_refs > 0:
+            self.app.notify(
+                t(
+                    "ui.plugins.notify.job_profile_refs_synced",
+                    plugin=plugin_name,
+                    count=synced_refs,
+                ),
+                severity="information",
+            )
 
     def _write_plugin_config_file(
         self,
@@ -241,6 +277,148 @@ class PluginsConfigTab(Static):
             payload,
             backup_path=normal_path.parent / f"{plugin_name}.yaml.bak",
         )
+
+    def _extract_prompt_profile_renames(
+        self, payload: dict[str, Any]
+    ) -> dict[str, str]:
+        raw = payload.get("_prompt_profile_renames")
+        if not isinstance(raw, dict):
+            return {}
+
+        renames: dict[str, str] = {}
+        for old, new in raw.items():
+            old_key = str(old).strip()
+            new_key = str(new).strip()
+            if old_key and new_key and old_key != new_key:
+                renames[old_key] = new_key
+
+        normalized: dict[str, str] = {}
+        for old_key in renames:
+            resolved = self._resolve_prompt_profile_rename(old_key, renames)
+            if resolved and resolved != old_key:
+                normalized[old_key] = resolved
+        return normalized
+
+    def _normalize_prompt_profiles(self, payload: dict[str, Any]) -> dict[str, Any]:
+        raw_profiles = payload.get("prompt_profiles")
+        if not isinstance(raw_profiles, dict):
+            return {}
+
+        profiles: dict[str, Any] = {}
+        for key, value in raw_profiles.items():
+            profile_key = str(key).strip()
+            if profile_key:
+                profiles[profile_key] = value
+        return profiles
+
+    def _infer_prompt_profile_renames(
+        self,
+        plugin_name: str,
+        next_payload: dict[str, Any],
+    ) -> dict[str, str]:
+        try:
+            current_payload, _ = self._load_plugin_payload(plugin_name)
+        except Exception:
+            return {}
+
+        old_profiles = self._normalize_prompt_profiles(current_payload)
+        new_profiles = self._normalize_prompt_profiles(next_payload)
+        if not old_profiles or not new_profiles:
+            return {}
+
+        removed = [key for key in old_profiles if key not in new_profiles]
+        added = [key for key in new_profiles if key not in old_profiles]
+        if not removed or not added:
+            return {}
+
+        renames: dict[str, str] = {}
+        remaining_added = list(added)
+        for old_key in removed:
+            old_value = old_profiles.get(old_key)
+            matches = [
+                candidate
+                for candidate in remaining_added
+                if new_profiles.get(candidate) == old_value
+            ]
+            if len(matches) == 1:
+                target = matches[0]
+                renames[old_key] = target
+                remaining_added.remove(target)
+
+        if renames:
+            return renames
+        if len(removed) == 1 and len(added) == 1:
+            return {removed[0]: added[0]}
+        return {}
+
+    def _resolve_prompt_profile_rename(
+        self,
+        profile_key: str,
+        renames: dict[str, str],
+    ) -> str:
+        current = str(profile_key).strip()
+        if not current:
+            return ""
+
+        seen = {current}
+        while current in renames:
+            current = renames[current]
+            if current in seen:
+                break
+            seen.add(current)
+        return current
+
+    def _sync_job_prompt_profile_refs(
+        self,
+        plugin_name: str,
+        renames: dict[str, str],
+    ) -> int:
+        if not renames:
+            return 0
+
+        config_path = self._runtime.paths.config_file
+        if not config_path.exists():
+            return 0
+
+        with open(config_path, encoding="utf-8") as f:
+            payload = yaml.safe_load(f) or {}
+        if not isinstance(payload, dict):
+            raise ValueError("config.yaml content must be an object")
+
+        jobs = payload.get("jobs", [])
+        if not isinstance(jobs, list):
+            return 0
+
+        updated = 0
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+
+            profiles = job.get("plugin_prompt_profiles")
+            if not isinstance(profiles, dict):
+                continue
+
+            current = profiles.get(plugin_name)
+            if not isinstance(current, str):
+                continue
+
+            current_key = current.strip()
+            if not current_key:
+                continue
+
+            resolved = self._resolve_prompt_profile_rename(current_key, renames)
+            if resolved and resolved != current_key:
+                profiles[plugin_name] = resolved
+                updated += 1
+
+        if updated > 0:
+            write_yaml_with_backup(
+                config_path,
+                payload,
+                backup_path=config_path.parent / f"{config_path.name}.bak",
+            )
+
+        return updated
 
     def _cleanup_backup_files(self) -> tuple[int, list[str]]:
         plugins_dir = self._runtime.paths.plugins_dir

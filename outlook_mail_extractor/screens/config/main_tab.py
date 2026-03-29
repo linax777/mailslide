@@ -68,10 +68,34 @@ class MainConfigTab(Static):
         self._runtime = runtime_context or get_runtime_context()
         self._sample_path = self._runtime.paths.config_dir / "config.yaml.sample"
         self._ui_schema = load_ui_schema(self._sample_path)
+        self._ensure_reload_button_in_schema()
         self._schema_errors = validate_ui_schema(self._ui_schema)
         self._reset_armed = False
         self._rendered_job_indices: list[int] = []
         self._selected_job_index: int | None = None
+
+    def _ensure_reload_button_in_schema(self) -> None:
+        buttons = self._ui_schema.get("buttons")
+        if not isinstance(buttons, list):
+            self._ui_schema["buttons"] = []
+            buttons = self._ui_schema["buttons"]
+
+        for button in buttons:
+            if (
+                isinstance(button, dict)
+                and str(button.get("id", "")).strip() == "reload"
+            ):
+                return
+
+        buttons.append(
+            {
+                "id": "reload",
+                "label": "重新載入",
+                "label_key": "ui.main.button.reload",
+                "action": "reload",
+                "variant": "default",
+            }
+        )
 
     def compose(self) -> ComposeResult:
         with Vertical(id="main-config-split"):
@@ -227,6 +251,9 @@ class MainConfigTab(Static):
             return
         if action == "reset":
             self._reset_from_sample()
+            return
+        if action == "reload":
+            self._reload_from_disk()
             return
 
         self.app.notify(
@@ -574,6 +601,11 @@ class MainConfigTab(Static):
             self.app.notify(
                 t("ui.main.notify.validation_passed"), severity="information"
             )
+
+    def _reload_from_disk(self) -> None:
+        self._load_config()
+        self._reset_armed = False
+        self.app.notify(t("ui.main.notify.reloaded"), severity="information")
 
     def _load_config(self) -> None:
         content_widget = self.query_one("#main-config-content", TextArea)

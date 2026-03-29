@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
+## [v0.3.10] - 2026-03-29
+
+### Changed
+
+- Changed Home-tab stop behavior to use cooperative cancellation wiring end-to-end, propagating Textual worker cancellation signals from `HomeScreen` into job orchestration (`JobExecutionService`), per-mail processing (`EmailProcessor`), and LLM/plugin dispatch checkpoints.
+- Changed job/plugin lifecycle handling to preserve safe plugin finalization (`end_job`) even when cancellation occurs mid-run, while stopping new jobs/emails/plugins from starting after a stop request.
+- Changed Main Configuration job modal (`新增 Job`/`修改 Job`) to expose per-plugin prompt-profile inputs, so users can set `plugin_prompt_profiles` directly in the form instead of editing YAML manually.
+- Changed Plugin Configuration prompt-profile editor to allow renaming `profile key` values directly in the modal, with validation for non-empty and unique keys.
+- Changed plugin-save flow to auto-sync renamed prompt-profile references in `config/config.yaml` (`jobs[].plugin_prompt_profiles`) for the edited plugin, including backup-safe writes.
+- Changed Main Configuration tab to include a `Reload` action button that re-reads `config/config.yaml` from disk on demand (with schema fallback injection for older `_ui` samples that do not define the button yet).
+
+### Fixed
+
+- Fixed Home-tab `⏹️ 終止` / Stop button behavior where pressing stop only cancelled the UI worker but did not actually interrupt background execution; stop requests now halt execution at the next safe checkpoint (before next job, next mail, next plugin, and before each LLM call).
+- Fixed prompt-profile rename propagation reliability by adding plugin-side rename inference fallback and plugin-name callback fallback, so job `plugin_prompt_profiles` references are still synchronized even when explicit rename metadata is missing.
+
+### Added
+
+- Added cancellation regression coverage in `tests/test_job_execution_service.py`, `tests/test_core_high_risk.py`, and `tests/test_llm_dispatcher.py` to verify stop requests prevent continued processing beyond the current safe step.
+- Added modal/i18n coverage for per-plugin profile assignment in jobs, including `tests/test_add_job_modal.py` assertions for selected-plugin filtering and new locale strings in `outlook_mail_extractor/locales/zh-TW.yaml` and `outlook_mail_extractor/locales/en-US.yaml`.
+- Added prompt-profile rename + job-reference sync coverage in `tests/test_plugin_config_editor.py`, plus new plugin-editor/plugin-tab i18n messages for rename validation and sync notifications.
+
 ## [v0.3.9] - 2026-03-28
 
 ### Changed

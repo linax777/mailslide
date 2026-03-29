@@ -4,12 +4,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
+import pytest
+
 from outlook_mail_extractor.core import (
     EmailProcessor,
     OutlookClient,
     process_config_file,
 )
-from outlook_mail_extractor.models import EmailDTO
+from outlook_mail_extractor.models import EmailAnalysisResult, EmailDTO
 from outlook_mail_extractor.models import PluginExecutionResult, PluginExecutionStatus
 from outlook_mail_extractor.plugins import PluginCapability
 from outlook_mail_extractor.logger import LogSessionManager
@@ -187,6 +189,105 @@ def test_no_llm_plugin_still_executes() -> None:
     assert result.success is True
     assert plugin.execute_calls == 1
     assert message.move_calls == 0
+
+
+def test_process_job_cancellation_stops_before_next_message() -> None:
+    class _FakeItems:
+        def __init__(self, messages) -> None:
+            self._messages = messages
+            self._index = -1
+
+        def Sort(self, _field: str, _descending: bool) -> None:  # noqa: N802
+            return None
+
+        def GetFirst(self):  # noqa: N802
+            self._index = 0
+            if self._index >= len(self._messages):
+                return None
+            return self._messages[self._index]
+
+        def GetNext(self):  # noqa: N802
+            self._index += 1
+            if self._index >= len(self._messages):
+                return None
+            return self._messages[self._index]
+
+    class _FakeFolder:
+        def __init__(self, messages) -> None:
+            self.Items = _FakeItems(messages)  # noqa: N815
+
+    class _FakeClient:
+        def get_folder(
+            self,
+            account: str,
+            folder_path: str,
+            create_if_missing: bool = False,
+        ):
+            del account
+            del folder_path
+            del create_if_missing
+            return _FakeFolder([SimpleNamespace(Class=43), SimpleNamespace(Class=43)])
+
+    class _CountingEmailProcessor(EmailProcessor):
+        def __init__(self) -> None:
+            super().__init__(client=cast(OutlookClient, _FakeClient()))
+            self.processed_count = 0
+
+        async def _process_email(
+            self,
+            message,
+            account_name: str,
+            llm_client,
+            plugins,
+            dry_run: bool,
+            no_move: bool,
+            destination_folder_name: str | None = None,
+            manual_review_destination_folder_name: str | None = None,
+            body_max_length: int | None = None,
+            llm_mode: str = "per_plugin",
+            cancel_requested=None,
+        ) -> EmailAnalysisResult:
+            del message
+            del account_name
+            del llm_client
+            del plugins
+            del dry_run
+            del no_move
+            del destination_folder_name
+            del manual_review_destination_folder_name
+            del body_max_length
+            del llm_mode
+            del cancel_requested
+            self.processed_count += 1
+            return EmailAnalysisResult(
+                email_subject="mail",
+                llm_response="",
+                plugin_results=[],
+                success=True,
+                metrics={},
+            )
+
+    processor = _CountingEmailProcessor()
+    call_count = {"count": 0}
+
+    def cancel_requested() -> bool:
+        call_count["count"] += 1
+        return call_count["count"] >= 2
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(
+            processor.process_job(
+                job_config={
+                    "name": "cancel-test",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": [],
+                },
+                cancel_requested=cancel_requested,
+            )
+        )
+
+    assert processor.processed_count == 1
 
 
 def test_destination_move_works_without_llm_and_plugins() -> None:

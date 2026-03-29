@@ -7,7 +7,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.timer import Timer
 from textual.widgets import Button, DataTable, Log, Static
-from textual.worker import Worker
+from textual.worker import NoActiveWorker, Worker, get_current_worker
 
 from ..config import get_last_migration_result, load_config
 from ..core import OutlookConnectionError
@@ -273,6 +273,12 @@ class HomeScreen(Static):
         return True
 
     async def _execute_jobs(self) -> None:
+        current_worker: Worker | None = None
+        try:
+            current_worker = get_current_worker()
+        except NoActiveWorker:
+            current_worker = None
+
         try:
             execution_service = JobExecutionService(
                 client_factory=self._runtime.client_factory,
@@ -284,6 +290,9 @@ class HomeScreen(Static):
                 self._runtime.paths.config_file,
                 False,
                 preserve_reply_thread=self._preserve_reply_thread,
+                cancel_requested=(
+                    current_worker.cancelled_event.is_set if current_worker else None
+                ),
             )
             self.call_later(self._update_log, t("ui.home.log.done"))
         except asyncio.CancelledError:

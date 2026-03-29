@@ -1,6 +1,8 @@
 import asyncio
 from types import SimpleNamespace
 
+import pytest
+
 from outlook_mail_extractor.llm_dispatcher import (
     LLM_MODE_SHARE_DEPRECATED,
     dispatch_llm_plugins,
@@ -118,3 +120,33 @@ def test_dispatch_llm_plugins_per_plugin_calls_llm_once_per_plugin() -> None:
     assert len(result.plugin_results) == 2
     assert result.llm_call_count == 2
     assert result.llm_elapsed_ms >= 0
+
+
+def test_dispatch_llm_plugins_honors_cancellation_between_plugins() -> None:
+    logger = _Logger()
+    llm = _LLM()
+    execution_state = {"first_done": False}
+
+    class _CancelMarkerPlugin(_Plugin):
+        async def execute(self, email_data: EmailDTO, llm_response: str, action_port):
+            execution_state["first_done"] = True
+            return await super().execute(email_data, llm_response, action_port)
+
+    plugins = [_CancelMarkerPlugin("a", "A"), _Plugin("b", "B")]
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(
+            dispatch_llm_plugins(
+                plugins=plugins,
+                llm_client=llm,
+                user_prompt="u",
+                llm_mode="per_plugin",
+                dry_run=False,
+                email_data=EmailDTO("s", "f", "r", "b", []),
+                action_port=object(),
+                logger=logger,
+                cancel_requested=lambda: execution_state["first_done"],
+            )
+        )
+
+    assert len(llm.calls) == 1

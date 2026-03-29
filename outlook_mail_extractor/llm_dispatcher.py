@@ -1,5 +1,7 @@
 """LLM dispatch flow for plugin execution orchestration."""
 
+import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any
@@ -67,11 +69,19 @@ async def dispatch_llm_plugins(
     email_data: Any,
     action_port: Any,
     logger: Any,
+    cancel_requested: Callable[[], bool] | None = None,
 ) -> LLMDispatchResult:
     """Dispatch LLM calls and execute LLM-required plugins."""
+
+    def raise_if_cancelled() -> None:
+        if cancel_requested and cancel_requested():
+            raise asyncio.CancelledError("Job execution cancelled by user")
+
     result = LLMDispatchResult()
     if not plugins:
         return result
+
+    raise_if_cancelled()
 
     if not llm_client:
         result.success = False
@@ -96,17 +106,19 @@ async def dispatch_llm_plugins(
         combined_system = "\n\n---\n\n".join(
             [plugin.build_effective_prompt() for plugin in plugins]
         )
+        started_at = perf_counter()
 
         try:
-            started_at = perf_counter()
+            raise_if_cancelled()
             llm_response = llm_client.chat(combined_system, user_prompt)
             result.llm_call_count += 1
             result.llm_elapsed_ms += (perf_counter() - started_at) * 1000
             result.llm_response = llm_response
             logger.debug(f"LLM 回覆(shared): {llm_response}")
+        except asyncio.CancelledError:
+            raise
         except Exception as error:
             result.llm_call_count += 1
-            result.llm_elapsed_ms += (perf_counter() - started_at) * 1000
             result.success = False
             result.error_message = str(error)
             logger.error(t("log.llm_dispatcher.llm_call_failed", error=error))
@@ -116,6 +128,7 @@ async def dispatch_llm_plugins(
             return result
 
         for plugin in plugins:
+            raise_if_cancelled()
             skip_result = plugin.should_skip_by_response(result.llm_response)
             if skip_result:
                 plugin_result = build_plugin_result(plugin.name, skip_result)
@@ -130,6 +143,7 @@ async def dispatch_llm_plugins(
                 continue
 
             logger.info(t("log.llm_dispatcher.plugin_started", plugin=plugin.name))
+            raise_if_cancelled()
             plugin_result, moved = await execute_plugin(
                 plugin,
                 email_data,
@@ -144,18 +158,21 @@ async def dispatch_llm_plugins(
 
     llm_responses: list[str] = []
     for plugin in plugins:
+        raise_if_cancelled()
         plugin_prompt = plugin.build_effective_prompt()
         plugin_llm_response = ""
+        started_at = perf_counter()
         try:
-            started_at = perf_counter()
+            raise_if_cancelled()
             plugin_llm_response = llm_client.chat(plugin_prompt, user_prompt)
             result.llm_call_count += 1
             result.llm_elapsed_ms += (perf_counter() - started_at) * 1000
             llm_responses.append(f"[{plugin.name}]\n{plugin_llm_response}")
             logger.debug(f"LLM 回覆 ({plugin.name}): {plugin_llm_response}")
+        except asyncio.CancelledError:
+            raise
         except Exception as error:
             result.llm_call_count += 1
-            result.llm_elapsed_ms += (perf_counter() - started_at) * 1000
             result.success = False
             result.error_message = str(error)
             logger.error(
@@ -193,6 +210,7 @@ async def dispatch_llm_plugins(
             continue
 
         logger.info(t("log.llm_dispatcher.plugin_started", plugin=plugin.name))
+        raise_if_cancelled()
         plugin_result, moved = await execute_plugin(
             plugin,
             email_data,

@@ -421,3 +421,269 @@ def test_plugin_config_editor_yaml_field_invalid_raises() -> None:
         match=r"(不是有效的 YAML|is not valid YAML)",
     ):
         modal._collect_payload()
+
+
+def test_plugin_config_editor_prompt_profile_key_rename_success() -> None:
+    schema = {
+        "fields": {
+            "prompt_profiles": {
+                "type": "yaml",
+                "label": "Prompt Profiles",
+                "required": False,
+            },
+        },
+        "validation_rules": [],
+    }
+    modal = PluginConfigEditorModal(
+        "add_category",
+        schema,
+        {
+            "prompt_profiles": {
+                "general_v1": {
+                    "version": 1,
+                    "description": "General",
+                    "system_prompt": "hello",
+                }
+            }
+        },
+    )
+
+    widgets: dict[str, Any] = {
+        "plugin-prompt-key": _FakeInput("invoice_v2"),
+        "plugin-prompt-version": _FakeInput("2"),
+        "plugin-prompt-description": _FakeInput("Invoice"),
+        "plugin-prompt-system_prompt": _FakeTextArea("invoice prompt"),
+    }
+    modal.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+
+    modal._save_active_prompt_profile_fields()
+
+    assert modal._active_prompt_profile == "invoice_v2"
+    assert modal._prompt_profile_order == ["invoice_v2"]
+    assert "general_v1" not in modal._prompt_profiles_state
+    assert modal._prompt_profiles_state["invoice_v2"]["version"] == 2
+    assert modal._prompt_profile_renames == {"general_v1": "invoice_v2"}
+
+
+def test_plugin_config_editor_prompt_profile_key_required() -> None:
+    schema = {
+        "fields": {
+            "prompt_profiles": {
+                "type": "yaml",
+                "label": "Prompt Profiles",
+                "required": False,
+            },
+        },
+        "validation_rules": [],
+    }
+    modal = PluginConfigEditorModal(
+        "add_category",
+        schema,
+        {
+            "prompt_profiles": {
+                "general_v1": {
+                    "version": 1,
+                    "description": "General",
+                    "system_prompt": "hello",
+                }
+            }
+        },
+    )
+
+    widgets: dict[str, Any] = {
+        "plugin-prompt-key": _FakeInput("  "),
+        "plugin-prompt-version": _FakeInput("1"),
+        "plugin-prompt-description": _FakeInput("General"),
+        "plugin-prompt-system_prompt": _FakeTextArea("hello"),
+    }
+    modal.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+
+    with pytest.raises(
+        ValueError, match=r"(Profile Key 為必填|Profile Key is required)"
+    ):
+        modal._save_active_prompt_profile_fields()
+
+
+def test_plugin_config_editor_prompt_profile_key_duplicate() -> None:
+    schema = {
+        "fields": {
+            "prompt_profiles": {
+                "type": "yaml",
+                "label": "Prompt Profiles",
+                "required": False,
+            },
+        },
+        "validation_rules": [],
+    }
+    modal = PluginConfigEditorModal(
+        "add_category",
+        schema,
+        {
+            "prompt_profiles": {
+                "general_v1": {
+                    "version": 1,
+                    "description": "General",
+                    "system_prompt": "hello",
+                },
+                "invoice_v1": {
+                    "version": 1,
+                    "description": "Invoice",
+                    "system_prompt": "invoice",
+                },
+            }
+        },
+    )
+
+    widgets: dict[str, Any] = {
+        "plugin-prompt-key": _FakeInput("invoice_v1"),
+        "plugin-prompt-version": _FakeInput("1"),
+        "plugin-prompt-description": _FakeInput("General"),
+        "plugin-prompt-system_prompt": _FakeTextArea("hello"),
+    }
+    modal.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+
+    with pytest.raises(
+        ValueError,
+        match=r"(Profile Key already exists|Profile Key 已存在)",
+    ):
+        modal._save_active_prompt_profile_fields()
+
+
+def test_plugin_config_editor_collect_payload_applies_profile_rename_to_default() -> (
+    None
+):
+    schema = {
+        "fields": {
+            "default_prompt_profile": {
+                "type": "str",
+                "required": False,
+            },
+            "prompt_profiles": {
+                "type": "yaml",
+                "label": "Prompt Profiles",
+                "required": False,
+            },
+        },
+        "validation_rules": [],
+    }
+    modal = PluginConfigEditorModal(
+        "add_category",
+        schema,
+        {
+            "default_prompt_profile": "general_v1",
+            "prompt_profiles": {
+                "general_v1": {
+                    "version": 1,
+                    "description": "General",
+                    "system_prompt": "hello",
+                }
+            },
+        },
+    )
+
+    widgets: dict[str, Any] = {
+        "plugin-field-default_prompt_profile": _FakeInput("general_v1"),
+        "plugin-prompt-key": _FakeInput("invoice_v2"),
+        "plugin-prompt-version": _FakeInput("2"),
+        "plugin-prompt-description": _FakeInput("Invoice"),
+        "plugin-prompt-system_prompt": _FakeTextArea("invoice prompt"),
+    }
+    modal.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+
+    payload = modal._collect_payload()
+
+    assert payload["default_prompt_profile"] == "invoice_v2"
+    assert payload["_prompt_profile_renames"] == {"general_v1": "invoice_v2"}
+    profiles = payload["prompt_profiles"]
+    assert isinstance(profiles, dict)
+    assert "invoice_v2" in profiles
+
+
+def test_plugins_config_tab_sync_job_prompt_profile_refs(tmp_path: Path) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.config_dir.mkdir(parents=True, exist_ok=True)
+    runtime.paths.config_file.write_text(
+        yaml.safe_dump(
+            {
+                "jobs": [
+                    {
+                        "name": "job-a",
+                        "account": "a@example.com",
+                        "source": "Inbox",
+                        "plugin_prompt_profiles": {
+                            "add_category": "general_v1",
+                            "move_to_folder": "routing_v1",
+                        },
+                    },
+                    {
+                        "name": "job-b",
+                        "account": "b@example.com",
+                        "source": "Inbox",
+                        "plugin_prompt_profiles": {
+                            "add_category": "general_v1",
+                        },
+                    },
+                ]
+            },
+            allow_unicode=True,
+            sort_keys=False,
+            default_flow_style=False,
+        ),
+        encoding="utf-8",
+    )
+
+    tab = PluginsConfigTab(runtime_context=runtime)
+    updated = tab._sync_job_prompt_profile_refs(
+        "add_category",
+        {"general_v1": "invoice_v2"},
+    )
+
+    assert updated == 2
+
+    loaded = yaml.safe_load(runtime.paths.config_file.read_text(encoding="utf-8"))
+    assert loaded["jobs"][0]["plugin_prompt_profiles"]["add_category"] == "invoice_v2"
+    assert loaded["jobs"][1]["plugin_prompt_profiles"]["add_category"] == "invoice_v2"
+    assert loaded["jobs"][0]["plugin_prompt_profiles"]["move_to_folder"] == "routing_v1"
+
+    backup = runtime.paths.config_dir / "config.yaml.bak"
+    assert backup.exists()
+
+
+def test_plugins_config_tab_infer_prompt_profile_rename_from_payload(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.plugins_dir.mkdir(parents=True, exist_ok=True)
+    (runtime.paths.plugins_dir / "add_category.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "prompt_profiles": {
+                    "general_v1": {
+                        "version": 1,
+                        "description": "General",
+                        "system_prompt": "hello",
+                    }
+                }
+            },
+            allow_unicode=True,
+            sort_keys=False,
+            default_flow_style=False,
+        ),
+        encoding="utf-8",
+    )
+
+    tab = PluginsConfigTab(runtime_context=runtime)
+    inferred = tab._infer_prompt_profile_renames(
+        "add_category",
+        {
+            "prompt_profiles": {
+                "invoice_v2": {
+                    "version": 1,
+                    "description": "General",
+                    "system_prompt": "hello",
+                }
+            }
+        },
+    )
+
+    assert inferred == {"general_v1": "invoice_v2"}

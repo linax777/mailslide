@@ -85,6 +85,20 @@ class AddJobScreen(ModalScreen[dict | None]):
                 ],
                 id="add-job-plugins",
             )
+            yield Static(
+                t("ui.add_job.field.plugin_prompt_profiles"),
+                classes="add-job-label",
+            )
+            default_profiles = self._default_plugin_prompt_profiles()
+            for option in self._plugin_options:
+                yield Static(
+                    t("ui.add_job.field.plugin_profile_for", plugin=option),
+                    classes="add-job-label",
+                )
+                yield Input(
+                    default_profiles.get(option, ""),
+                    id=self._plugin_profile_widget_id(option),
+                )
             yield Static("", id="add-job-error")
             with Horizontal(id="add-job-actions"):
                 yield Button(t("ui.add_job.button.cancel"), id="add-job-cancel")
@@ -124,6 +138,35 @@ class AddJobScreen(ModalScreen[dict | None]):
             return [str(plugin).strip() for plugin in plugins if str(plugin).strip()]
         return []
 
+    def _default_plugin_prompt_profiles(self) -> dict[str, str]:
+        raw = self._defaults.get("plugin_prompt_profiles", {})
+        if not isinstance(raw, dict):
+            return {}
+
+        profiles: dict[str, str] = {}
+        for plugin, profile in raw.items():
+            plugin_name = str(plugin).strip()
+            profile_key = str(profile).strip()
+            if plugin_name and profile_key:
+                profiles[plugin_name] = profile_key
+        return profiles
+
+    def _plugin_profile_widget_id(self, plugin_name: str) -> str:
+        return f"add-job-plugin-profile-{plugin_name}"
+
+    def _collect_plugin_prompt_profiles(
+        self,
+        selected_plugins: list[str],
+    ) -> dict[str, str]:
+        profiles: dict[str, str] = {}
+        for plugin in selected_plugins:
+            profile_key = self.query_one(
+                f"#{self._plugin_profile_widget_id(plugin)}", Input
+            ).value.strip()
+            if profile_key:
+                profiles[plugin] = profile_key
+        return profiles
+
     def _show_error(self, message: str) -> None:
         self.query_one("#add-job-error", Static).update(message)
 
@@ -161,6 +204,7 @@ class AddJobScreen(ModalScreen[dict | None]):
         plugins = [
             option for option in self._plugin_options if option in selected_plugins
         ]
+        plugin_prompt_profiles = self._collect_plugin_prompt_profiles(plugins)
 
         if "move_to_folder" in plugins and destination:
             self._show_error(t("ui.add_job.error.destination_conflict"))
@@ -178,5 +222,7 @@ class AddJobScreen(ModalScreen[dict | None]):
             job["destination"] = destination
         if manual_review_destination:
             job["manual_review_destination"] = manual_review_destination
+        if plugin_prompt_profiles:
+            job["plugin_prompt_profiles"] = plugin_prompt_profiles
 
         self.dismiss(job)

@@ -176,3 +176,42 @@ def test_main_config_select_job_row_invalid_clears_selection(tmp_path: Path) -> 
     tab._select_job_row(9)
 
     assert tab._selected_job_index is None
+
+
+def test_main_config_ensure_reload_button_added_when_missing(tmp_path: Path) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._ui_schema = {"buttons": [{"id": "save", "action": "save"}]}
+
+    tab._ensure_reload_button_in_schema()
+
+    buttons = tab._ui_schema["buttons"]
+    assert isinstance(buttons, list)
+    reload_buttons = [
+        button
+        for button in buttons
+        if isinstance(button, dict) and button.get("id") == "reload"
+    ]
+    assert len(reload_buttons) == 1
+    assert reload_buttons[0].get("label_key") == "ui.main.button.reload"
+
+
+def test_main_config_ensure_reload_button_not_duplicated(tmp_path: Path) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._ui_schema = {
+        "buttons": [
+            {
+                "id": "reload",
+                "label_key": "ui.main.button.reload",
+                "action": "reload",
+            }
+        ]
+    }
+
+    tab._ensure_reload_button_in_schema()
+
+    buttons = tab._ui_schema["buttons"]
+    assert isinstance(buttons, list)
+    assert (
+        len([b for b in buttons if isinstance(b, dict) and b.get("id") == "reload"])
+        == 1
+    )

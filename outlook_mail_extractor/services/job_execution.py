@@ -1,5 +1,6 @@
 """Application service that orchestrates config-driven job execution."""
 
+import asyncio
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -109,6 +110,7 @@ class JobExecutionService:
         no_move: bool = False,
         preserve_reply_thread: bool = False,
         max_length: int = 800,
+        cancel_requested: Callable[[], bool] | None = None,
     ) -> dict:
         """
         Process all enabled jobs from a config file.
@@ -189,6 +191,10 @@ class JobExecutionService:
             all_results = {}
 
             for job in config.get("jobs", []):
+                if cancel_requested and cancel_requested():
+                    logger.info("Cancellation requested. Stopping job execution.")
+                    raise asyncio.CancelledError("Job execution cancelled by user")
+
                 if job.get("enable", True) is False:
                     job_name = job.get("name", "Unnamed Job")
                     logger.info(t("log.job_execution.job_skipped", name=job_name))
@@ -204,6 +210,7 @@ class JobExecutionService:
                     dry_run=dry_run,
                     no_move=no_move,
                     llm_mode=default_llm_mode,
+                    cancel_requested=cancel_requested,
                 )
                 all_results[job_name] = results
                 logger.info(
@@ -219,6 +226,9 @@ class JobExecutionService:
 
             logger.info(t("log.job_execution.completed"))
             return clean_invisible_chars(all_results)
+        except asyncio.CancelledError:
+            logger.info("Job execution cancelled by user.")
+            raise
         except (DomainError, InfrastructureError, UserVisibleError) as e:
             logger.exception(t("log.job_execution.failed", error=e))
             raise

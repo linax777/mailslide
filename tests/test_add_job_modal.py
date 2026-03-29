@@ -36,6 +36,8 @@ def test_add_job_modal_submit_includes_manual_review_destination() -> None:
         "add-job-manual-review-destination": _FakeInput("Inbox/manual_review"),
         "add-job-limit": _FakeInput("10"),
         "add-job-plugins": _FakeSelectionList(["add_category"]),
+        "add-job-plugin-profile-add_category": _FakeInput(""),
+        "add-job-plugin-profile-move_to_folder": _FakeInput(""),
         "add-job-enable": _FakeSwitch(True),
         "add-job-error": _FakeStatic(),
     }
@@ -62,6 +64,7 @@ def test_add_job_modal_submit_blocks_move_plugin_with_destination() -> None:
         "add-job-manual-review-destination": _FakeInput("Inbox/manual_review"),
         "add-job-limit": _FakeInput("10"),
         "add-job-plugins": _FakeSelectionList(["move_to_folder"]),
+        "add-job-plugin-profile-move_to_folder": _FakeInput(""),
         "add-job-enable": _FakeSwitch(True),
         "add-job-error": error,
     }
@@ -76,3 +79,63 @@ def test_add_job_modal_submit_blocks_move_plugin_with_destination() -> None:
         "不要設定 destination" in error.content
         or "Do not set destination" in error.content
     )
+
+
+def test_add_job_modal_submit_includes_plugin_prompt_profiles() -> None:
+    screen = AddJobScreen(
+        plugin_options=["add_category", "create_appointment", "move_to_folder"]
+    )
+    widgets: dict[str, Any] = {
+        "add-job-name": _FakeInput("job-a"),
+        "add-job-account": _FakeInput("a@example.com"),
+        "add-job-source": _FakeInput("Inbox"),
+        "add-job-destination": _FakeInput(""),
+        "add-job-manual-review-destination": _FakeInput(""),
+        "add-job-limit": _FakeInput("10"),
+        "add-job-plugins": _FakeSelectionList(["add_category", "create_appointment"]),
+        "add-job-plugin-profile-add_category": _FakeInput("invoice_v1"),
+        "add-job-plugin-profile-create_appointment": _FakeInput("meeting_v2"),
+        "add-job-plugin-profile-move_to_folder": _FakeInput("routing_v1"),
+        "add-job-enable": _FakeSwitch(True),
+        "add-job-error": _FakeStatic(),
+    }
+    screen.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+    captured: dict[str, object] = {}
+    screen.dismiss = lambda result: captured.setdefault("result", result)  # type: ignore[method-assign]
+
+    screen._submit()
+
+    result = captured["result"]
+    assert isinstance(result, dict)
+    assert result["plugins"] == ["add_category", "create_appointment"]
+    assert result["plugin_prompt_profiles"] == {
+        "add_category": "invoice_v1",
+        "create_appointment": "meeting_v2",
+    }
+
+
+def test_add_job_modal_submit_ignores_unselected_plugin_profile() -> None:
+    screen = AddJobScreen(plugin_options=["add_category", "create_appointment"])
+    widgets: dict[str, Any] = {
+        "add-job-name": _FakeInput("job-a"),
+        "add-job-account": _FakeInput("a@example.com"),
+        "add-job-source": _FakeInput("Inbox"),
+        "add-job-destination": _FakeInput(""),
+        "add-job-manual-review-destination": _FakeInput(""),
+        "add-job-limit": _FakeInput("10"),
+        "add-job-plugins": _FakeSelectionList(["add_category"]),
+        "add-job-plugin-profile-add_category": _FakeInput("invoice_v1"),
+        "add-job-plugin-profile-create_appointment": _FakeInput("meeting_v2"),
+        "add-job-enable": _FakeSwitch(True),
+        "add-job-error": _FakeStatic(),
+    }
+    screen.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+    captured: dict[str, object] = {}
+    screen.dismiss = lambda result: captured.setdefault("result", result)  # type: ignore[method-assign]
+
+    screen._submit()
+
+    result = captured["result"]
+    assert isinstance(result, dict)
+    assert result["plugins"] == ["add_category"]
+    assert result["plugin_prompt_profiles"] == {"add_category": "invoice_v1"}

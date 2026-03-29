@@ -1,11 +1,12 @@
 """Outlook connection and email processing core module"""
 
+import asyncio
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
-from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import pythoncom
 import win32com.client
@@ -27,6 +28,7 @@ from .models import (
     EmailAnalysisResult,
     InfrastructureError,
     LLMConfigStatus,
+    PluginExecutionResult,
 )
 from .move_policy import select_move_target
 from .parser import clean_content, parse_email_html
@@ -319,6 +321,7 @@ class EmailProcessor:
         dry_run: bool = False,
         no_move: bool = False,
         llm_mode: str = LLM_MODE_PER_PLUGIN,
+        cancel_requested: Callable[[], bool] | None = None,
     ) -> list[EmailAnalysisResult]:
         """
         Process single job with LLM analysis and plugins.
@@ -401,39 +404,47 @@ class EmailProcessor:
 
         # Process each email
         results = []
-        for msg in msg_list:
-            result = await self._process_email(
-                msg,
-                account_name,
-                llm_client,
-                plugins,
-                dry_run,
-                no_move,
-                destination_folder_name,
-                manual_review_destination_folder_name,
-                body_max_length,
-                effective_llm_mode,
-            )
-            results.append(result)
+        try:
+            for msg in msg_list:
+                if cancel_requested and cancel_requested():
+                    raise asyncio.CancelledError(
+                        "Job execution cancelled before processing next email"
+                    )
 
-        for plugin in plugins:
-            end_job = getattr(plugin, "end_job", None)
-            if not callable(end_job):
-                continue
-            flush_result = end_job()
-            if not flush_result:
-                continue
-            if flush_result.success:
-                logger.info(
-                    f"Plugin {plugin.name} finalize success: {flush_result.message}"
+                result = await self._process_email(
+                    msg,
+                    account_name,
+                    llm_client,
+                    plugins,
+                    dry_run,
+                    no_move,
+                    destination_folder_name,
+                    manual_review_destination_folder_name,
+                    body_max_length,
+                    effective_llm_mode,
+                    cancel_requested=cancel_requested,
                 )
-                continue
+                results.append(result)
+        finally:
+            for plugin in plugins:
+                end_job = getattr(plugin, "end_job", None)
+                if not callable(end_job):
+                    continue
+                flush_result = end_job()
+                if not isinstance(flush_result, PluginExecutionResult):
+                    continue
+                typed_flush_result = cast(PluginExecutionResult, flush_result)
+                if typed_flush_result.success:
+                    logger.info(
+                        f"Plugin {plugin.name} finalize success: {typed_flush_result.message}"
+                    )
+                    continue
 
-            pending_rows = int(flush_result.details.get("pending_rows", 0))
-            logger.warning(
-                f"Plugin {plugin.name} finalize failed: {flush_result.message} "
-                f"(pending_rows={pending_rows})"
-            )
+                pending_rows = int(typed_flush_result.details.get("pending_rows", 0))
+                logger.warning(
+                    f"Plugin {plugin.name} finalize failed: {typed_flush_result.message} "
+                    f"(pending_rows={pending_rows})"
+                )
 
         total_mail_ms = sum(
             float(result.metrics.get("mail_elapsed_ms", 0.0))
@@ -482,7 +493,7 @@ class EmailProcessor:
         self,
         message,
         account_name: str,
-        llm_client: LLMClient | None,
+        llm_client: Any | None,
         plugins: list,
         dry_run: bool,
         no_move: bool,
@@ -490,6 +501,7 @@ class EmailProcessor:
         manual_review_destination_folder_name: str | None = None,
         body_max_length: int | None = None,
         llm_mode: str = LLM_MODE_PER_PLUGIN,
+        cancel_requested: Callable[[], bool] | None = None,
     ) -> EmailAnalysisResult:
         """Process single email with LLM and plugins"""
         logger = get_logger()
@@ -523,6 +535,10 @@ class EmailProcessor:
         moved_by_plugin = False
         if not dry_run:
             for plugin in plugins_no_llm:
+                if cancel_requested and cancel_requested():
+                    raise asyncio.CancelledError(
+                        "Job execution cancelled before non-LLM plugin execution"
+                    )
                 logger.info(t("log.core.run_plugin_without_llm", plugin=plugin.name))
                 plugin_result, moved = await execute_plugin(
                     plugin,
@@ -541,6 +557,11 @@ class EmailProcessor:
         llm_elapsed_ms = 0.0
 
         if plugins_needing_llm:
+            if cancel_requested and cancel_requested():
+                raise asyncio.CancelledError(
+                    "Job execution cancelled before LLM dispatch"
+                )
+
             llm_dispatch_result = await dispatch_llm_plugins(
                 plugins=plugins_needing_llm,
                 llm_client=llm_client,
@@ -550,6 +571,7 @@ class EmailProcessor:
                 email_data=email_data,
                 action_port=action_port,
                 logger=logger,
+                cancel_requested=cancel_requested,
             )
             plugin_results.extend(llm_dispatch_result.plugin_results)
             llm_response = llm_dispatch_result.llm_response

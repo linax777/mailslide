@@ -97,6 +97,11 @@ _ui:
       label_key: "ui.main.button.validate"
       action: validate
       variant: default
+    - id: reload
+      label: "重新載入"
+      label_key: "ui.main.button.reload"
+      action: reload
+      variant: default
     - id: save
       label: "儲存"
       label_key: "ui.main.button.save"
