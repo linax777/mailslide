@@ -9,6 +9,7 @@ import pytest
 from outlook_mail_extractor.core import (
     EmailProcessor,
     OutlookClient,
+    OutlookConnectionError,
     process_config_file,
 )
 from outlook_mail_extractor.models import EmailAnalysisResult, EmailDTO
@@ -189,6 +190,24 @@ def test_no_llm_plugin_still_executes() -> None:
     assert result.success is True
     assert plugin.execute_calls == 1
     assert message.move_calls == 0
+
+
+def test_outlook_client_connect_requires_pywin32(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import outlook_mail_extractor.core as core
+
+    monkeypatch.setattr(core, "pythoncom", None)
+    monkeypatch.setattr(core, "win32com_client", None)
+    monkeypatch.setattr(
+        core,
+        "_OUTLOOK_COM_IMPORT_ERROR",
+        ModuleNotFoundError("No module named 'pythoncom'"),
+    )
+
+    client = OutlookClient()
+    with pytest.raises(OutlookConnectionError, match=r"pywin32"):
+        client.connect()
 
 
 def test_process_job_cancellation_stops_before_next_message() -> None:

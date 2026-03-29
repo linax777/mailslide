@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
-## [v0.3.10rc1] - 2026-03-29
+## [v0.3.10rc2] - 2026-03-29
 
 ### Changed
 
@@ -19,6 +19,7 @@ The format is based on Keep a Changelog, with entries grouped by release date.
 
 - Fixed Home-tab `⏹️ 終止` / Stop button behavior where pressing stop only cancelled the UI worker but did not actually interrupt background execution; stop requests now halt execution at the next safe checkpoint (before next job, next mail, next plugin, and before each LLM call).
 - Fixed prompt-profile rename propagation reliability by adding plugin-side rename inference fallback and plugin-name callback fallback, so job `plugin_prompt_profiles` references are still synchronized even when explicit rename metadata is missing.
+- Fixed Linux/macOS CI import failures by guarding Outlook COM imports in `core.py`; non-Windows environments now raise a clear runtime `OutlookConnectionError` only when Outlook connection is attempted, instead of failing at module import time.
 
 ### Added
 

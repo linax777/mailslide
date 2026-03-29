@@ -8,8 +8,14 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
-import pythoncom
-import win32com.client
+_OUTLOOK_COM_IMPORT_ERROR: Exception | None = None
+try:
+    import pythoncom
+    import win32com.client as win32com_client
+except Exception as exc:  # pragma: no cover - platform/environment dependent
+    pythoncom = None  # type: ignore[assignment]
+    win32com_client = None  # type: ignore[assignment]
+    _OUTLOOK_COM_IMPORT_ERROR = exc
 
 from .adapters import OutlookMailActionAdapter
 from .i18n import t
@@ -67,13 +73,28 @@ class OutlookClient:
         Raises:
             OutlookConnectionError: When connection fails
         """
+        if pythoncom is None or win32com_client is None:
+            detail = (
+                f"\nDetails: {_OUTLOOK_COM_IMPORT_ERROR}"
+                if _OUTLOOK_COM_IMPORT_ERROR
+                else ""
+            )
+            raise OutlookConnectionError(
+                "Outlook COM libraries are unavailable. "
+                "Please run on Windows and install pywin32."
+                f"{detail}"
+            )
+
         try:
             pythoncom.CoInitialize()
-            self._outlook = win32com.client.Dispatch("Outlook.Application")
+            self._outlook = win32com_client.Dispatch("Outlook.Application")
             self._mapi = self._outlook.GetNamespace("MAPI")
             self._connected = True
         except Exception as e:
-            pythoncom.CoUninitialize()
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
             raise OutlookConnectionError(
                 f"Cannot connect to Outlook. Please ensure Microsoft Outlook Classic "
                 f"is installed and logged in.\nDetails: {e}"
@@ -82,7 +103,8 @@ class OutlookClient:
     def disconnect(self) -> None:
         """Close Outlook connection"""
         if self._connected:
-            pythoncom.CoUninitialize()
+            if pythoncom is not None:
+                pythoncom.CoUninitialize()
             self._outlook = None
             self._mapi = None
             self._connected = False
