@@ -1,6 +1,6 @@
 [project]
 name = "mailslide"
-version = "0.3.10"
+version = "0.3.10rc1"
 description = "Extract, analyze, and automate Outlook Classic emails on Windows, with optional LLM-powered plugins."
 readme = "README.md"
 requires-python = ">=3.13"

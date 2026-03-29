@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date.
 
-## [v0.3.10] - 2026-03-29
+## [v0.3.10rc1] - 2026-03-29
 
 ### Changed
 
