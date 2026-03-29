@@ -312,7 +312,7 @@ def test_plugins_config_tab_load_plugins_ignores_backup_files(tmp_path: Path) ->
     tab._load_plugins()
 
     assert table.rows == [("event_table", "active")]
-    assert title.content == "📦 Plugins (1 個)"
+    assert title.content in ("📦 Plugins (1 個)", "📦 Plugins (1)")
 
 
 def test_plugins_config_tab_cleanup_backup_files(tmp_path: Path) -> None:

@@ -20,7 +20,6 @@ opencode.jsonc
 .ruff_cache
 scripts/release_pypi.ps1
 scripts/sync_guides.ps1
-scripts/update_version.ps1
 
 # config
 config/*.yaml
