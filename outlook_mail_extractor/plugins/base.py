@@ -69,6 +69,24 @@ class BasePlugin(ABC):
             response_json_format=config.get("response_json_format"),
         )
 
+    def _load_common_config(
+        self,
+        config: dict,
+        *,
+        response_json_format_default: dict[str, str] | None = None,
+    ) -> PluginConfig:
+        """Load common plugin config fields with optional JSON format defaults."""
+        return PluginConfig(
+            enabled=config.get("enabled", True),
+            system_prompt=config.get("system_prompt", self.default_system_prompt),
+            response_format=config.get("response_format", "json"),
+            override_prompt=config.get("override_prompt"),
+            response_json_format=config.get(
+                "response_json_format",
+                response_json_format_default,
+            ),
+        )
+
     def _wrap_unexpected_error(
         self, context: str, error: Exception
     ) -> InfrastructureError:

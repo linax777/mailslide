@@ -23,6 +23,7 @@ from textual.worker import Worker
 from . import __version__
 from .i18n import get_language, resolve_language, set_language, t
 from .runtime import get_runtime_context
+from .screens.config.io_helpers import write_yaml_with_backup
 from .screens import (
     AboutScreen,
     ConfigScreen,
@@ -301,23 +302,11 @@ class OutlookMailExtractor(App):
             payload = {"jobs": []}
 
         payload["ui_language"] = language
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-
-        backup_path = config_path.with_suffix(".yaml.bak")
-        if config_path.exists():
-            backup_path.write_text(
-                config_path.read_text(encoding="utf-8"), encoding="utf-8"
-            )
-
-        text = yaml.safe_dump(
+        write_yaml_with_backup(
+            config_path,
             payload,
-            allow_unicode=True,
-            sort_keys=False,
-            default_flow_style=False,
+            backup_path=config_path.with_suffix(".yaml.bak"),
         )
-        temp_path = config_path.with_name(f".{config_path.name}.tmp")
-        temp_path.write_text(text, encoding="utf-8")
-        temp_path.replace(config_path)
 
 
 def main() -> int:

@@ -20,6 +20,13 @@ from textual.widgets import (
 
 from ...i18n import t
 from ...ui_schema import evaluate_rules, schema_text
+from .plugin_editor_payload import extract_json_format_raw, parse_json_format_examples
+from .plugin_editor_state import (
+    init_prompt_profiles_state,
+    record_prompt_profile_rename,
+    resolve_prompt_profile_rename,
+)
+from .plugin_editor_view import schema_actions
 
 
 class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
@@ -466,40 +473,16 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         return field_name in {"action", "start", "end"}
 
     def _extract_json_format_raw(self, config: dict[str, Any]) -> dict[str, str]:
-        json_format = config.get("response_json_format")
-        if not isinstance(json_format, dict):
-            return {}
-        return {str(key): str(value) for key, value in json_format.items()}
+        return extract_json_format_raw(config)
 
     def _parse_json_format_examples(
         self,
         raw: dict[str, str],
     ) -> tuple[dict[str, dict[str, Any]], list[str]]:
-        parsed: dict[str, dict[str, Any]] = {}
-        unparsed: list[str] = []
-        for key, value in raw.items():
-            try:
-                payload = json.loads(value)
-            except json.JSONDecodeError:
-                unparsed.append(key)
-                continue
-            if not isinstance(payload, dict):
-                unparsed.append(key)
-                continue
-            parsed[key] = payload
-        return parsed, unparsed
+        return parse_json_format_examples(raw)
 
     def _schema_actions(self) -> set[str]:
-        actions: set[str] = set()
-        for button in self._buttons:
-            if not isinstance(button, dict):
-                continue
-            action = str(button.get("action", "")).strip().lower()
-            if action:
-                actions.add(action)
-        if not actions:
-            return {"validate", "save"}
-        return actions
+        return schema_actions(self._buttons)
 
     def _show_error(self, message: str) -> None:
         self.query_one("#plugin-editor-error", Static).update(message)
@@ -709,38 +692,10 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         )
 
     def _init_prompt_profiles_state(self) -> dict[str, dict[str, Any]]:
-        if not self._use_prompt_profile_editor:
-            return {}
-
-        raw_profiles = self._current.get("prompt_profiles", {})
-        parsed: dict[str, dict[str, Any]] = {}
-        if isinstance(raw_profiles, dict):
-            for key, value in raw_profiles.items():
-                profile_key = str(key)
-                if isinstance(value, dict):
-                    parsed[profile_key] = {
-                        "version": value.get("version", 1),
-                        "description": str(value.get("description", "")),
-                        "system_prompt": str(value.get("system_prompt", "")),
-                    }
-                else:
-                    parsed[profile_key] = {
-                        "version": 1,
-                        "description": "",
-                        "system_prompt": str(value),
-                    }
-
-        if parsed:
-            return parsed
-
-        fallback_prompt = str(self._current.get("system_prompt", "")).strip()
-        return {
-            "default_v1": {
-                "version": 1,
-                "description": "",
-                "system_prompt": fallback_prompt,
-            }
-        }
+        return init_prompt_profiles_state(
+            use_prompt_profile_editor=self._use_prompt_profile_editor,
+            current=self._current,
+        )
 
     def _prompt_profile_value(self, key: str, field: str) -> str:
         profile = self._prompt_profiles_state.get(key, {})
@@ -748,40 +703,14 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         return "" if value is None else str(value)
 
     def _record_prompt_profile_rename(self, old_key: str, new_key: str) -> None:
-        if old_key == new_key:
-            return
-
-        rewrites: dict[str, str] = {}
-        for source, target in self._prompt_profile_renames.items():
-            rewrites[source] = new_key if target == old_key else target
-        rewrites[old_key] = new_key
-
-        for source in list(rewrites.keys()):
-            seen = {source}
-            target = rewrites[source]
-            while target in rewrites and target not in seen:
-                seen.add(target)
-                target = rewrites[target]
-            rewrites[source] = target
-
-        self._prompt_profile_renames = {
-            source: target
-            for source, target in rewrites.items()
-            if source and target and source != target
-        }
+        self._prompt_profile_renames = record_prompt_profile_rename(
+            self._prompt_profile_renames,
+            old_key,
+            new_key,
+        )
 
     def _resolve_prompt_profile_rename(self, profile_key: str) -> str:
-        current = str(profile_key).strip()
-        if not current:
-            return ""
-
-        seen = {current}
-        while current in self._prompt_profile_renames:
-            current = self._prompt_profile_renames[current]
-            if current in seen:
-                break
-            seen.add(current)
-        return current
+        return resolve_prompt_profile_rename(profile_key, self._prompt_profile_renames)
 
     def _save_active_prompt_profile_fields(self) -> None:
         key = self._active_prompt_profile

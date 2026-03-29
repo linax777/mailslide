@@ -2,20 +2,10 @@
 
 import asyncio
 import json
-import re
 from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
-
-_OUTLOOK_COM_IMPORT_ERROR: Exception | None = None
-try:
-    import pythoncom
-    import win32com.client as win32com_client
-except Exception as exc:  # pragma: no cover - platform/environment dependent
-    pythoncom = None  # type: ignore[assignment]
-    win32com_client = None  # type: ignore[assignment]
-    _OUTLOOK_COM_IMPORT_ERROR = exc
 
 from .adapters import OutlookMailActionAdapter
 from .i18n import t
@@ -37,10 +27,19 @@ from .models import (
     PluginExecutionResult,
 )
 from .move_policy import select_move_target
-from .parser import clean_content, parse_email_html
 from .plugins import get_plugin, load_plugin_configs
 from .plugin_runner import execute_plugin
 from .runtime import RuntimeContext, get_runtime_context
+
+
+_OUTLOOK_COM_IMPORT_ERROR: Exception | None = None
+try:
+    import pythoncom
+    import win32com.client as win32com_client
+except Exception as exc:  # pragma: no cover - platform/environment dependent
+    pythoncom = None  # type: ignore[assignment]
+    win32com_client = None  # type: ignore[assignment]
+    _OUTLOOK_COM_IMPORT_ERROR = exc
 
 
 LLM_MODE_SHARE_DEPRECATED = _LLM_MODE_SHARE_DEPRECATED
@@ -247,92 +246,22 @@ class EmailProcessor:
         self._client = client
         self._preserve_reply_thread = preserve_reply_thread
         self._max_length = max_length
+        from .services.email_extraction_service import EmailExtractionService
+        from .services.job_metrics_collector import JobMetricsCollector
+        from .services.message_collector import MessageCollector
+
+        self._message_collector = MessageCollector()
+        self._email_extraction_service = EmailExtractionService(
+            preserve_reply_thread=preserve_reply_thread,
+            max_length=max_length,
+        )
+        self._job_metrics_collector = JobMetricsCollector()
 
     def extract_email_data(self, message, max_length: int | None = None) -> EmailDTO:
         """Extract data from single email"""
-        logger = get_logger()
-        raw_body = str(message.Body) if getattr(message, "Body", None) else ""
-        html_body = str(message.HTMLBody) if getattr(message, "HTMLBody", None) else ""
-        subject = str(message.Subject) if getattr(message, "Subject", None) else ""
-        parsed_html = parse_email_html(html_body, use_cache=True)
-        html_clean_body = clean_content(
-            parsed_html.text,
-            max_length=max_length or self._max_length,
-            subject=subject,
-            preserve_reply_thread=self._preserve_reply_thread,
-        )
-        plain_clean_body = clean_content(
-            raw_body,
-            max_length=max_length or self._max_length,
-            subject=subject,
-            preserve_reply_thread=self._preserve_reply_thread,
-        )
-        clean_body = (
-            html_clean_body
-            if len(html_clean_body) >= len(plain_clean_body)
-            else plain_clean_body
-        )
-        logger.debug(
-            t(
-                "log.core.mail_body_cleaned",
-                plain=len(raw_body),
-                html=len(html_body),
-                cleaned=len(clean_body),
-            )
-        )
-
-        store_id = ""
-        try:
-            parent = getattr(message, "Parent", None)
-            store_id = str(getattr(parent, "StoreID", ""))
-        except Exception:
-            store_id = ""
-
-        internet_message_id = str(getattr(message, "InternetMessageID", "")).strip()
-        if not internet_message_id:
-            try:
-                property_accessor = getattr(message, "PropertyAccessor", None)
-                if property_accessor is not None:
-                    internet_message_id = str(
-                        property_accessor.GetProperty(
-                            "http://schemas.microsoft.com/mapi/proptag/0x1035001F"
-                        )
-                    ).strip()
-            except Exception:
-                internet_message_id = ""
-
-        if not internet_message_id:
-            try:
-                property_accessor = getattr(message, "PropertyAccessor", None)
-                if property_accessor is not None:
-                    transport_headers = str(
-                        property_accessor.GetProperty(
-                            "http://schemas.microsoft.com/mapi/proptag/0x007D001F"
-                        )
-                    )
-                    match = re.search(
-                        r"^Message-ID:\s*(.+)$",
-                        transport_headers,
-                        flags=re.IGNORECASE | re.MULTILINE,
-                    )
-                    if match:
-                        internet_message_id = match.group(1).strip()
-            except Exception:
-                internet_message_id = ""
-
-        return EmailDTO(
-            subject=str(getattr(message, "Subject", "")),
-            sender=str(
-                message.SenderEmailAddress
-                if hasattr(message, "SenderEmailAddress")
-                else getattr(message, "SenderName", "")
-            ),
-            received=str(getattr(message, "ReceivedTime", "")),
-            body=clean_body,
-            tables=parsed_html.tables,
-            entry_id=str(getattr(message, "EntryID", "")),
-            store_id=store_id,
-            internet_message_id=internet_message_id,
+        return self._email_extraction_service.extract_email_data(
+            message,
+            max_length=max_length,
         )
 
     async def process_job(
@@ -385,16 +314,10 @@ class EmailProcessor:
         )
 
         # Get messages from source folder (sorted by date, newest first)
-        messages = src_folder.Items
-        messages.Sort("[ReceivedTime]", True)
-
-        # Get messages up to limit
-        msg_list: list[Any] = []
-        msg = messages.GetFirst()
-        while msg and len(msg_list) < limit:
-            if getattr(msg, "Class", None) == 43:  # Mail item
-                msg_list.append(msg)
-            msg = messages.GetNext()
+        msg_list = self._message_collector.collect_messages(
+            src_folder.Items,
+            limit=limit,
+        )
 
         if not msg_list:
             logger.info(
@@ -468,45 +391,11 @@ class EmailProcessor:
                     f"(pending_rows={pending_rows})"
                 )
 
-        total_mail_ms = sum(
-            float(result.metrics.get("mail_elapsed_ms", 0.0))
-            for result in results
-            if isinstance(result.metrics, dict)
+        job_metric = self._job_metrics_collector.build_job_metric(
+            job_name=str(job_config.get("name", "Unnamed Job")),
+            results=results,
+            batch_flush_enabled=batch_flush_enabled,
         )
-        llm_call_count = sum(
-            int(result.metrics.get("llm_call_count", 0))
-            for result in results
-            if isinstance(result.metrics, dict)
-        )
-        llm_elapsed_ms = sum(
-            float(result.metrics.get("llm_elapsed_ms", 0.0))
-            for result in results
-            if isinstance(result.metrics, dict)
-        )
-        job_plugin_status_distribution = {
-            "success": 0,
-            "skipped": 0,
-            "failed": 0,
-            "retriable_failed": 0,
-        }
-        for result in results:
-            if not isinstance(result.metrics, dict):
-                continue
-            distribution = result.metrics.get("plugin_status_distribution", {})
-            if not isinstance(distribution, dict):
-                continue
-            for key in job_plugin_status_distribution:
-                job_plugin_status_distribution[key] += int(distribution.get(key, 0))
-
-        job_metric = {
-            "job_name": job_config.get("name", "Unnamed Job"),
-            "mail_count": len(results),
-            "mail_elapsed_ms": round(total_mail_ms, 2),
-            "llm_call_count": llm_call_count,
-            "llm_elapsed_ms": round(llm_elapsed_ms, 2),
-            "plugin_status_distribution": job_plugin_status_distribution,
-            "batch_flush_enabled": batch_flush_enabled,
-        }
         logger.info(f"METRIC job_summary {json.dumps(job_metric, ensure_ascii=False)}")
 
         return results

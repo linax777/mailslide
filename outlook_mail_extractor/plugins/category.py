@@ -49,14 +49,9 @@ class AddCategoryPlugin(BasePlugin):
         self.config = self._load_config(config)
 
     def _load_config(self, config: dict) -> PluginConfig:
-        return PluginConfig(
-            enabled=config.get("enabled", True),
-            system_prompt=config.get("system_prompt", self.default_system_prompt),
-            response_format=config.get("response_format", "json"),
-            override_prompt=config.get("override_prompt"),
-            response_json_format=config.get(
-                "response_json_format", self.default_response_json_format
-            ),
+        return self._load_common_config(
+            config,
+            response_json_format_default=self.default_response_json_format,
         )
 
     async def execute(

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -687,3 +688,36 @@ def test_plugins_config_tab_infer_prompt_profile_rename_from_payload(
     )
 
     assert inferred == {"general_v1": "invoice_v2"}
+
+
+def test_plugin_config_editor_cancel_button_dismisses_modal() -> None:
+    schema: dict[str, Any] = {"fields": {}, "validation_rules": []}
+    modal = PluginConfigEditorModal("demo", schema, {})
+    dismissed: list[dict[str, Any] | None] = []
+
+    def _dismiss(payload: dict[str, Any] | None) -> None:
+        dismissed.append(payload)
+
+    modal.dismiss = cast(Any, _dismiss)  # type: ignore[method-assign]
+
+    event = SimpleNamespace(button=SimpleNamespace(id="plugin-editor-cancel"))
+    modal.on_button_pressed(cast(Any, event))
+
+    assert dismissed == [None]
+
+
+def test_plugin_config_editor_save_shows_error_when_payload_invalid() -> None:
+    schema: dict[str, Any] = {"fields": {}, "validation_rules": []}
+    modal = PluginConfigEditorModal("demo", schema, {})
+    errors: list[str] = []
+
+    def _raise_invalid_payload() -> dict[str, Any]:
+        raise ValueError("invalid payload")
+
+    modal._collect_payload = _raise_invalid_payload  # type: ignore[method-assign]
+    modal._show_error = lambda message: errors.append(message)  # type: ignore[method-assign]
+
+    event = SimpleNamespace(button=SimpleNamespace(id="plugin-editor-save"))
+    modal.on_button_pressed(cast(Any, event))
+
+    assert errors == ["invalid payload"]

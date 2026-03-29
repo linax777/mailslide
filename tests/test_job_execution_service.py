@@ -5,6 +5,7 @@ from typing import Any, cast
 
 import pytest
 
+from outlook_mail_extractor.models import DomainError
 from outlook_mail_extractor.services.job_execution import JobExecutionService
 
 
@@ -14,7 +15,7 @@ def test_normalize_plugin_output_paths_resolves_relative_to_config_dir(
     service = JobExecutionService()
     base_dir = tmp_path / "config-root"
 
-    configs = {
+    configs: dict[str, dict[str, Any]] = {
         "write_file": {"output_dir": "output"},
         "summary_file": {"output_file": "output/email_summaries.csv"},
         "event_table": {"output_file": "output/events.xlsx"},
@@ -40,7 +41,7 @@ def test_normalize_plugin_output_paths_keeps_absolute_and_unrelated_values(
     base_dir = tmp_path / "config-root"
     absolute = (tmp_path / "exports" / "events.xlsx").resolve()
 
-    configs = {
+    configs: dict[str, dict[str, Any]] = {
         "event_table": {"output_file": str(absolute), "enabled": True},
         "add_category": {"response_format": "json"},
     }
@@ -173,3 +174,37 @@ def test_process_config_file_cancelled_before_second_job() -> None:
 
     assert len(processors) == 1
     assert processors[0].processed_jobs == ["job-1"]
+
+
+def test_process_config_file_propagates_domain_error_and_disconnects_client() -> None:
+    clients: list[_FakeClient] = []
+
+    def client_factory() -> _FakeClient:
+        client = _FakeClient()
+        clients.append(client)
+        return client
+
+    class _FailingProcessor:
+        def __init__(self, _client, **_kwargs) -> None:
+            del _kwargs
+
+        async def process_job(self, job_config: dict, **_kwargs) -> list[dict]:
+            del job_config
+            raise DomainError("source folder missing")
+
+    service = JobExecutionService(
+        client_factory=cast(Any, client_factory),
+        processor_factory=cast(Any, _FailingProcessor),
+        config_loader=lambda _path: {
+            "jobs": [{"name": "job-1", "account": "acc", "source": "Inbox"}]
+        },
+        llm_config_loader=lambda _path: SimpleNamespace(api_base="", model=""),
+        plugin_config_loader=lambda _path: {},
+        logger_manager=_FakeLoggerManager(),
+    )
+
+    with pytest.raises(DomainError, match="source folder missing"):
+        asyncio.run(service.process_config_file(config_file="dummy.yaml"))
+
+    assert len(clients) == 1
+    assert clients[0].disconnect_calls == 1

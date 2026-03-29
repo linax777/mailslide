@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date
 
+## [v0.4.0rc1] - 2026-03-29
+
+### Changed
+
+- Refactored `EmailProcessor` internals in `outlook_mail_extractor/core.py` to keep orchestration behavior stable while delegating message collection, email extraction, and job-metric aggregation to focused services.
+- Refactored plugin editor modal internals in `outlook_mail_extractor/screens/modals/plugin_config_editor.py` to separate payload/state/view concerns while preserving existing modal contracts and prompt-profile rename sync behavior.
+- Updated TUI language persistence in `outlook_mail_extractor/tui.py` to reuse shared YAML write/backup flow (`write_yaml_with_backup`) instead of inline file-write logic.
+- Updated plugin config loading in target plugins (`calendar`, `event_table`, `summary_file`, `move`, `category`) to use shared base-helper merge logic for common fields.
+
+### Added
+
+- Added service extraction modules:
+  - `outlook_mail_extractor/services/email_extraction_service.py`
+  - `outlook_mail_extractor/services/message_collector.py`
+  - `outlook_mail_extractor/services/job_metrics_collector.py`
+- Added plugin editor helper modules:
+  - `outlook_mail_extractor/screens/modals/plugin_editor_payload.py`
+  - `outlook_mail_extractor/screens/modals/plugin_editor_state.py`
+  - `outlook_mail_extractor/screens/modals/plugin_editor_view.py`
+- Added/expanded characterization and regression coverage for refactor safety in `tests/test_core_high_risk.py`, `tests/test_job_execution_service.py`, and `tests/test_plugin_config_editor.py`.
+- Added a new compound learning document under `docs/solutions/best-practices/service-orchestration-and-plugin-editor-decomposition-2026-03-29.md`.
+
+### Fixed
+
+- Fixed a plugin-editor refactor regression risk by restoring constructor initialization to flow through modal hook/wrapper methods, avoiding direct helper-call bypass for extension/override-safe behavior.
+- Fixed compatibility exports for source launcher and migration package re-exports (`app.py`, `mailslide/__init__.py`) to preserve expected symbols during lint/packaging checks.
+
 ## [v0.3.10] - 2026-03-29
 
 ### Changed

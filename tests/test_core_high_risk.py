@@ -8,6 +8,7 @@ import pytest
 
 from outlook_mail_extractor.core import (
     EmailProcessor,
+    FolderNotFoundError,
     OutlookClient,
     OutlookConnectionError,
     process_config_file,
@@ -307,6 +308,150 @@ def test_process_job_cancellation_stops_before_next_message() -> None:
         )
 
     assert processor.processed_count == 1
+
+
+def test_process_job_propagates_folder_not_found_error() -> None:
+    class _MissingFolderClient:
+        def get_folder(
+            self,
+            account: str,
+            folder_path: str,
+            create_if_missing: bool = False,
+        ):
+            del account
+            del folder_path
+            del create_if_missing
+            raise FolderNotFoundError("Path not found: Inbox")
+
+    processor = EmailProcessor(client=cast(OutlookClient, _MissingFolderClient()))
+
+    with pytest.raises(FolderNotFoundError, match="Path not found"):
+        asyncio.run(
+            processor.process_job(
+                {
+                    "name": "missing-folder",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": [],
+                }
+            )
+        )
+
+
+def test_process_job_cancellation_still_runs_plugin_finalize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import outlook_mail_extractor.core as core
+
+    class _FakeItems:
+        def __init__(self, messages) -> None:
+            self._messages = messages
+            self._index = -1
+
+        def Sort(self, _field: str, _descending: bool) -> None:  # noqa: N802
+            return None
+
+        def GetFirst(self):  # noqa: N802
+            self._index = 0
+            if self._index >= len(self._messages):
+                return None
+            return self._messages[self._index]
+
+        def GetNext(self):  # noqa: N802
+            self._index += 1
+            if self._index >= len(self._messages):
+                return None
+            return self._messages[self._index]
+
+    class _FakeFolder:
+        def __init__(self, messages) -> None:
+            self.Items = _FakeItems(messages)  # noqa: N815
+
+    class _FakeClient:
+        def get_folder(
+            self,
+            account: str,
+            folder_path: str,
+            create_if_missing: bool = False,
+        ):
+            del account
+            del folder_path
+            del create_if_missing
+            return _FakeFolder([SimpleNamespace(Class=43), SimpleNamespace(Class=43)])
+
+    class _FinalizePlugin:
+        def __init__(self) -> None:
+            self.name = "buffered"
+            self.config = SimpleNamespace(enabled=True)
+            self.begin_calls = 0
+            self.end_calls = 0
+
+        def requires_llm(self) -> bool:
+            return False
+
+        def begin_job(self, context: dict | None = None) -> None:
+            del context
+            self.begin_calls += 1
+
+        def end_job(self) -> PluginExecutionResult:
+            self.end_calls += 1
+            return PluginExecutionResult(
+                status=PluginExecutionStatus.SUCCESS,
+                message="flushed",
+            )
+
+        async def execute(
+            self,
+            email_data: EmailDTO,
+            llm_response: str,
+            action_port,
+        ) -> bool:
+            del email_data
+            del llm_response
+            del action_port
+            return True
+
+    plugin = _FinalizePlugin()
+    monkeypatch.setattr(
+        core,
+        "get_plugin",
+        lambda name, config=None: plugin if name == "buffered" else None,
+    )
+
+    class _TestEmailProcessor(EmailProcessor):
+        async def _process_email(self, *args, **kwargs) -> EmailAnalysisResult:
+            del args
+            del kwargs
+            return EmailAnalysisResult(
+                email_subject="mail",
+                llm_response="",
+                plugin_results=[],
+                success=True,
+                metrics={},
+            )
+
+    processor = _TestEmailProcessor(client=cast(OutlookClient, _FakeClient()))
+    call_count = {"count": 0}
+
+    def cancel_requested() -> bool:
+        call_count["count"] += 1
+        return call_count["count"] >= 2
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(
+            processor.process_job(
+                {
+                    "name": "cancel-finalize",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": ["buffered"],
+                },
+                cancel_requested=cancel_requested,
+            )
+        )
+
+    assert plugin.begin_calls == 1
+    assert plugin.end_calls == 1
 
 
 def test_destination_move_works_without_llm_and_plugins() -> None:
