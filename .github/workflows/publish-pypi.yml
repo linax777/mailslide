@@ -1,0 +1,137 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Verify tag/version consistency
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          tag_version = os.environ["GITHUB_REF_NAME"]
+          if tag_version.startswith("v"):
+              tag_version = tag_version[1:]
+
+          pyproject_data = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          pyproject_version = pyproject_data["project"]["version"]
+
+          init_text = pathlib.Path("outlook_mail_extractor/__init__.py").read_text(encoding="utf-8")
+          init_match = re.search(r'^__version__\s*=\s*"([^"]+)"', init_text, re.MULTILINE)
+          if not init_match:
+              print("Cannot parse __version__ from outlook_mail_extractor/__init__.py")
+              sys.exit(1)
+          init_version = init_match.group(1)
+
+          about_text = pathlib.Path("outlook_mail_extractor/screens/about.py").read_text(encoding="utf-8")
+          about_match = re.search(r'^\s*VERSION\s*=\s*"([^"]+)"', about_text, re.MULTILINE)
+          if not about_match:
+              print("Cannot parse VERSION from outlook_mail_extractor/screens/about.py")
+              sys.exit(1)
+          about_version = about_match.group(1)
+
+          changelog = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          changelog_header = f"## [v{pyproject_version}]"
+
+          errors = []
+          if tag_version != pyproject_version:
+              errors.append(f"Tag version ({tag_version}) != pyproject version ({pyproject_version})")
+          if pyproject_version != init_version:
+              errors.append(f"pyproject version ({pyproject_version}) != __init__ version ({init_version})")
+          if pyproject_version != about_version:
+              errors.append(f"pyproject version ({pyproject_version}) != about screen version ({about_version})")
+          if changelog_header not in changelog:
+              errors.append(f"CHANGELOG.md missing header: {changelog_header}")
+
+          if errors:
+              print("Version validation failed:")
+              for item in errors:
+                  print(f"- {item}")
+              sys.exit(1)
+
+          print(f"Version validation passed: {pyproject_version}")
+          PY
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      - name: Build distribution
+        run: uv build
+
+      - name: Check package metadata
+        run: uvx twine check dist/*
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/*
+
+  publish-testpypi:
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'a') || contains(github.ref_name, 'b') || contains(github.ref_name, 'dev') }}
+    environment: testpypi
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'a') && !contains(github.ref_name, 'b') && !contains(github.ref_name, 'dev') }}
+    environment: pypi
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
