@@ -1,0 +1,13 @@
+"""Shared runtime contracts."""
+
+from .dependency_guard import (
+    DEPENDENCY_GUARD_EXIT_CODE,
+    DEPENDENCY_GUARD_REASON,
+    DEPENDENCY_GUARD_TERMINAL_STATUS,
+)
+
+__all__ = [
+    "DEPENDENCY_GUARD_EXIT_CODE",
+    "DEPENDENCY_GUARD_REASON",
+    "DEPENDENCY_GUARD_TERMINAL_STATUS",
+]

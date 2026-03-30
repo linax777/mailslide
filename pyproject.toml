@@ -1,6 +1,6 @@
 [project]
 name = "mailslide"
-version = "0.4.0rc1"
+version = "0.4.0rc2"
 description = "Extract, analyze, and automate Outlook Classic emails on Windows, with optional LLM-powered plugins."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -21,6 +21,11 @@ dependencies = [
 [project.scripts]
 mailslide = "outlook_mail_extractor.__main__:main"
 mailslide-tui = "outlook_mail_extractor.tui:main"
+
+[project.optional-dependencies]
+llm = [
+    "httpx<1",
+]
 
 [tool.setuptools.packages.find]
 include = ["outlook_mail_extractor*", "mailslide*"]

@@ -18,6 +18,7 @@ from .models import (
     AppError,
     CheckStatus,
     ConfigStatus,
+    DependencyGuardError,
     DomainError,
     EmailDTO,
     EmailAnalysisResult,
@@ -38,7 +39,7 @@ from .runtime import (
     get_runtime_context,
 )
 
-__version__ = "0.4.0rc1"
+__version__ = "0.4.0rc2"
 
 if os.environ.get("MAILSLIDE_IMPORT_WARNING") == "1":
     warnings.warn(
@@ -56,6 +57,7 @@ __all__ = [
     "DomainError",
     "InfrastructureError",
     "UserVisibleError",
+    "DependencyGuardError",
     # Core classes
     "OutlookClient",
     "EmailProcessor",

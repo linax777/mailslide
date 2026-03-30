@@ -7,8 +7,13 @@ import sys
 from pathlib import Path
 
 from .config import load_config
+from .contracts.dependency_guard import (
+    DEPENDENCY_GUARD_EXIT_CODE,
+    DEPENDENCY_GUARD_REASON,
+)
 from .i18n import resolve_language, set_language, t
 from .logger import get_logger
+from .models import DependencyGuardError
 from .runtime import get_runtime_context
 from .services.job_execution import JobExecutionService
 from .services.preflight import PreflightCheckService
@@ -126,6 +131,17 @@ async def async_main() -> int:
         logger.info(t("cli.log.finish"))
         return 0
 
+    except DependencyGuardError as e:
+        logger.error(t("log.job_execution.dependency_guard_failed", error=e))
+        print(
+            t(
+                "cli.error.dependency_guard_failed",
+                error=e,
+                reason=DEPENDENCY_GUARD_REASON,
+            ),
+            file=sys.stderr,
+        )
+        return DEPENDENCY_GUARD_EXIT_CODE
     except Exception as e:
         logger.exception(f"執行失敗: {e}")
         print(t("cli.error.execution_failed", error=e), file=sys.stderr)

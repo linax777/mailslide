@@ -5,7 +5,11 @@ from typing import Any, cast
 
 import pytest
 
-from outlook_mail_extractor.models import DomainError
+from outlook_mail_extractor.models import (
+    DependencyGuardError,
+    DomainError,
+    InfrastructureError,
+)
 from outlook_mail_extractor.services.job_execution import JobExecutionService
 
 
@@ -208,3 +212,305 @@ def test_process_config_file_propagates_domain_error_and_disconnects_client() ->
 
     assert len(clients) == 1
     assert clients[0].disconnect_calls == 1
+
+
+def test_process_config_file_uses_dependency_guard_for_llm_jobs() -> None:
+    clients: list[_FakeClient] = []
+    processors: list[_FakeProcessor] = []
+    llm_factory_calls = {"count": 0}
+
+    class _RaisingGuardService:
+        def ensure_llm_runtime_compatible(self) -> None:
+            raise DependencyGuardError("httpx policy mismatch")
+
+    def client_factory() -> _FakeClient:
+        client = _FakeClient()
+        clients.append(client)
+        return client
+
+    def processor_factory(client, **_kwargs) -> _FakeProcessor:
+        processor = _FakeProcessor(client)
+        processors.append(processor)
+        return processor
+
+    def llm_client_factory(_cfg):
+        llm_factory_calls["count"] += 1
+        return SimpleNamespace(close=lambda: None)
+
+    service = JobExecutionService(
+        client_factory=cast(Any, client_factory),
+        processor_factory=cast(Any, processor_factory),
+        config_loader=lambda _path: {
+            "jobs": [
+                {
+                    "name": "job-1",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": ["add_category"],
+                }
+            ]
+        },
+        llm_config_loader=lambda _path: SimpleNamespace(
+            api_base="http://localhost", model=""
+        ),
+        llm_client_factory=cast(Any, llm_client_factory),
+        plugin_config_loader=lambda _path: {"add_category": {}},
+        dependency_guard_service=cast(Any, _RaisingGuardService()),
+        logger_manager=_FakeLoggerManager(),
+    )
+
+    with pytest.raises(DependencyGuardError, match="policy mismatch"):
+        asyncio.run(service.process_config_file(config_file="dummy.yaml"))
+
+    assert clients == []
+    assert processors == []
+    assert llm_factory_calls["count"] == 0
+
+
+def test_process_config_file_dependency_guard_runs_before_llm_client_init() -> None:
+    class _PassingGuardService:
+        def ensure_llm_runtime_compatible(self) -> None:
+            return None
+
+    service = JobExecutionService(
+        client_factory=cast(Any, _FakeClient),
+        processor_factory=cast(Any, _FakeProcessor),
+        config_loader=lambda _path: {
+            "jobs": [
+                {
+                    "name": "job-1",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": ["add_category"],
+                }
+            ]
+        },
+        llm_config_loader=lambda _path: SimpleNamespace(
+            api_base="http://localhost/v1",
+            model="dummy",
+        ),
+        llm_client_factory=lambda _cfg: (_ for _ in ()).throw(
+            RuntimeError("factory called")
+        ),
+        plugin_config_loader=lambda _path: {"add_category": {}},
+        dependency_guard_service=cast(Any, _PassingGuardService()),
+        logger_manager=_FakeLoggerManager(),
+    )
+
+    with pytest.raises(InfrastructureError, match="factory called"):
+        asyncio.run(service.process_config_file(config_file="dummy.yaml"))
+
+
+def test_process_config_file_uses_dependency_guard_for_profile_override_llm_path() -> (
+    None
+):
+    class _RaisingGuardService:
+        def ensure_llm_runtime_compatible(self) -> None:
+            raise DependencyGuardError("prompt-profile policy mismatch")
+
+    service = JobExecutionService(
+        client_factory=cast(Any, _FakeClient),
+        processor_factory=cast(Any, _FakeProcessor),
+        config_loader=lambda _path: {
+            "jobs": [
+                {
+                    "name": "job-1",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": ["write_file"],
+                    "plugin_prompt_profiles": {"write_file": "llm_profile"},
+                }
+            ]
+        },
+        llm_config_loader=lambda _path: SimpleNamespace(api_base="", model=""),
+        plugin_config_loader=lambda _path: {
+            "write_file": {
+                "prompt_profiles": {
+                    "llm_profile": {
+                        "system_prompt": "requires llm response",
+                    }
+                }
+            }
+        },
+        dependency_guard_service=cast(Any, _RaisingGuardService()),
+        logger_manager=_FakeLoggerManager(),
+    )
+
+    with pytest.raises(DependencyGuardError, match="prompt-profile policy mismatch"):
+        asyncio.run(service.process_config_file(config_file="dummy.yaml"))
+
+
+def test_process_config_file_skips_dependency_guard_for_non_llm_jobs() -> None:
+    class _CountingGuardService:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def ensure_llm_runtime_compatible(self) -> None:
+            self.calls += 1
+
+    guard = _CountingGuardService()
+    processors: list[_FakeProcessor] = []
+
+    def processor_factory(client, **_kwargs) -> _FakeProcessor:
+        processor = _FakeProcessor(client)
+        processors.append(processor)
+        return processor
+
+    service = JobExecutionService(
+        client_factory=cast(Any, _FakeClient),
+        processor_factory=cast(Any, processor_factory),
+        config_loader=lambda _path: {
+            "jobs": [
+                {
+                    "name": "job-1",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": ["write_file"],
+                }
+            ]
+        },
+        llm_config_loader=lambda _path: SimpleNamespace(api_base="", model=""),
+        plugin_config_loader=lambda _path: {"write_file": {}},
+        dependency_guard_service=cast(Any, guard),
+        logger_manager=_FakeLoggerManager(),
+    )
+
+    asyncio.run(service.process_config_file(config_file="dummy.yaml"))
+
+    assert guard.calls == 0
+    assert len(processors) == 1
+    assert processors[0].processed_jobs == ["job-1"]
+
+
+def test_process_config_file_runs_dependency_guard_once_for_mixed_jobs() -> None:
+    class _CountingGuardService:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def ensure_llm_runtime_compatible(self) -> None:
+            self.calls += 1
+
+    guard = _CountingGuardService()
+    processors: list[_FakeProcessor] = []
+
+    def processor_factory(client, **_kwargs) -> _FakeProcessor:
+        processor = _FakeProcessor(client)
+        processors.append(processor)
+        return processor
+
+    service = JobExecutionService(
+        client_factory=cast(Any, _FakeClient),
+        processor_factory=cast(Any, processor_factory),
+        config_loader=lambda _path: {
+            "jobs": [
+                {
+                    "name": "job-write",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": ["write_file"],
+                },
+                {
+                    "name": "job-llm",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": ["add_category"],
+                },
+            ]
+        },
+        llm_config_loader=lambda _path: SimpleNamespace(api_base="", model=""),
+        plugin_config_loader=lambda _path: {"write_file": {}, "add_category": {}},
+        dependency_guard_service=cast(Any, guard),
+        logger_manager=_FakeLoggerManager(),
+    )
+
+    asyncio.run(service.process_config_file(config_file="dummy.yaml"))
+
+    assert guard.calls == 1
+    assert len(processors) == 1
+    assert processors[0].processed_jobs == ["job-write", "job-llm"]
+
+
+def test_process_config_file_disabled_llm_job_does_not_trigger_guard() -> None:
+    class _CountingGuardService:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def ensure_llm_runtime_compatible(self) -> None:
+            self.calls += 1
+
+    guard = _CountingGuardService()
+    processors: list[_FakeProcessor] = []
+
+    def processor_factory(client, **_kwargs) -> _FakeProcessor:
+        processor = _FakeProcessor(client)
+        processors.append(processor)
+        return processor
+
+    service = JobExecutionService(
+        client_factory=cast(Any, _FakeClient),
+        processor_factory=cast(Any, processor_factory),
+        config_loader=lambda _path: {
+            "jobs": [
+                {
+                    "name": "job-llm-disabled",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": ["add_category"],
+                    "enable": False,
+                }
+            ]
+        },
+        llm_config_loader=lambda _path: SimpleNamespace(api_base="", model=""),
+        plugin_config_loader=lambda _path: {"add_category": {}},
+        dependency_guard_service=cast(Any, guard),
+        logger_manager=_FakeLoggerManager(),
+    )
+
+    asyncio.run(service.process_config_file(config_file="dummy.yaml"))
+
+    assert guard.calls == 0
+    assert len(processors) == 1
+    assert processors[0].processed_jobs == []
+
+
+def test_process_config_file_ignores_malformed_plugin_definitions_for_guard() -> None:
+    class _CountingGuardService:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def ensure_llm_runtime_compatible(self) -> None:
+            self.calls += 1
+
+    guard = _CountingGuardService()
+
+    def processor_factory(client, **_kwargs) -> _FakeProcessor:
+        return _FakeProcessor(client)
+
+    service = JobExecutionService(
+        client_factory=cast(Any, _FakeClient),
+        processor_factory=cast(Any, processor_factory),
+        config_loader=lambda _path: {
+            "jobs": [
+                {
+                    "name": "job-malformed",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": [123, None],
+                },
+                {
+                    "name": "job-non-list",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": "add_category",
+                },
+            ]
+        },
+        llm_config_loader=lambda _path: SimpleNamespace(api_base="", model=""),
+        plugin_config_loader=lambda _path: {"add_category": {}},
+        dependency_guard_service=cast(Any, guard),
+        logger_manager=_FakeLoggerManager(),
+    )
+
+    asyncio.run(service.process_config_file(config_file="dummy.yaml"))
+
+    assert guard.calls == 0

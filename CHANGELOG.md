@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date
 
-## [v0.4.0rc1] - 2026-03-29
+
+
+## [v0.4.0rc2] - 2026-03-30
 
 ### Changed
 
@@ -25,11 +27,18 @@ The format is based on Keep a Changelog, with entries grouped by release date
   - `outlook_mail_extractor/screens/modals/plugin_editor_view.py`
 - Added/expanded characterization and regression coverage for refactor safety in `tests/test_core_high_risk.py`, `tests/test_job_execution_service.py`, and `tests/test_plugin_config_editor.py`.
 - Added a new compound learning document under `docs/solutions/best-practices/service-orchestration-and-plugin-editor-decomposition-2026-03-29.md`.
+- Added a runtime LLM dependency guard service (`outlook_mail_extractor/services/dependency_guard.py`) with a shared machine contract (`outlook_mail_extractor/contracts/dependency_guard.py`) for CLI/TUI failure signaling (`12` / `DEPENDENCY_GUARD_FAILED` / `dependency_guard_failed`).
+- Added release guardrails for dependency-policy drift and RC evidence validation via `scripts/check_llm_dependency_contract.py`, `scripts/validate_rc_evidence.py`, and evidence templates under `docs/releases/evidence/`.
+- Added dedicated regression coverage for dependency-guard and release-gate behavior in `tests/test_cli_dependency_guard.py`, `tests/test_home_dependency_guard.py`, `tests/test_dependency_guard_service.py`, `tests/test_llm_dependency_contract_drift.py`, and `tests/test_release_evidence_validation.py`.
 
 ### Fixed
 
 - Fixed a plugin-editor refactor regression risk by restoring constructor initialization to flow through modal hook/wrapper methods, avoiding direct helper-call bypass for extension/override-safe behavior.
 - Fixed compatibility exports for source launcher and migration package re-exports (`app.py`, `mailslide/__init__.py`) to preserve expected symbols during lint/packaging checks.
+- Fixed late TestPyPI LLM execution crashes by failing fast before processing loops when dependency compatibility policy is incompatible or unevaluable.
+- Fixed RC promotion traceability by linking release validation evidence to `docs/releases/evidence/0.4.0-rc2.md`.
+- Fixed a guard-ordering edge case by enforcing dependency preflight before LLM client initialization, preserving contract-stable failure signaling.
+- Fixed a prompt-profile override edge case so jobs that become LLM-required at runtime still trigger dependency-guard preflight.
 
 ## [v0.3.10] - 2026-03-29
 
