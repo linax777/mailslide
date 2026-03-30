@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, with entries grouped by release date
 
 
+
+
+## [v0.4.0] - 2026-03-30
+
+### Changed
+
+- Promoted `v0.4.0rc2` to stable `v0.4.0` with the same dependency-guard, release-gate, and compatibility hardening introduced during RC validation.
+
+### Fixed
+
+- Fixed `scripts/update_version.ps1` version-line matching so release bumps work consistently across LF and CRLF files on Windows.
+
+### Added
+
+- Added CRLF coverage in `tests/test_update_version_script.py` to prevent regression in automated release version updates.
 
 ## [v0.4.0rc2] - 2026-03-30
 
@@ -14,6 +29,11 @@ The format is based on Keep a Changelog, with entries grouped by release date
 - Refactored plugin editor modal internals in `outlook_mail_extractor/screens/modals/plugin_config_editor.py` to separate payload/state/view concerns while preserving existing modal contracts and prompt-profile rename sync behavior.
 - Updated TUI language persistence in `outlook_mail_extractor/tui.py` to reuse shared YAML write/backup flow (`write_yaml_with_backup`) instead of inline file-write logic.
 - Updated plugin config loading in target plugins (`calendar`, `event_table`, `summary_file`, `move`, `category`) to use shared base-helper merge logic for common fields.
+- Updated release metadata surfaces to `v0.4.0rc2` and added About-screen website rendering in `outlook_mail_extractor/screens/about.py` with i18n coverage in `tests/test_i18n.py`.
+- Updated release install guidance in `README.md` and `README.zh-TW.md` to document RC/TestPyPI compatibility policy and evidence location.
+- Updated packaging metadata to define canonical LLM policy in `pyproject.toml` (`project.optional-dependencies.llm -> httpx<1`) and synchronized `uv.lock` extras metadata.
+- Updated `scripts/update_version.ps1` changelog insertion logic to be newline-safe and resilient when anchor text formatting changes.
+- Updated `.gitignore` to ignore `docs/brainstorms` planning artifacts.
 
 ### Added
 
@@ -39,6 +59,10 @@ The format is based on Keep a Changelog, with entries grouped by release date
 - Fixed RC promotion traceability by linking release validation evidence to `docs/releases/evidence/0.4.0-rc2.md`.
 - Fixed a guard-ordering edge case by enforcing dependency preflight before LLM client initialization, preserving contract-stable failure signaling.
 - Fixed a prompt-profile override edge case so jobs that become LLM-required at runtime still trigger dependency-guard preflight.
+
+### Removed
+
+- Removed legacy release-note helper `github_action_pypi_release.md` after moving RC validation workflow guidance into CI gates, checklist flow, and evidence docs.
 
 ## [v0.3.10] - 2026-03-29
 
