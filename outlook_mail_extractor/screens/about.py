@@ -21,8 +21,9 @@ if TYPE_CHECKING:
 
 class AboutScreen(Container):
     """About 標籤頁 - 系統狀態檢查"""
-    VERSION = "0.4.0rc1"
+    VERSION = "0.4.0rc2"
     AUTHOR = "linax777"
+    WEBSITE_URL = "https://mailslide.app/"
     REPO_URL = "https://github.com/linax777/mailslide"
     BRAND_ASCII_ART = """
               _ _     _ _     _
@@ -74,6 +75,7 @@ class AboutScreen(Container):
             "ui.about.info",
             version=self.VERSION,
             author=self.AUTHOR,
+            website_url=self.WEBSITE_URL,
             repo_url=self.REPO_URL,
         )
         schema_info = (

@@ -22,6 +22,7 @@ scripts/release_pypi.ps1
 scripts/sync_guides.ps1
 docs/plans
 docs/solutions
+docs/brainstorms
 
 # config
 config/*.yaml
