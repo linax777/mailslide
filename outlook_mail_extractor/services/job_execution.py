@@ -8,14 +8,15 @@ from time import perf_counter
 from typing import Any
 
 from ..config import load_config
-from ..core import EmailProcessor, OutlookClient
+from ..core import EmailProcessor, OutlookClient, _resolve_plugin_prompt
 from ..i18n import t
 from ..llm import LLMClient, load_llm_config
 from ..logger import get_default_logger_manager, get_logger
 from ..models import DomainError, InfrastructureError, UserVisibleError
 from ..parser import clean_invisible_chars
-from ..plugins import load_plugin_configs, load_plugin_modules
+from ..plugins import get_plugin, load_plugin_configs, load_plugin_modules
 from ..runtime import LoggerManagerProtocol
+from .dependency_guard import DependencyGuardService
 
 
 class JobExecutionService:
@@ -29,6 +30,7 @@ class JobExecutionService:
         llm_config_loader: Callable[[str | None], Any] = load_llm_config,
         llm_client_factory: Callable[[Any], LLMClient] = LLMClient,
         plugin_config_loader: Callable[[Path], dict] = load_plugin_configs,
+        dependency_guard_service: DependencyGuardService | None = None,
         logger_manager: LoggerManagerProtocol | None = None,
         default_llm_config_path: Path = Path("config/llm-config.yaml"),
         default_plugin_config_dir: Path = Path("config/plugins"),
@@ -39,9 +41,63 @@ class JobExecutionService:
         self._llm_config_loader = llm_config_loader
         self._llm_client_factory = llm_client_factory
         self._plugin_config_loader = plugin_config_loader
+        self._dependency_guard_service = (
+            dependency_guard_service or DependencyGuardService()
+        )
         self._logger_manager = logger_manager or get_default_logger_manager()
         self._default_llm_config_path = default_llm_config_path
         self._default_plugin_config_dir = default_plugin_config_dir
+
+    def _job_requires_llm(
+        self,
+        job: dict[str, Any],
+        plugin_configs: dict[str, dict[str, Any]],
+    ) -> bool:
+        """Return True when any enabled plugin in the job requires LLM."""
+        plugin_names = job.get("plugins", [])
+        if not isinstance(plugin_names, list):
+            return False
+
+        job_prompt_profiles = job.get("plugin_prompt_profiles", {})
+        if not isinstance(job_prompt_profiles, dict):
+            job_prompt_profiles = {}
+        logger = get_logger()
+
+        for plugin_name in plugin_names:
+            if not isinstance(plugin_name, str):
+                continue
+
+            plugin_config = plugin_configs.get(plugin_name, {})
+            safe_plugin_config = (
+                plugin_config if isinstance(plugin_config, dict) else {}
+            )
+            resolved_plugin_config = _resolve_plugin_prompt(
+                plugin_name,
+                safe_plugin_config,
+                job_prompt_profiles,
+                logger,
+            )
+            plugin = get_plugin(plugin_name, resolved_plugin_config)
+            if plugin is None or not plugin.config.enabled:
+                continue
+
+            if plugin.requires_llm():
+                return True
+
+        return False
+
+    def _enabled_jobs_require_llm(
+        self,
+        jobs: list[dict[str, Any]],
+        plugin_configs: dict[str, dict[str, Any]],
+    ) -> bool:
+        """Return True when any enabled job contains LLM-required plugins."""
+        for job in jobs:
+            if not isinstance(job, dict) or job.get("enable", True) is False:
+                continue
+            if self._job_requires_llm(job, plugin_configs):
+                return True
+        return False
 
     def _resolve_runtime_paths(
         self, config_file: Path | str
@@ -161,6 +217,20 @@ class JobExecutionService:
                         )
                     )
 
+            plugin_configs = self._plugin_config_loader(resolved_plugin_dir)
+            plugin_configs = self._normalize_plugin_output_paths(
+                plugin_configs,
+                base_dir=config_path.parent,
+            )
+            logger.info(
+                t("log.job_execution.plugin_config_loaded", count=len(plugin_configs))
+            )
+
+            jobs = config.get("jobs", [])
+            typed_jobs = jobs if isinstance(jobs, list) else []
+            if self._enabled_jobs_require_llm(typed_jobs, plugin_configs):
+                self._dependency_guard_service.ensure_llm_runtime_compatible()
+
             client = self._client_factory()
             client.connect()
 
@@ -174,15 +244,6 @@ class JobExecutionService:
                     )
                 )
 
-            plugin_configs = self._plugin_config_loader(resolved_plugin_dir)
-            plugin_configs = self._normalize_plugin_output_paths(
-                plugin_configs,
-                base_dir=config_path.parent,
-            )
-            logger.info(
-                t("log.job_execution.plugin_config_loaded", count=len(plugin_configs))
-            )
-
             processor = self._processor_factory(
                 client,
                 preserve_reply_thread=preserve_reply_thread,
@@ -190,7 +251,7 @@ class JobExecutionService:
             )
             all_results = {}
 
-            for job in config.get("jobs", []):
+            for job in typed_jobs:
                 if cancel_requested and cancel_requested():
                     logger.info("Cancellation requested. Stopping job execution.")
                     raise asyncio.CancelledError("Job execution cancelled by user")

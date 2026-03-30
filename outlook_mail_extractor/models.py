@@ -5,6 +5,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
+from .contracts.dependency_guard import (
+    DEPENDENCY_GUARD_EXIT_CODE,
+    DEPENDENCY_GUARD_REASON,
+    DEPENDENCY_GUARD_TERMINAL_STATUS,
+)
+
 
 class AppError(Exception):
     """Base class for all application-level exceptions."""
@@ -20,6 +26,16 @@ class InfrastructureError(AppError):
 
 class UserVisibleError(AppError):
     """Expected error that can be shown to end users as-is."""
+
+
+class DependencyGuardError(UserVisibleError):
+    """Raised when runtime dependencies are incompatible for LLM execution."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.exit_code = DEPENDENCY_GUARD_EXIT_CODE
+        self.reason = DEPENDENCY_GUARD_REASON
+        self.terminal_status = DEPENDENCY_GUARD_TERMINAL_STATUS
 
 
 class CheckStatus(str, Enum):

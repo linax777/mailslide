@@ -400,7 +400,7 @@ wheels = [
 
 [[package]]
 name = "mailslide"
-version = "0.4.0rc1"
+version = "0.4.0rc2"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -413,6 +413,11 @@ dependencies = [
     { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "pyyaml" },
     { name = "textual" },
+]
+
+[package.optional-dependencies]
+llm = [
+    { name = "httpx" },
 ]
 
 [package.dev-dependencies]
@@ -430,6 +435,7 @@ dev = [
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "httpx", specifier = ">=0.27.0" },
+    { name = "httpx", marker = "extra == 'llm'", specifier = "<1" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "packaging", specifier = ">=24.2" },
@@ -439,6 +445,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "textual", specifier = ">=8.1.1" },
 ]
+provides-extras = ["llm"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -76,30 +76,43 @@ Write-Host "Updated uv.lock mailslide package version -> $Version"
 if (-not $SkipChangelog) {
     $changelogText = Read-Text $changelogPath
     $header = "## [v$Version] - $Date"
+    $newline = if ($changelogText.Contains("`r`n")) { "`r`n" } else { "`n" }
 
     if ($changelogText -match [Regex]::Escape($header)) {
         Write-Host "CHANGELOG already has $header"
     }
     else {
-        $insertBlock = @"
-$header
+        $insertBlock = @(
+            $header,
+            '',
+            '### Changed',
+            '',
+            '- TODO: add release notes.',
+            ''
+        ) -join $newline
 
-### Changed
+        $anchorPattern = '(?m)^The format is based on Keep a Changelog, with entries grouped by release date\.?\s*$'
+        $anchorMatch = [Regex]::Match($changelogText, $anchorPattern)
 
-- TODO: add release notes.
+        if ($anchorMatch.Success) {
+            $insertIndex = $anchorMatch.Index + $anchorMatch.Length
+            $prefix = $changelogText.Substring(0, $insertIndex)
+            $suffix = $changelogText.Substring($insertIndex).TrimStart("`r", "`n")
+            $newChangelog = "$prefix$newline$newline$insertBlock$suffix"
+        }
+        else {
+            $firstReleasePattern = '(?m)^## \['
+            $firstReleaseMatch = [Regex]::Match($changelogText, $firstReleasePattern)
+            if (-not $firstReleaseMatch.Success) {
+                throw 'Failed to locate changelog insertion point.'
+            }
 
-"@
-
-        $anchor = "The format is based on Keep a Changelog, with entries grouped by release date."
-        $anchorIndex = $changelogText.IndexOf($anchor)
-        if ($anchorIndex -lt 0) {
-            throw 'Failed to locate changelog header anchor text.'
+            $insertIndex = $firstReleaseMatch.Index
+            $prefix = $changelogText.Substring(0, $insertIndex).TrimEnd("`r", "`n")
+            $suffix = $changelogText.Substring($insertIndex).TrimStart("`r", "`n")
+            $newChangelog = "$prefix$newline$newline$insertBlock$suffix"
         }
 
-        $anchorEnd = $anchorIndex + $anchor.Length
-        $prefix = $changelogText.Substring(0, $anchorEnd)
-        $suffix = $changelogText.Substring($anchorEnd).TrimStart("`r", "`n")
-        $newChangelog = "$prefix`r`n`r`n$insertBlock$suffix"
         Write-Text -Path $changelogPath -Content $newChangelog
         Write-Host "Inserted CHANGELOG header -> $header"
     }

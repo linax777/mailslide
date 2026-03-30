@@ -80,6 +80,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
+      - name: Check LLM dependency contract drift
+        run: uv run python scripts/check_llm_dependency_contract.py
+
+      - name: Validate RC evidence artifact
+        run: uv run python scripts/validate_rc_evidence.py --version "${{ github.ref_name }}"
+
       - name: Run tests
         run: uv run pytest -q
 

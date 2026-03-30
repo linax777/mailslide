@@ -37,6 +37,12 @@ Upgrade:
 uv tool upgrade mailslide
 ```
 
+Pre-release compatibility (LLM path):
+
+- Canonical LLM dependency policy is defined in `pyproject.toml` under `project.optional-dependencies.llm`.
+- Current incident-closure policy for LLM execution path is `httpx<1`.
+- Release-candidate validation evidence lives in `docs/releases/evidence/` (for this RC: `docs/releases/evidence/0.4.0-rc2.md`).
+
 When a release changes `config` schema, the app auto-migrates `config/config.yaml` on load and writes a timestamped backup (for example: `config.yaml.bak.20260327_153000`).
 
 ## 30-second start (Developers / source mode)

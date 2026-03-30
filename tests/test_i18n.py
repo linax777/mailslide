@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import yaml
 
 from outlook_mail_extractor.i18n import resolve_language, set_language, t
@@ -59,3 +60,29 @@ def test_resolve_language_uses_system_language_when_ui_language_missing(
         "outlook_mail_extractor.i18n.detect_system_language", lambda: "zh-TW"
     )
     assert resolve_language(config_path) == "zh-TW"
+
+
+@pytest.mark.parametrize(
+    ("language", "website_label"),
+    [("en-US", "Website"), ("zh-TW", "官網")],
+)
+def test_about_info_includes_website_in_deterministic_order(
+    language: str, website_label: str
+) -> None:
+    set_language(language)
+    text = t(
+        "ui.about.info",
+        version="0.4.0",
+        author="linax777",
+        website_url="https://mailslide.app/",
+        repo_url="https://github.com/linax777/mailslide",
+    )
+
+    version_index = text.index("Version") if language == "en-US" else text.index("版本")
+    author_index = text.index("Author") if language == "en-US" else text.index("作者")
+    website_index = text.index(website_label)
+    github_index = text.index("GitHub")
+    license_index = text.index("License") if language == "en-US" else text.index("授權")
+
+    assert "https://mailslide.app/" in text
+    assert version_index < author_index < website_index < github_index < license_index

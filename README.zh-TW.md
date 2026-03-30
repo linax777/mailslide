@@ -37,6 +37,12 @@ mailslide-tui
 uv tool upgrade mailslide
 ```
 
+預發版相容性（LLM 路徑）：
+
+- LLM 相依性政策以 `pyproject.toml` 的 `project.optional-dependencies.llm` 為準。
+- 目前事故收斂政策為 `httpx<1`（僅套用在 LLM 執行路徑）。
+- Release candidate 驗證證據放在 `docs/releases/evidence/`（本次 RC：`docs/releases/evidence/0.4.0-rc2.md`）。
+
 若新版調整 `config` 結構，程式載入時會自動遷移 `config/config.yaml`，並寫入時間戳備份（例如：`config.yaml.bak.20260327_153000`）。
 
 ## 30 秒開始（開發者 / 原始碼模式）

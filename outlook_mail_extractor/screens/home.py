@@ -10,8 +10,13 @@ from textual.widgets import Button, DataTable, Log, Static
 from textual.worker import NoActiveWorker, Worker, get_current_worker
 
 from ..config import get_last_migration_result, load_config
+from ..contracts.dependency_guard import (
+    DEPENDENCY_GUARD_REASON,
+    DEPENDENCY_GUARD_TERMINAL_STATUS,
+)
 from ..core import OutlookConnectionError
 from ..i18n import resolve_language, set_language, t
+from ..models import DependencyGuardError
 from ..runtime import RuntimeContext, get_runtime_context
 from ..services.job_execution import JobExecutionService
 from ..services.preflight import PreflightCheckService
@@ -51,6 +56,7 @@ class HomeScreen(Static):
         self._polling = False
         self._preserve_reply_thread = True
         self._job_worker: Worker | None = None
+        self._job_terminal_status: str | None = None
         self._animation_timer: Timer | None = None
         self._animation_frame_idx = 0
 
@@ -202,6 +208,7 @@ class HomeScreen(Static):
 
         self._runtime.logger_manager.set_ui_sink(ui_sink)
         self._runtime.logger_manager.start_session(enable_ui_sink=True)
+        self._job_terminal_status = None
 
         self._set_job_running_state(True)
         self._job_worker = self.run_worker(
@@ -294,12 +301,26 @@ class HomeScreen(Static):
                     current_worker.cancelled_event.is_set if current_worker else None
                 ),
             )
+            self._job_terminal_status = "success"
             self.call_later(self._update_log, t("ui.home.log.done"))
         except asyncio.CancelledError:
+            self._job_terminal_status = "cancelled"
             self.call_later(self._update_log, t("ui.home.log.cancelled"))
+        except DependencyGuardError as e:
+            self._job_terminal_status = DEPENDENCY_GUARD_TERMINAL_STATUS
+            self.call_later(
+                self._update_log,
+                t(
+                    "ui.home.log.dependency_guard_failed",
+                    status=DEPENDENCY_GUARD_TERMINAL_STATUS,
+                    reason=DEPENDENCY_GUARD_REASON,
+                    error=e,
+                ),
+            )
         except Exception as e:
             import traceback
 
+            self._job_terminal_status = "failed"
             error_msg = (
                 f"{t('ui.home.error.execution_failed', error=e)}\n"
                 f"{traceback.format_exc()}"
