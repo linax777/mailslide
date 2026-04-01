@@ -12,6 +12,28 @@ The format is based on Keep a Changelog, with entries grouped by release date
 
 
 
+## [v0.4.1rc5] - 2026-04-02
+
+This RC consolidates all changes from `v0.4.1rc1` to `v0.4.1rc4` and adds final hardening for attachment-recall reliability.
+
+### Added
+
+- Added the non-LLM `download_attachments` plugin end-to-end (plugin registration, config samples, deterministic path planner utilities, startup validation, and regression coverage) as introduced across the early `v0.4.1rc1`/`v0.4.1rc2` line.
+- Added attachment-recall release evidence assets under `docs/releases/attachment-recall/` and a dedicated validator script `scripts/validate_attachment_recall_evidence.py`.
+- Added publish workflow enforcement so release validation now checks both dependency RC evidence and attachment-recall evidence before publishing.
+
+### Changed
+
+- Changed inline-attachment classification to a completeness-first policy: skip only on high-confidence inline signals (2-of-3 strong signals), with fallback-download counters for partial metadata cases.
+- Changed plugin execution details contract to deterministic machine-readable status/code output with canonical `details.emails[]`, `saved_relative_paths`, `saved_files`, `skipped_inline_reasons`, and `failed_files` payloads.
+- Changed attachment path handling to stricter deterministic behavior for invalid names, collision indexing, and full-path budgeting (including startup viability checks shared with runtime rules).
+- Changed startup/runtime failure taxonomy for `download_attachments` to stable `startup_*` and `runtime_*` code families, with deterministic precedence for run-level codes.
+- Changed RC evidence tooling from the `v0.4.1rc3` stream to enforce filled templates and preserve automated scaffold generation for `X.Y.ZrcN` bumps.
+
+### Fixed
+
+- Fixed Windows absolute-path normalization/root-availability checks for `download_attachments` startup validation (from `v0.4.1rc4`) to avoid false negatives on non-Windows CI runners.
+
 ## [v0.4.1rc4] - 2026-04-01
 
 ### Changed
