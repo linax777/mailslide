@@ -5,10 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, with entries grouped by release date
 
 
-
-
 
-## [v0.4.1rc1] - 2026-04-01
+
+
+
+
+## [v0.4.1rc2] - 2026-04-01
 
 ### Added
 

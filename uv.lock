@@ -400,7 +400,7 @@ wheels = [
 
 [[package]]
 name = "mailslide"
-version = "0.4.1rc1"
+version = "0.4.1rc2"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
