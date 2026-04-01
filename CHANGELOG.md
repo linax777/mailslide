@@ -12,6 +12,17 @@ The format is based on Keep a Changelog, with entries grouped by release date
 
 
 
+## [v0.4.1rc7] - 2026-04-02
+
+### Changed
+
+- Pinned runtime and LLM-extra `httpx` dependency policy to `==0.28.1` to prevent resolver drift to pre-release `1.0.dev*` builds.
+- Updated release metadata surfaces to `v0.4.1rc7`.
+
+### Fixed
+
+- Fixed `uv tool` + TestPyPI mixed-index installs that could pick `httpx 1.0.dev3` under `--index-strategy unsafe-best-match`, which breaks `LLMClient` initialization (`Client.__init__(base_url=...)`).
+
 ## [v0.4.1rc6] - 2026-04-02
 
 ### Changed

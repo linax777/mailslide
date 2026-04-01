@@ -400,7 +400,7 @@ wheels = [
 
 [[package]]
 name = "mailslide"
-version = "0.4.1rc6"
+version = "0.4.1rc7"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -434,8 +434,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "httpx", marker = "extra == 'llm'", specifier = "<1" },
+    { name = "httpx", specifier = "==0.28.1" },
+    { name = "httpx", marker = "extra == 'llm'", specifier = "==0.28.1" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "packaging", specifier = ">=24.2" },
