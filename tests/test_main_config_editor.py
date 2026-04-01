@@ -5,6 +5,7 @@ import yaml
 
 from outlook_mail_extractor.runtime import RuntimeContext, RuntimePaths
 from outlook_mail_extractor.screens import MainConfigTab
+from outlook_mail_extractor.screens.modals.add_job import AddJobScreen
 
 
 class _FakeLoggerManager:
@@ -23,6 +24,18 @@ class _FakeLoggerManager:
 
     def set_display_level(self, level: str) -> None:
         del level
+
+
+class _FakeApp:
+    def __init__(self) -> None:
+        self.pushed_screens: list[tuple[object, object]] = []
+        self.notifications: list[tuple[str, str]] = []
+
+    def push_screen(self, screen: object, callback: object) -> None:
+        self.pushed_screens.append((screen, callback))
+
+    def notify(self, message: object, severity: str = "information") -> None:
+        self.notifications.append((str(message), severity))
 
 
 def _runtime_context(tmp_path: Path) -> RuntimeContext:
@@ -215,3 +228,127 @@ def test_main_config_ensure_reload_button_not_duplicated(tmp_path: Path) -> None
         len([b for b in buttons if isinstance(b, dict) and b.get("id") == "reload"])
         == 1
     )
+
+
+def test_main_config_runtime_plugin_options_deduplicates_and_sorts(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+
+    monkeypatch.setattr(
+        "outlook_mail_extractor.screens.config.main_tab.list_plugins",
+        lambda: [
+            "summary_file",
+            " download_attachments ",
+            "Download_Attachments",
+            "event_table",
+            "",
+        ],
+    )
+
+    assert tab._runtime_plugin_options() == [
+        "download_attachments",
+        "event_table",
+        "summary_file",
+    ]
+
+
+def test_main_config_add_job_uses_runtime_plugin_options(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(
+        tab,
+        "_runtime_plugin_options",
+        lambda: ["download_attachments", "summary_file"],
+    )
+    monkeypatch.setattr(tab, "_load_editor_config", lambda: {"jobs": []})
+
+    tab._add_job()
+
+    assert len(fake_app.pushed_screens) == 1
+    screen = fake_app.pushed_screens[0][0]
+    assert isinstance(screen, AddJobScreen)
+    assert screen._plugin_options == ["download_attachments", "summary_file"]
+
+
+def test_main_config_edit_job_preserves_unavailable_plugin_options(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._selected_job_index = 0
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(
+        tab,
+        "_runtime_plugin_options",
+        lambda: ["download_attachments", "summary_file"],
+    )
+    monkeypatch.setattr(
+        tab,
+        "_load_editor_config",
+        lambda: {
+            "jobs": [
+                {
+                    "name": "job-a",
+                    "account": "a@example.com",
+                    "source": "Inbox",
+                    "plugins": ["download_attachments", "legacy_plugin"],
+                }
+            ]
+        },
+    )
+
+    tab._edit_job()
+
+    assert len(fake_app.pushed_screens) == 1
+    screen = fake_app.pushed_screens[0][0]
+    assert isinstance(screen, AddJobScreen)
+    assert screen._plugin_options == [
+        "download_attachments",
+        "summary_file",
+        "legacy_plugin",
+    ]
+    assert screen._unavailable_plugin_keys == {"legacy_plugin"}
+
+
+def test_main_config_edit_job_ignores_malformed_existing_plugins(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._selected_job_index = 0
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(
+        tab,
+        "_runtime_plugin_options",
+        lambda: ["download_attachments", "summary_file"],
+    )
+    monkeypatch.setattr(
+        tab,
+        "_load_editor_config",
+        lambda: {
+            "jobs": [
+                {
+                    "name": "job-a",
+                    "account": "a@example.com",
+                    "source": "Inbox",
+                    "plugins": "legacy_plugin",
+                }
+            ]
+        },
+    )
+
+    tab._edit_job()
+
+    assert len(fake_app.pushed_screens) == 1
+    screen = fake_app.pushed_screens[0][0]
+    assert isinstance(screen, AddJobScreen)
+    assert screen._plugin_options == ["download_attachments", "summary_file"]
+    assert screen._unavailable_plugin_keys == set()

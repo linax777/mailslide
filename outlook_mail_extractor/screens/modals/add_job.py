@@ -39,15 +39,30 @@ class AddJobScreen(ModalScreen[dict | None]):
     def __init__(
         self,
         plugin_options: list[str],
+        unavailable_plugins: list[str] | None = None,
         defaults: dict | None = None,
         title: str | None = None,
         save_button_label: str | None = None,
     ):
         super().__init__()
         self._plugin_options = plugin_options
+        self._unavailable_plugin_keys = {
+            plugin.casefold()
+            for plugin in self._normalize_plugin_names(unavailable_plugins)
+        }
         self._defaults = defaults or {}
         self._title = title or t("ui.add_job.title")
         self._save_button_label = save_button_label or t("ui.add_job.button.save")
+
+    def _normalize_plugin_names(self, plugins: list[str] | None) -> list[str]:
+        if not isinstance(plugins, list):
+            return []
+        return [str(plugin).strip() for plugin in plugins if str(plugin).strip()]
+
+    def _plugin_option_label(self, plugin_name: str) -> str:
+        if plugin_name.casefold() not in self._unavailable_plugin_keys:
+            return plugin_name
+        return t("ui.add_job.field.plugin_unavailable", plugin=plugin_name)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="add-job-dialog"):
@@ -77,7 +92,7 @@ class AddJobScreen(ModalScreen[dict | None]):
             yield SelectionList(
                 *[
                     (
-                        option,
+                        self._plugin_option_label(option),
                         option,
                         option in default_plugins,
                     )

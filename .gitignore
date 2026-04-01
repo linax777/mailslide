@@ -23,6 +23,7 @@ scripts/sync_guides.ps1
 docs/plans
 docs/solutions
 docs/brainstorms
+.context/
 
 # config
 config/*.yaml

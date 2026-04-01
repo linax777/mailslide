@@ -10,6 +10,7 @@ from textual.widgets import Button, DataTable, Static, TextArea
 
 from ...i18n import t
 from ...config import load_config, validate_config
+from ...plugins import list_plugins
 from ...runtime import RuntimeContext, get_runtime_context
 from ...ui_schema import (
     build_default_list_item,
@@ -342,28 +343,17 @@ class MainConfigTab(Static):
                 return candidate
             index += 1
 
-    def _plugin_options_from_schema(self) -> list[str]:
-        fields = self._ui_schema.get("fields", {})
-        if not isinstance(fields, dict):
-            return []
+    def _normalize_plugin_ids(self, plugin_ids: list[Any]) -> list[str]:
+        normalized: dict[str, str] = {}
+        for plugin_id in plugin_ids:
+            value = str(plugin_id).strip()
+            if not value:
+                continue
+            normalized.setdefault(value.casefold(), value)
+        return [normalized[key] for key in sorted(normalized)]
 
-        jobs = fields.get("jobs", {})
-        if not isinstance(jobs, dict):
-            return []
-
-        item_fields = jobs.get("item_fields", {})
-        if not isinstance(item_fields, dict):
-            return []
-
-        plugins = item_fields.get("plugins", {})
-        if not isinstance(plugins, dict):
-            return []
-
-        options = plugins.get("options", [])
-        if not isinstance(options, list):
-            return []
-
-        return [str(option) for option in options]
+    def _runtime_plugin_options(self) -> list[str]:
+        return self._normalize_plugin_ids(list_plugins())
 
     def _handle_add_job_result(self, result: dict | None) -> None:
         if result is None:
@@ -398,7 +388,7 @@ class MainConfigTab(Static):
 
     def _add_job(self) -> None:
         defaults = build_default_list_item(self._ui_schema, "jobs")
-        plugin_options = self._plugin_options_from_schema()
+        plugin_options = self._runtime_plugin_options()
 
         try:
             config = self._load_editor_config()
@@ -412,7 +402,10 @@ class MainConfigTab(Static):
             defaults.setdefault("name", t("ui.main.default.job_name", index=1))
 
         self.app.push_screen(
-            AddJobScreen(plugin_options=plugin_options, defaults=defaults),
+            AddJobScreen(
+                plugin_options=plugin_options,
+                defaults=defaults,
+            ),
             self._handle_add_job_result,
         )
 
@@ -478,12 +471,24 @@ class MainConfigTab(Static):
             if not isinstance(selected_job, dict):
                 raise ValueError(t("ui.main.error.selected_job_invalid"))
 
-            plugin_options = self._plugin_options_from_schema()
             defaults = dict(selected_job)
+            available_plugins = self._runtime_plugin_options()
+            raw_existing_plugins = defaults.get("plugins", [])
+            existing_plugins = self._normalize_plugin_ids(
+                raw_existing_plugins if isinstance(raw_existing_plugins, list) else []
+            )
+            available_plugin_keys = {plugin.casefold() for plugin in available_plugins}
+            unavailable_plugins = [
+                plugin
+                for plugin in existing_plugins
+                if plugin.casefold() not in available_plugin_keys
+            ]
+            plugin_options = [*available_plugins, *unavailable_plugins]
 
             self.app.push_screen(
                 AddJobScreen(
                     plugin_options=plugin_options,
+                    unavailable_plugins=unavailable_plugins,
                     defaults=defaults,
                     title=t("ui.main.edit_modal.title", index=edit_index + 1),
                     save_button_label=t("ui.main.edit_modal.save"),

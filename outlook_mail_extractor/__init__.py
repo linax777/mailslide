@@ -40,7 +40,7 @@ from .runtime import (
     get_runtime_context,
 )
 
-__version__ = "0.4.1rc5"
+__version__ = "0.4.1rc6"
 
 if os.environ.get("MAILSLIDE_IMPORT_WARNING") == "1":
     warnings.warn(

@@ -12,6 +12,20 @@ The format is based on Keep a Changelog, with entries grouped by release date
 
 
 
+## [v0.4.1rc6] - 2026-04-02
+
+### Changed
+
+- Changed Main Configuration job editor plugin options to resolve from runtime plugin discovery (`list_plugins`) instead of static schema-only options, with normalized/deduplicated sorting.
+- Changed job-edit modal behavior to preserve previously configured but currently unavailable plugins, so existing job configs remain editable without silently dropping plugin IDs.
+- Changed Add Job plugin labels to mark unavailable plugins explicitly in the selection UI.
+- Updated `.gitignore` to ignore `.context/` runtime workspace artifacts.
+
+### Added
+
+- Added i18n keys for unavailable plugin labels in both `en-US` and `zh-TW` locale files.
+- Added regression tests for runtime plugin-option resolution, unavailable-plugin preservation, and unavailable-plugin label rendering in add/edit job flows.
+
 ## [v0.4.1rc5] - 2026-04-02
 
 This RC consolidates all changes from `v0.4.1rc1` to `v0.4.1rc4` and adds final hardening for attachment-recall reliability.
