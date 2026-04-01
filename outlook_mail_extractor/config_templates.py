@@ -13,6 +13,7 @@ _SAMPLE_FILES: tuple[Path, ...] = (
     Path("logging.yaml.sample"),
     Path("plugins/add_category.yaml.sample"),
     Path("plugins/create_appointment.yaml.sample"),
+    Path("plugins/download_attachments.yaml.sample"),
     Path("plugins/event_table.yaml.sample"),
     Path("plugins/move_to_folder.yaml.sample"),
     Path("plugins/summary_file.yaml.sample"),

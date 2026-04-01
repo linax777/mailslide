@@ -514,3 +514,119 @@ def test_process_config_file_ignores_malformed_plugin_definitions_for_guard() ->
     asyncio.run(service.process_config_file(config_file="dummy.yaml"))
 
     assert guard.calls == 0
+
+
+def test_validate_download_attachments_accepts_nonexistent_leaf_path(
+    tmp_path: Path,
+) -> None:
+    service = JobExecutionService()
+    output_dir = tmp_path / "exports" / "attachments"
+
+    service._validate_download_attachment_startup_paths(
+        jobs=[
+            {
+                "name": "job-1",
+                "enable": True,
+                "plugins": ["download_attachments"],
+            }
+        ],
+        plugin_configs={
+            "download_attachments": {
+                "enabled": True,
+                "output_dir": str(output_dir),
+            }
+        },
+    )
+
+
+def test_validate_download_attachments_rejects_missing_output_dir() -> None:
+    service = JobExecutionService()
+
+    with pytest.raises(
+        DomainError,
+        match="requires non-empty output_dir",
+    ):
+        service._validate_download_attachment_startup_paths(
+            jobs=[
+                {
+                    "name": "job-1",
+                    "enable": True,
+                    "plugins": ["download_attachments"],
+                }
+            ],
+            plugin_configs={
+                "download_attachments": {
+                    "enabled": True,
+                }
+            },
+        )
+
+
+def test_validate_download_attachments_rejects_unavailable_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = JobExecutionService()
+    original_exists = Path.exists
+
+    def fake_exists(path: Path) -> bool:
+        normalized = str(path).rstrip("\\/").casefold()
+        if normalized == "x:":
+            return False
+        return original_exists(path)
+
+    monkeypatch.setattr(Path, "exists", fake_exists)
+
+    with pytest.raises(
+        DomainError,
+        match="parent root is not available",
+    ):
+        service._validate_download_attachment_startup_paths(
+            jobs=[
+                {
+                    "name": "job-1",
+                    "enable": True,
+                    "plugins": ["download_attachments"],
+                }
+            ],
+            plugin_configs={
+                "download_attachments": {
+                    "enabled": True,
+                    "output_dir": "X:/exports/downloads",
+                }
+            },
+        )
+
+
+def test_process_config_file_validates_download_attachments_before_connect() -> None:
+    client_calls = {"count": 0}
+
+    def client_factory() -> _FakeClient:
+        client_calls["count"] += 1
+        return _FakeClient()
+
+    service = JobExecutionService(
+        client_factory=cast(Any, client_factory),
+        processor_factory=cast(Any, _FakeProcessor),
+        config_loader=lambda _path: {
+            "jobs": [
+                {
+                    "name": "job-1",
+                    "account": "acc",
+                    "source": "Inbox",
+                    "plugins": ["download_attachments"],
+                }
+            ]
+        },
+        llm_config_loader=lambda _path: SimpleNamespace(api_base="", model=""),
+        plugin_config_loader=lambda _path: {
+            "download_attachments": {
+                "enabled": True,
+            }
+        },
+        logger_manager=_FakeLoggerManager(),
+    )
+
+    with pytest.raises(DomainError, match="requires non-empty output_dir"):
+        asyncio.run(service.process_config_file(config_file="dummy.yaml"))
+
+    assert client_calls["count"] == 0

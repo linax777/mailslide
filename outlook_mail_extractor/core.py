@@ -345,7 +345,12 @@ class EmailProcessor:
         for plugin in plugins:
             begin_job = getattr(plugin, "begin_job", None)
             if callable(begin_job):
-                begin_job({"batch_flush_enabled": batch_flush_enabled})
+                begin_job(
+                    {
+                        "batch_flush_enabled": batch_flush_enabled,
+                        "job_name": str(job_config.get("name", "Unnamed Job")),
+                    }
+                )
 
         # Process each email
         results = []

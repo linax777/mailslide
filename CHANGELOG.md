@@ -6,6 +6,24 @@ The format is based on Keep a Changelog, with entries grouped by release date
 
 
 
+
+
+## [v0.4.1rc1] - 2026-04-01
+
+### Added
+
+- Added a new non-LLM plugin `download_attachments` that saves regular Outlook attachments to deterministic per-job folders and returns structured per-email/per-file execution details.
+- Added deterministic attachment path utilities (`download_attachments_paths`) for job-folder key generation, Windows-safe filename sanitization, case-insensitive collision handling, and fixed full-path budgeting.
+- Added startup validation for `download_attachments` `output_dir` in `JobExecutionService` so enabled jobs fail fast on missing/unresolvable path configuration.
+- Added new plugin sample config files for `download_attachments` under both runtime and packaged sample paths, and exposed it in config sample plugin options.
+- Added dedicated regression coverage for attachment path planning, plugin behavior, adapter metadata extraction, and startup validation (`tests/test_download_attachments_paths.py`, `tests/test_download_attachments_plugin.py`, `tests/test_job_execution_service.py`).
+
+### Changed
+
+- Extended `MailActionPort` with typed attachment operations (`list_attachments`, `save_attachment`) and added `AttachmentDescriptor` to keep plugin logic decoupled from Outlook COM internals.
+- Updated `OutlookMailActionAdapter` to surface attachment metadata (including inline hints/content-id) and support saving attachments through the action-port boundary.
+- Updated plugin job lifecycle context to include `job_name` during `begin_job`, enabling deterministic per-job output path derivation.
+- Updated existing plugin test fakes to implement the expanded action-port protocol.
 
 ## [v0.4.0] - 2026-03-30
 

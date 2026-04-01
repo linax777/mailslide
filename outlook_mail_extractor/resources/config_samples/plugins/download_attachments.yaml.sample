@@ -1,0 +1,62 @@
+# Download Attachments Plugin Configuration
+# Action: Save regular Outlook attachments to deterministic per-job folders
+
+enabled: true
+
+# Base output directory for attachment exports (absolute or relative path)
+# Relative paths are resolved from config.yaml directory
+output_dir: "output/attachments"
+
+# Deterministic naming/path budgets
+job_folder_max_length: 60
+filename_max_length: 120
+full_path_budget: 240
+
+_ui:
+  schema_version: 1
+  title: "Plugin: download_attachments"
+  buttons:
+    - id: validate
+      label: "Validate"
+      action: validate
+    - id: save
+      label: "Save"
+      action: save
+      variant: success
+  fields:
+    enabled:
+      type: bool
+      label: "Enabled"
+      required: true
+    output_dir:
+      type: path
+      label: "Output directory"
+      required: true
+      placeholder: "output/attachments"
+    job_folder_max_length:
+      type: int
+      label: "Job folder max length"
+      required: true
+      default: 60
+      min: 10
+    filename_max_length:
+      type: int
+      label: "Filename max length"
+      required: true
+      default: 120
+      min: 10
+    full_path_budget:
+      type: int
+      label: "Full path budget"
+      required: true
+      default: 240
+      min: 50
+  validation_rules:
+    - id: output_dir_required
+      level: error
+      message: "output_dir cannot be empty"
+      check: "has_text(config.output_dir)"
+    - id: full_path_budget_positive
+      level: error
+      message: "full_path_budget must be greater than 0"
+      check: "is_int(config.full_path_budget) && config.full_path_budget > 0"

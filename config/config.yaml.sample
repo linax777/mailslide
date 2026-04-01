@@ -14,13 +14,13 @@
 #   - ui_language: UI language (optional, zh-TW/en-US, default: zh-TW)
 #   - terminal_title: Terminal tab/window title (optional, default: Mailslide)
 #   - plugin_modules: Extra Python modules to import for plugin discovery (optional)
-#   - plugins: List of plugins to run (LLM analysis)
+#   - plugins: List of plugins to run (LLM and non-LLM)
 #   - batch_flush_enabled: Flush writable plugin outputs at job end (default: true)
 #   - plugin_prompt_profiles: Per-job prompt profile mapping (optional)
 #
 # IMPORTANT:
 #   - Use "destination" for simple auto-move (no LLM needed)
-#   - Use "plugins" for LLM analysis (add_category, create_appointment, etc.)
+#   - Use "plugins" for automation steps (LLM and non-LLM plugins)
 #   - DO NOT use "move_to_folder" plugin together with "destination"
 #     (they both move emails and will conflict)
 #   - When manual_review_destination is set, mails without LLM action
@@ -206,6 +206,7 @@ _ui:
             - create_appointment
             - move_to_folder
             - write_file
+            - download_attachments
             - event_table
             - summary_file
         plugin_prompt_profiles:
