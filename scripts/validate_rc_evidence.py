@@ -19,6 +19,21 @@ REQUIRED_FIELD_LABELS = [
     "Timestamp",
 ]
 
+UNFILLED_TEMPLATE_PATTERNS: list[tuple[str, str]] = [
+    ("template title", r"(?m)^# RC Evidence Template: <version>-rcN\s*$"),
+    ("OS", r"(?m)^- OS:\s*$"),
+    ("Python", r"(?m)^- Python:\s*$"),
+    ("Tooling", r"(?m)^- Tooling \(`uv --version`\):\s*$"),
+    ("LLM-enabled job marker", r"(?m)^- LLM-enabled job marker:\s*$"),
+    ("Non-LLM baseline marker", r"(?m)^- Non-LLM baseline marker:\s*$"),
+    ("Timestamp", r"(?m)^- UTC:\s*$"),
+    (
+        "Local source-mode sanity run status",
+        r"(?m)^- Local source-mode sanity run status:\s*$",
+    ),
+    ("Reviewer", r"(?m)^- Reviewer:\s*$"),
+]
+
 
 def _read_project_version(pyproject_path: Path) -> str:
     payload = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
@@ -61,6 +76,12 @@ def validate_rc_evidence_file(evidence_path: Path) -> list[str]:
         errors.append(f"missing success token: {SUCCESS_TOKEN}")
     if FAILURE_TOKEN not in content:
         errors.append(f"missing failure token: {FAILURE_TOKEN}")
+
+    for placeholder_label, placeholder_pattern in UNFILLED_TEMPLATE_PATTERNS:
+        if re.search(placeholder_pattern, content):
+            errors.append(
+                f"contains unfilled template placeholder: {placeholder_label}"
+            )
 
     return errors
 

@@ -15,6 +15,22 @@ def _write_crlf(path: Path, text: str) -> None:
         f.write(text)
 
 
+def _seed_rc_evidence_template(repo_root: Path) -> None:
+    evidence_dir = repo_root / "docs" / "releases" / "evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    template_source = (
+        Path(__file__).resolve().parents[1]
+        / "docs"
+        / "releases"
+        / "evidence"
+        / "template-rc-evidence.md"
+    )
+    _write_lf(
+        evidence_dir / "template-rc-evidence.md",
+        template_source.read_text(encoding="utf-8"),
+    )
+
+
 def test_update_version_script_updates_lockfile_without_group_ambiguity(
     tmp_path: Path,
 ) -> None:
@@ -153,3 +169,73 @@ def test_update_version_script_supports_crlf_files(tmp_path: Path) -> None:
     assert 'version = "0.3.9"' in pyproject_text
     assert '__version__ = "0.3.9"' in init_text
     assert 'VERSION = "0.3.9"' in about_text
+
+
+def test_update_version_script_creates_rc_evidence_scaffold_when_missing(
+    tmp_path: Path,
+) -> None:
+    if shutil.which("pwsh") is None:
+        pytest.skip("pwsh is required for this test")
+
+    repo_root = tmp_path
+    scripts_dir = repo_root / "scripts"
+    package_dir = repo_root / "outlook_mail_extractor"
+    screens_dir = package_dir / "screens"
+
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    screens_dir.mkdir(parents=True, exist_ok=True)
+    _seed_rc_evidence_template(repo_root)
+
+    source_script = (
+        Path(__file__).resolve().parents[1] / "scripts" / "update_version.ps1"
+    )
+    target_script = scripts_dir / "update_version.ps1"
+    _write_lf(target_script, source_script.read_text(encoding="utf-8"))
+
+    _write_lf(
+        repo_root / "pyproject.toml",
+        '[project]\nname = "mailslide"\nversion = "0.3.8"\n',
+    )
+    _write_lf(
+        package_dir / "__init__.py",
+        '__version__ = "0.3.8"\n',
+    )
+    _write_lf(
+        screens_dir / "about.py",
+        'class AboutScreen:\n    VERSION = "0.3.8"\n',
+    )
+    _write_lf(
+        repo_root / "uv.lock",
+        "[[package]]\n"
+        'name = "mailslide"\n'
+        'version = "0.3.8"\n'
+        'source = { editable = "." }\n',
+    )
+
+    completed = subprocess.run(
+        [
+            "pwsh",
+            "-NoProfile",
+            "-File",
+            str(target_script),
+            "-Version",
+            "0.3.9rc1",
+            "-SkipChangelog",
+        ],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"update_version.ps1 failed: {completed.stdout}\n{completed.stderr}"
+        )
+
+    evidence_path = repo_root / "docs" / "releases" / "evidence" / "0.3.9-rc1.md"
+    evidence_text = evidence_path.read_text(encoding="utf-8")
+    assert evidence_path.exists()
+    assert "# RC Evidence: 0.3.9-rc1" in evidence_text
+    assert "## Environment" in evidence_text
+    assert "# RC Evidence Template: <version>-rcN" not in evidence_text

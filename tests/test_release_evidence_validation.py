@@ -123,6 +123,50 @@ def test_validate_rc_evidence_file_rejects_missing_file(tmp_path: Path) -> None:
     assert any("missing required evidence file" in error for error in errors)
 
 
+def test_validate_rc_evidence_file_rejects_unfilled_template_placeholders(
+    tmp_path: Path,
+) -> None:
+    module = _load_evidence_validator_module()
+    evidence_path = tmp_path / "0.4.1-rc2.md"
+    evidence_path.write_text(
+        """
+# RC Evidence Template: <version>-rcN
+
+## Environment
+
+- OS:
+- Python:
+- Tooling (`uv --version`):
+
+## Install Command
+
+## Job Config Marker
+
+- LLM-enabled job marker:
+- Non-LLM baseline marker:
+
+## Pass/Fail Output Snippet
+
+dependency_guard_passed
+dependency_guard_failed
+
+## Timestamp
+
+- UTC:
+
+## Notes
+
+- Local source-mode sanity run status:
+- Reviewer:
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    errors = module.validate_rc_evidence_file(evidence_path)
+    assert any("contains unfilled template placeholder" in error for error in errors)
+
+
 def test_publish_workflow_contains_rc_evidence_validation_gate() -> None:
     workflow_path = (
         Path(__file__).resolve().parents[1]

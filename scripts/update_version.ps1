@@ -56,6 +56,60 @@ function Update-VersionLine {
     Write-Host "Updated $Label -> $Version"
 }
 
+function Resolve-RcEvidencePath {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Version,
+        [Parameter(Mandatory = $true)] [string]$EvidenceRoot
+    )
+
+    $match = [Regex]::Match($Version, '^(?<base>\d+\.\d+\.\d+)rc(?<rc>\d+)$')
+    if (-not $match.Success) {
+        return $null
+    }
+
+    $evidenceName = "$($match.Groups['base'].Value)-rc$($match.Groups['rc'].Value).md"
+    return Join-Path $EvidenceRoot $evidenceName
+}
+
+function Ensure-RcEvidenceScaffold {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Version,
+        [Parameter(Mandatory = $true)] [string]$RepoRoot
+    )
+
+    $evidenceRoot = Join-Path $RepoRoot 'docs/releases/evidence'
+    $evidencePath = Resolve-RcEvidencePath -Version $Version -EvidenceRoot $evidenceRoot
+    if ($null -eq $evidencePath) {
+        return
+    }
+
+    if (-not (Test-Path $evidenceRoot)) {
+        New-Item -Path $evidenceRoot -ItemType Directory -Force | Out-Null
+    }
+
+    if (Test-Path $evidencePath) {
+        Write-Host "RC evidence file already exists -> $evidencePath"
+        return
+    }
+
+    $templatePath = Join-Path $evidenceRoot 'template-rc-evidence.md'
+    if (-not (Test-Path $templatePath)) {
+        throw "RC evidence template missing: $templatePath"
+    }
+
+    $templateText = Read-Text $templatePath
+    $evidenceLabel = [System.IO.Path]::GetFileNameWithoutExtension($evidencePath)
+    $evidenceText = [Regex]::Replace(
+        $templateText,
+        '(?m)^# RC Evidence Template: .+$',
+        "# RC Evidence: $evidenceLabel",
+        1
+    )
+    Write-Text -Path $evidencePath -Content $evidenceText
+    Write-Host "Created RC evidence scaffold -> $evidencePath"
+    Write-Host 'Reminder: fill evidence details before pushing the RC tag.'
+}
+
 $pyprojectPath = Join-Path $repoRoot 'pyproject.toml'
 $initPath = Join-Path $repoRoot 'outlook_mail_extractor/__init__.py'
 $aboutPath = Join-Path $repoRoot 'outlook_mail_extractor/screens/about.py'
@@ -72,6 +126,8 @@ $lockReplacement = "`${prefix}$Version`${suffix}"
 $newLockText = Replace-ExactlyOne -Text $lockText -Pattern $lockPattern -Replacement $lockReplacement -Label 'uv.lock mailslide package version'
 Write-Text -Path $lockPath -Content $newLockText
 Write-Host "Updated uv.lock mailslide package version -> $Version"
+
+Ensure-RcEvidenceScaffold -Version $Version -RepoRoot $repoRoot
 
 if (-not $SkipChangelog) {
     $changelogText = Read-Text $changelogPath

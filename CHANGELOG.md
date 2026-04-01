@@ -9,6 +9,19 @@ The format is based on Keep a Changelog, with entries grouped by release date
 
 
 
+
+
+## [v0.4.1rc3] - 2026-04-01
+
+### Added
+
+- Added RC evidence scaffold generation in `scripts/update_version.ps1` for `X.Y.ZrcN` bumps, creating `docs/releases/evidence/X.Y.Z-rcN.md` from template when missing.
+- Added regression coverage in `tests/test_update_version_script.py` to ensure RC evidence files are auto-created for RC version bumps.
+
+### Changed
+
+- Updated RC evidence validation in `scripts/validate_rc_evidence.py` to fail when template placeholders remain unfilled.
+- Updated release-evidence validator tests in `tests/test_release_evidence_validation.py` to cover unfilled-template rejection behavior.
 
 ## [v0.4.1rc2] - 2026-04-01
 
