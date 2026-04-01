@@ -12,6 +12,17 @@ The format is based on Keep a Changelog, with entries grouped by release date
 
 
 
+## [v0.4.1] - 2026-04-02
+
+### Changed
+
+- Promoted `v0.4.1rc7` to stable `v0.4.1`.
+- Included the full `v0.4.1rc5` to `v0.4.1rc7` hardening set: `download_attachments` recall/stability updates, runtime plugin-option UX improvements, and release-gate attachment recall validation.
+
+### Fixed
+
+- Fixed mixed-index install drift by pinning runtime and LLM-extra `httpx` to `0.28.1`, preventing accidental `1.0.dev*` selection that breaks `LLMClient` initialization.
+
 ## [v0.4.1rc7] - 2026-04-02
 
 ### Changed
