@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from time import perf_counter
 from typing import Any
 
@@ -21,6 +21,32 @@ from .dependency_guard import DependencyGuardService
 
 class JobExecutionService:
     """Orchestrate end-to-end execution for all enabled jobs."""
+
+    @staticmethod
+    def _is_absolute_output_path(raw_path: str) -> bool:
+        """Treat platform-native and Windows absolute paths as absolute."""
+        candidate = Path(raw_path).expanduser()
+        if candidate.is_absolute():
+            return True
+
+        windows_candidate = PureWindowsPath(raw_path)
+        return windows_candidate.is_absolute()
+
+    @staticmethod
+    def _resolve_windows_root_path(raw_path: str) -> Path | None:
+        """Resolve Windows root path for drive/UNC absolute paths."""
+        windows_candidate = PureWindowsPath(raw_path)
+        if not windows_candidate.is_absolute():
+            return None
+
+        if windows_candidate.drive:
+            return Path(f"{windows_candidate.drive}\\")
+
+        anchor = windows_candidate.anchor
+        if anchor:
+            return Path(anchor)
+
+        return None
 
     def __init__(
         self,
@@ -151,7 +177,7 @@ class JobExecutionService:
                     continue
 
                 candidate = Path(raw_path).expanduser()
-                if candidate.is_absolute():
+                if self._is_absolute_output_path(raw_path):
                     continue
 
                 next_config[key] = str((base_dir / candidate).resolve())
@@ -208,6 +234,12 @@ class JobExecutionService:
         if probe_path.exists() and not probe_path.is_dir():
             raise DomainError(
                 "download_attachments output_dir parent is not a directory"
+            )
+
+        windows_root = self._resolve_windows_root_path(raw_output_dir)
+        if windows_root is not None and not windows_root.exists():
+            raise DomainError(
+                "download_attachments output_dir parent root is not available"
             )
 
         anchor = probe_path.anchor.strip()

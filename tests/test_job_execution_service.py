@@ -57,6 +57,23 @@ def test_normalize_plugin_output_paths_keeps_absolute_and_unrelated_values(
     assert normalized["add_category"]["response_format"] == "json"
 
 
+def test_normalize_plugin_output_paths_keeps_windows_absolute_paths() -> None:
+    service = JobExecutionService()
+
+    configs: dict[str, dict[str, Any]] = {
+        "download_attachments": {
+            "output_dir": "X:/exports/downloads",
+        }
+    }
+
+    normalized = service._normalize_plugin_output_paths(
+        configs,
+        base_dir=Path("/tmp/config-root"),
+    )
+
+    assert normalized["download_attachments"]["output_dir"] == "X:/exports/downloads"
+
+
 class _FakeLoggerManager:
     def set_ui_sink(self, callback):
         del callback

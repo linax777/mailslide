@@ -10,6 +10,14 @@ The format is based on Keep a Changelog, with entries grouped by release date
 
 
 
+
+
+## [v0.4.1rc4] - 2026-04-01
+
+### Changed
+
+- Fixed `download_attachments` startup-path validation and path normalization to treat Windows absolute paths consistently across non-Windows CI runners, avoiding false negatives in root-availability checks.
+- Added regression coverage in `tests/test_job_execution_service.py` for Windows absolute path normalization and unavailable-drive validation behavior.
 
 ## [v0.4.1rc3] - 2026-04-01
 
