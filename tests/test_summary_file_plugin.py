@@ -1,8 +1,10 @@
 import asyncio
 import csv
 import json
+from pathlib import Path
 
 from outlook_mail_extractor.models import (
+    AttachmentDescriptor,
     EmailDTO,
     PluginExecutionResult,
     PluginExecutionStatus,
@@ -21,6 +23,13 @@ class _FakeActionPort:
     def create_appointment(self, *args, **kwargs) -> None:
         del args
         del kwargs
+
+    def list_attachments(self) -> list[AttachmentDescriptor]:
+        return []
+
+    def save_attachment(self, attachment_index: int, destination_path: Path) -> None:
+        del attachment_index
+        del destination_path
 
 
 def _build_email_data() -> EmailDTO:

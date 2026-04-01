@@ -258,10 +258,19 @@ class EventTablePlugin(BasePlugin):
 
     @staticmethod
     def _coerce_non_negative_int(value: object, default: int) -> int:
-        try:
-            return max(0, int(value))
-        except (TypeError, ValueError):
+        if isinstance(value, bool):
             return default
+
+        if isinstance(value, int):
+            return max(0, value)
+
+        if isinstance(value, str):
+            try:
+                return max(0, int(value.strip()))
+            except ValueError:
+                return default
+
+        return default
 
     @staticmethod
     def _is_file_lock_error(error: PermissionError | OSError) -> bool:

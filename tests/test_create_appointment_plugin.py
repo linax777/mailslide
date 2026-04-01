@@ -1,8 +1,10 @@
 import asyncio
 import json
 from datetime import datetime
+from pathlib import Path
 
 from outlook_mail_extractor.models import (
+    AttachmentDescriptor,
     EmailDTO,
     PluginExecutionResult,
     PluginExecutionStatus,
@@ -89,6 +91,13 @@ class _FakeActionPort:
                 recipient.Type = 1
                 recipient.Resolve()
         appointment.Save()
+
+    def list_attachments(self) -> list[AttachmentDescriptor]:
+        return []
+
+    def save_attachment(self, attachment_index: int, destination_path: Path) -> None:
+        del attachment_index
+        del destination_path
 
 
 def test_create_appointment_accepts_timezone_datetime() -> None:

@@ -159,6 +159,65 @@ class JobExecutionService:
             normalized[plugin_name] = next_config
         return normalized
 
+    def _validate_download_attachment_startup_paths(
+        self,
+        jobs: list[dict[str, Any]],
+        plugin_configs: dict[str, dict[str, Any]],
+    ) -> None:
+        """Validate download_attachments startup path requirements for enabled jobs."""
+        download_plugin_config = plugin_configs.get("download_attachments", {})
+        if not isinstance(download_plugin_config, dict):
+            return
+
+        if download_plugin_config.get("enabled", True) is False:
+            return
+
+        uses_download_plugin = False
+        for job in jobs:
+            if not isinstance(job, dict) or job.get("enable", True) is False:
+                continue
+
+            raw_plugins = job.get("plugins", [])
+            if not isinstance(raw_plugins, list):
+                continue
+            if "download_attachments" in raw_plugins:
+                uses_download_plugin = True
+                break
+
+        if not uses_download_plugin:
+            return
+
+        raw_output_dir = download_plugin_config.get("output_dir")
+        if not isinstance(raw_output_dir, str) or not raw_output_dir.strip():
+            raise DomainError(
+                "download_attachments requires non-empty output_dir in plugin config"
+            )
+
+        output_dir = Path(raw_output_dir).expanduser()
+        if output_dir.exists() and not output_dir.is_dir():
+            raise DomainError(
+                "download_attachments output_dir must be a directory path"
+            )
+
+        probe_path = output_dir if output_dir.exists() else output_dir.parent
+        if not str(probe_path).strip():
+            raise DomainError(
+                "download_attachments output_dir parent path is not resolvable"
+            )
+
+        if probe_path.exists() and not probe_path.is_dir():
+            raise DomainError(
+                "download_attachments output_dir parent is not a directory"
+            )
+
+        anchor = probe_path.anchor.strip()
+        if anchor:
+            anchor_path = Path(anchor)
+            if not anchor_path.exists():
+                raise DomainError(
+                    "download_attachments output_dir parent root is not available"
+                )
+
     async def process_config_file(
         self,
         config_file: Path | str = "config/config.yaml",
@@ -228,6 +287,10 @@ class JobExecutionService:
 
             jobs = config.get("jobs", [])
             typed_jobs = jobs if isinstance(jobs, list) else []
+            self._validate_download_attachment_startup_paths(
+                typed_jobs,
+                plugin_configs,
+            )
             if self._enabled_jobs_require_llm(typed_jobs, plugin_configs):
                 self._dependency_guard_service.ensure_llm_runtime_compatible()
 

@@ -3,6 +3,7 @@
 from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, Protocol
 
 from .contracts.dependency_guard import (
@@ -112,6 +113,17 @@ class EmailDTO:
     internet_message_id: str = ""
 
 
+@dataclass(frozen=True)
+class AttachmentDescriptor:
+    """Attachment metadata surfaced to plugins through action ports."""
+
+    index: int
+    filename: str
+    explicit_inline: bool | None = None
+    has_content_id: bool = False
+    metadata_complete: bool = True
+
+
 class MailActionPort(Protocol):
     """Action interface for mail side effects decoupled from COM types."""
 
@@ -131,6 +143,12 @@ class MailActionPort(Protocol):
         recipients: list[str] | None = None,
     ) -> None:
         """Create a calendar appointment under current account."""
+
+    def list_attachments(self) -> list[AttachmentDescriptor]:
+        """List current mail attachments in Outlook index order."""
+
+    def save_attachment(self, attachment_index: int, destination_path: Path) -> None:
+        """Save one current mail attachment to a destination path."""
 
 
 @dataclass

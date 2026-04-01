@@ -13,6 +13,7 @@ def test_ensure_config_samples_copies_packaged_templates(tmp_path: Path) -> None
     assert copied > 0
     assert (tmp_path / "config.yaml.sample").exists()
     assert (tmp_path / "plugins" / "add_category.yaml.sample").exists()
+    assert (tmp_path / "plugins" / "download_attachments.yaml.sample").exists()
 
 
 def test_initialize_configs_creates_yaml_and_is_idempotent(tmp_path: Path) -> None:

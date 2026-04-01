@@ -15,6 +15,7 @@ from .core import (
 from .llm import LLMClient, LLMConfig, LLMError, load_llm_config
 from .logger import LogSessionManager, LoggerManager, get_logger
 from .models import (
+    AttachmentDescriptor,
     AppError,
     CheckStatus,
     ConfigStatus,
@@ -39,7 +40,7 @@ from .runtime import (
     get_runtime_context,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.4.1rc1"
 
 if os.environ.get("MAILSLIDE_IMPORT_WARNING") == "1":
     warnings.warn(
@@ -76,6 +77,7 @@ __all__ = [
     "SystemStatus",
     "LLMConfigStatus",
     "PluginResult",
+    "AttachmentDescriptor",
     "EmailDTO",
     "MailActionPort",
     "EmailAnalysisResult",

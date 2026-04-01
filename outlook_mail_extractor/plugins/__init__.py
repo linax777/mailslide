@@ -17,6 +17,7 @@ from ..parser import clean_invisible_chars
 from . import (  # noqa: F401, E402
     calendar,
     category,
+    download_attachments,
     event_table,
     move,
     summary_file,
