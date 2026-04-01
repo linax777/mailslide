@@ -118,11 +118,13 @@ def _build_plugin(output_dir: Path) -> DownloadAttachmentsPlugin:
     return plugin
 
 
-def test_outlook_adapter_lists_attachments_in_index_order() -> None:
+def test_outlook_adapter_lists_attachments_with_strong_signal_fields() -> None:
     message = _FakeMessage(
         [
             _FakeAttachment("A.pdf", hidden=False),
-            _FakeAttachment("B.pdf", hidden=True, content_id="cid:b"),
+            _FakeAttachment(
+                "B.msg", hidden=True, attachment_type=5, content_id="cid:b"
+            ),
         ]
     )
     adapter = OutlookMailActionAdapter(
@@ -132,8 +134,10 @@ def test_outlook_adapter_lists_attachments_in_index_order() -> None:
     descriptors = adapter.list_attachments()
 
     assert [descriptor.index for descriptor in descriptors] == [1, 2]
-    assert descriptors[0].explicit_inline is False
-    assert descriptors[1].explicit_inline is True
+    assert descriptors[0].hidden is False
+    assert descriptors[0].embedded_item_type is False
+    assert descriptors[1].hidden is True
+    assert descriptors[1].embedded_item_type is True
     assert descriptors[1].has_content_id is True
 
 
@@ -146,7 +150,7 @@ def test_outlook_adapter_descriptor_keeps_missing_filename() -> None:
     descriptors = adapter.list_attachments()
 
     assert descriptors[0].filename == ""
-    assert descriptors[0].explicit_inline is None
+    assert descriptors[0].metadata_complete is False
 
 
 def test_outlook_adapter_save_attachment_propagates_error() -> None:
@@ -161,30 +165,7 @@ def test_outlook_adapter_save_attachment_propagates_error() -> None:
         adapter.save_attachment(1, Path("attachment.pdf"))
 
 
-def test_download_attachments_saves_regular_files(tmp_path: Path) -> None:
-    plugin = _build_plugin(tmp_path)
-    action_port = _RecordingActionPort(
-        [
-            AttachmentDescriptor(
-                index=1, filename="invoice.pdf", explicit_inline=False
-            ),
-            AttachmentDescriptor(
-                index=2, filename="report.xlsx", explicit_inline=False
-            ),
-        ]
-    )
-
-    result = asyncio.run(plugin.execute(_build_email(), "", action_port))
-
-    assert isinstance(result, PluginExecutionResult)
-    assert result.status == PluginExecutionStatus.SUCCESS
-    email_detail = result.details["emails"][0]
-    assert email_detail["downloaded_count"] == 2
-    assert email_detail["failed_files"] == []
-    assert len(action_port.saved_paths) == 2
-
-
-def test_download_attachments_excludes_explicit_inline_attachment(
+def test_download_attachments_skips_when_two_strong_inline_signals(
     tmp_path: Path,
 ) -> None:
     plugin = _build_plugin(tmp_path)
@@ -193,8 +174,9 @@ def test_download_attachments_excludes_explicit_inline_attachment(
             AttachmentDescriptor(
                 index=1,
                 filename="image001.png",
-                explicit_inline=True,
                 has_content_id=True,
+                hidden=True,
+                embedded_item_type=False,
             )
         ]
     )
@@ -204,21 +186,75 @@ def test_download_attachments_excludes_explicit_inline_attachment(
     assert result.status == PluginExecutionStatus.SKIPPED
     email_detail = result.details["emails"][0]
     assert email_detail["downloaded_count"] == 0
-    assert action_port.saved_paths == []
+    assert email_detail["skipped_inline_reasons"] == {
+        "high_confidence_inline_content_id_hidden": 1
+    }
 
 
-def test_download_attachments_no_attachments_returns_skipped(tmp_path: Path) -> None:
+def test_download_attachments_downloads_when_no_strong_inline_signals(
+    tmp_path: Path,
+) -> None:
     plugin = _build_plugin(tmp_path)
-    action_port = _RecordingActionPort([])
+    action_port = _RecordingActionPort(
+        [AttachmentDescriptor(index=1, filename="invoice.pdf")]
+    )
 
     result = asyncio.run(plugin.execute(_build_email(), "", action_port))
 
-    assert result.status == PluginExecutionStatus.SKIPPED
+    assert isinstance(result, PluginExecutionResult)
+    assert result.status == PluginExecutionStatus.SUCCESS
     email_detail = result.details["emails"][0]
-    assert email_detail["failed_files"] == []
+    assert email_detail["saved_relative_paths"] == ["invoice.pdf"]
+    assert email_detail["skipped_inline_reasons"] == {}
 
 
-def test_download_attachments_ambiguous_metadata_counts_fallback(
+def test_download_attachments_one_strong_signal_downloads_with_fallback_count(
+    tmp_path: Path,
+) -> None:
+    plugin = _build_plugin(tmp_path)
+    action_port = _RecordingActionPort(
+        [
+            AttachmentDescriptor(
+                index=1,
+                filename="note.txt",
+                has_content_id=True,
+                hidden=False,
+                embedded_item_type=False,
+                metadata_complete=True,
+            )
+        ]
+    )
+
+    result = asyncio.run(plugin.execute(_build_email(), "", action_port))
+
+    assert result.status == PluginExecutionStatus.SUCCESS
+    assert result.details["emails"][0]["inline_fallback_count"] == 1
+
+
+def test_download_attachments_conflicting_metadata_uses_two_signal_rule(
+    tmp_path: Path,
+) -> None:
+    plugin = _build_plugin(tmp_path)
+    action_port = _RecordingActionPort(
+        [
+            AttachmentDescriptor(
+                index=1,
+                filename="report.docx",
+                has_content_id=False,
+                hidden=False,
+                embedded_item_type=True,
+                metadata_complete=True,
+            )
+        ]
+    )
+
+    result = asyncio.run(plugin.execute(_build_email(), "", action_port))
+
+    assert result.status == PluginExecutionStatus.SUCCESS
+    assert result.details["emails"][0]["downloaded_count"] == 1
+
+
+def test_download_attachments_metadata_inconclusive_counts_fallback(
     tmp_path: Path,
 ) -> None:
     plugin = _build_plugin(tmp_path)
@@ -227,8 +263,6 @@ def test_download_attachments_ambiguous_metadata_counts_fallback(
             AttachmentDescriptor(
                 index=1,
                 filename="details.txt",
-                explicit_inline=None,
-                has_content_id=False,
                 metadata_complete=False,
             )
         ]
@@ -237,43 +271,32 @@ def test_download_attachments_ambiguous_metadata_counts_fallback(
     result = asyncio.run(plugin.execute(_build_email(), "", action_port))
 
     assert result.status == PluginExecutionStatus.SUCCESS
-    email_detail = result.details["emails"][0]
-    assert email_detail["inline_fallback_count"] == 1
+    assert result.details["emails"][0]["inline_fallback_count"] == 1
 
 
-def test_download_attachments_maps_directory_create_failure(tmp_path: Path) -> None:
+def test_download_attachments_maps_directory_create_failure_to_runtime_code(
+    tmp_path: Path,
+) -> None:
     blocked = tmp_path / "blocked.txt"
     blocked.write_text("x", encoding="utf-8")
     plugin = _build_plugin(blocked)
     action_port = _RecordingActionPort(
-        [AttachmentDescriptor(index=1, filename="invoice.pdf", explicit_inline=False)]
+        [AttachmentDescriptor(index=1, filename="a.pdf")]
     )
 
     result = asyncio.run(plugin.execute(_build_email(), "", action_port))
 
     assert result.status == PluginExecutionStatus.FAILED
-    email_detail = result.details["emails"][0]
-    assert email_detail["failed_files"][0]["code"] == "dir_create_failed"
+    assert result.code == "runtime_output_dir_unwritable"
+    assert result.details["run_code"] == "runtime_output_dir_unwritable"
 
 
-def test_download_attachments_maps_write_failure(tmp_path: Path) -> None:
+def test_download_attachments_maps_invalid_filename_after_sanitize(
+    tmp_path: Path,
+) -> None:
     plugin = _build_plugin(tmp_path)
     action_port = _RecordingActionPort(
-        [AttachmentDescriptor(index=1, filename="invoice.pdf", explicit_inline=False)],
-        save_errors={1: PermissionError("write denied")},
-    )
-
-    result = asyncio.run(plugin.execute(_build_email(), "", action_port))
-
-    assert result.status == PluginExecutionStatus.FAILED
-    failure_code = result.details["emails"][0]["failed_files"][0]["code"]
-    assert failure_code in {"dir_not_writable", "save_failed"}
-
-
-def test_download_attachments_maps_invalid_filename(tmp_path: Path) -> None:
-    plugin = _build_plugin(tmp_path)
-    action_port = _RecordingActionPort(
-        [AttachmentDescriptor(index=1, filename="   ", explicit_inline=False)]
+        [AttachmentDescriptor(index=1, filename="...", metadata_complete=True)]
     )
 
     result = asyncio.run(plugin.execute(_build_email(), "", action_port))
@@ -283,39 +306,55 @@ def test_download_attachments_maps_invalid_filename(tmp_path: Path) -> None:
     assert failure["code"] == "invalid_attachment_name"
 
 
-def test_download_attachments_run_status_precedence_keeps_saved_files(
+def test_download_attachments_saved_relative_paths_follow_index_order(
     tmp_path: Path,
 ) -> None:
     plugin = _build_plugin(tmp_path)
+    action_port = _RecordingActionPort(
+        [
+            AttachmentDescriptor(index=1, filename="Report.pdf"),
+            AttachmentDescriptor(index=2, filename="Report.pdf"),
+            AttachmentDescriptor(index=3, filename="Report.pdf"),
+        ]
+    )
 
-    first_result = asyncio.run(
+    result = asyncio.run(plugin.execute(_build_email(), "", action_port))
+
+    assert result.status == PluginExecutionStatus.SUCCESS
+    email_detail = result.details["emails"][0]
+    assert email_detail["saved_relative_paths"] == [
+        "Report.pdf",
+        "Report (1).pdf",
+        "Report (2).pdf",
+    ]
+
+
+def test_download_attachments_runtime_failure_code_precedence_across_run(
+    tmp_path: Path,
+) -> None:
+    plugin = _build_plugin(tmp_path)
+    save_failure_result = asyncio.run(
         plugin.execute(
             _build_email(entry_id="entry-1"),
             "",
             _RecordingActionPort(
-                [
-                    AttachmentDescriptor(
-                        index=1,
-                        filename="invoice.pdf",
-                        explicit_inline=False,
-                    )
-                ]
+                [AttachmentDescriptor(index=1, filename="invoice.pdf")],
+                save_errors={1: OSError("disk full")},
             ),
         )
     )
-    second_result = asyncio.run(
+
+    blocked = tmp_path / "blocked.txt"
+    blocked.write_text("x", encoding="utf-8")
+    plugin.output_dir = str(blocked)
+    dir_failure_result = asyncio.run(
         plugin.execute(
             _build_email(entry_id="entry-2"),
             "",
-            _RecordingActionPort(
-                [AttachmentDescriptor(index=1, filename="", explicit_inline=False)]
-            ),
+            _RecordingActionPort([AttachmentDescriptor(index=1, filename="b.pdf")]),
         )
     )
 
-    assert first_result.status == PluginExecutionStatus.SUCCESS
-    assert second_result.status == PluginExecutionStatus.FAILED
-    assert second_result.details["run_status"] == "failed"
-
-    output_paths = list(tmp_path.rglob("invoice.pdf"))
-    assert output_paths
+    assert save_failure_result.code == "runtime_attachment_download_failed"
+    assert dir_failure_result.code == "runtime_output_dir_unwritable"
+    assert dir_failure_result.details["run_code"] == "runtime_output_dir_unwritable"

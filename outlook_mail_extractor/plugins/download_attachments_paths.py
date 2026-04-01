@@ -12,6 +12,7 @@ from typing import Iterable
 DEFAULT_JOB_FOLDER_MAX_LENGTH = 60
 DEFAULT_FILENAME_MAX_LENGTH = 120
 DEFAULT_FULL_PATH_BUDGET = 240
+DEFAULT_MIN_STARTUP_STEM_LENGTH = 8
 
 _INVALID_WINDOWS_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _WHITESPACE = re.compile(r"\s+")
@@ -98,8 +99,9 @@ def sanitize_attachment_filename(
     return _sanitize_component(
         filename,
         max_length=max_length,
-        fallback="unnamed",
+        fallback="",
         keep_extension=True,
+        strict_empty_stem=True,
     )
 
 
@@ -131,6 +133,12 @@ def plan_attachment_path(
         source_filename,
         max_length=filename_max_length,
     )
+    if not sanitized or not _has_usable_stem(sanitized):
+        return PlannedAttachmentPath(
+            status="invalid_attachment_name",
+            filename="",
+            path=None,
+        )
 
     first_candidate = _next_available_name(sanitized, collision_index)
     first_path = parent_dir / first_candidate
@@ -174,12 +182,44 @@ def plan_attachment_path(
     )
 
 
+def has_viable_startup_filename_budget(
+    *,
+    parent_dir: Path,
+    full_path_budget: int = DEFAULT_FULL_PATH_BUDGET,
+    min_stem_length: int = DEFAULT_MIN_STARTUP_STEM_LENGTH,
+    extension: str = ".txt",
+) -> bool:
+    """Return True when startup path budget can persist a minimally viable name."""
+    if min_stem_length < 1:
+        return False
+
+    normalized_extension = str(extension).strip()
+    if normalized_extension and not normalized_extension.startswith("."):
+        normalized_extension = f".{normalized_extension}"
+
+    source_filename = f"{'a' * min_stem_length}{normalized_extension}"
+    index = build_collision_index([])
+    planned = plan_attachment_path(
+        parent_dir=parent_dir,
+        source_filename=source_filename,
+        collision_index=index,
+        filename_max_length=DEFAULT_FILENAME_MAX_LENGTH,
+        full_path_budget=full_path_budget,
+    )
+    if planned.status != "ok" or planned.path is None:
+        return False
+
+    stem, _ = _split_name(planned.filename)
+    return len(stem) >= min_stem_length
+
+
 def _sanitize_component(
     raw_name: str,
     *,
     max_length: int,
     fallback: str,
     keep_extension: bool,
+    strict_empty_stem: bool = False,
 ) -> str:
     normalized = unicodedata.normalize("NFKC", str(raw_name))
     normalized = _WHITESPACE.sub(" ", normalized).strip()
@@ -187,6 +227,9 @@ def _sanitize_component(
     normalized = normalized.rstrip(" .")
 
     candidate = normalized or fallback
+    if strict_empty_stem and not _has_usable_stem(candidate):
+        return ""
+
     candidate = _protect_reserved_name(candidate, keep_extension=keep_extension)
     candidate = _truncate_name(
         candidate,
@@ -196,6 +239,9 @@ def _sanitize_component(
     candidate = candidate.rstrip(" .")
     if not candidate:
         candidate = fallback
+
+    if strict_empty_stem and not _has_usable_stem(candidate):
+        return ""
 
     candidate = _protect_reserved_name(candidate, keep_extension=keep_extension)
     return candidate
@@ -233,6 +279,11 @@ def _split_name(name: str) -> tuple[str, str]:
         return name, ""
     stem = name[: -len(suffix)]
     return stem, suffix
+
+
+def _has_usable_stem(name: str) -> bool:
+    stem, _ = _split_name(name)
+    return bool(stem.strip(" ."))
 
 
 def _collision_identity(name: str) -> str:

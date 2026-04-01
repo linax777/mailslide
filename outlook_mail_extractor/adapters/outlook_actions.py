@@ -82,28 +82,33 @@ class OutlookMailActionAdapter(MailActionPort):
 
             hidden_flag = self._read_bool_property(attachment, _PR_ATTACHMENT_HIDDEN)
             attachment_type = self._read_int_attr(attachment, "Type")
+            embedded_item_type = attachment_type in {_OL_EMBEDDED_ITEM, _OL_OLE}
 
             explicit_inline: bool | None
             if has_content_id:
                 explicit_inline = True
             elif hidden_flag is True:
                 explicit_inline = True
+            elif embedded_item_type:
+                explicit_inline = True
             elif hidden_flag is False:
                 explicit_inline = False
-            elif attachment_type in {_OL_EMBEDDED_ITEM, _OL_OLE}:
-                explicit_inline = True
             elif attachment_type is not None:
                 explicit_inline = False
             else:
                 explicit_inline = None
 
-            metadata_complete = hidden_flag is not None or attachment_type is not None
+            metadata_complete = (
+                has_content_id or hidden_flag is not None or attachment_type is not None
+            )
             descriptors.append(
                 AttachmentDescriptor(
                     index=index,
                     filename=filename,
                     explicit_inline=explicit_inline,
                     has_content_id=has_content_id,
+                    hidden=hidden_flag,
+                    embedded_item_type=embedded_item_type,
                     metadata_complete=metadata_complete,
                 )
             )

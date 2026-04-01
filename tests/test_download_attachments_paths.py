@@ -3,6 +3,7 @@ from pathlib import Path
 from outlook_mail_extractor.plugins.download_attachments_paths import (
     build_collision_index,
     build_job_folder_key,
+    has_viable_startup_filename_budget,
     plan_attachment_path,
     sanitize_attachment_filename,
 )
@@ -73,3 +74,39 @@ def test_plan_attachment_path_allocates_deterministic_conflict_suffix(
 
     assert planned.status == "ok"
     assert planned.filename == "Report (2).pdf"
+
+
+def test_plan_attachment_path_marks_unnamable_after_sanitization() -> None:
+    index = build_collision_index([])
+    planned = plan_attachment_path(
+        parent_dir=Path("output"),
+        source_filename="...",
+        collision_index=index,
+    )
+
+    assert planned.status == "invalid_attachment_name"
+    assert planned.path is None
+
+
+def test_has_viable_startup_filename_budget_exact_floor(tmp_path: Path) -> None:
+    parent = tmp_path / "folder"
+    floor_budget = len(str(parent)) + 1 + 8 + len(".txt")
+
+    assert has_viable_startup_filename_budget(
+        parent_dir=parent,
+        full_path_budget=floor_budget,
+        min_stem_length=8,
+        extension=".txt",
+    )
+
+
+def test_has_viable_startup_filename_budget_extensionless_floor(tmp_path: Path) -> None:
+    parent = tmp_path / "folder"
+    floor_budget = len(str(parent)) + 1 + 8
+
+    assert has_viable_startup_filename_budget(
+        parent_dir=parent,
+        full_path_budget=floor_budget,
+        min_stem_length=8,
+        extension="",
+    )

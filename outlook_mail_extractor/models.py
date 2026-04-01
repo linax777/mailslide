@@ -121,6 +121,8 @@ class AttachmentDescriptor:
     filename: str
     explicit_inline: bool | None = None
     has_content_id: bool = False
+    hidden: bool | None = None
+    embedded_item_type: bool = False
     metadata_complete: bool = True
 
 
@@ -129,9 +131,11 @@ class MailActionPort(Protocol):
 
     def move_to_folder(self, folder_name: str, create_if_missing: bool = True) -> None:
         """Move current mail item to a folder under current account."""
+        ...
 
     def add_categories(self, categories: list[str]) -> None:
         """Append categories to current mail item and persist changes."""
+        ...
 
     def create_appointment(
         self,
@@ -143,12 +147,15 @@ class MailActionPort(Protocol):
         recipients: list[str] | None = None,
     ) -> None:
         """Create a calendar appointment under current account."""
+        ...
 
     def list_attachments(self) -> list[AttachmentDescriptor]:
         """List current mail attachments in Outlook index order."""
+        ...
 
     def save_attachment(self, attachment_index: int, destination_path: Path) -> None:
         """Save one current mail attachment to a destination path."""
+        ...
 
 
 @dataclass

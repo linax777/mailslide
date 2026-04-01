@@ -5,7 +5,7 @@ import json
 from collections.abc import Callable
 from pathlib import Path, PureWindowsPath
 from time import perf_counter
-from typing import Any
+from typing import Any, NoReturn
 
 from ..config import load_config
 from ..core import EmailProcessor, OutlookClient, _resolve_plugin_prompt
@@ -15,12 +15,22 @@ from ..logger import get_default_logger_manager, get_logger
 from ..models import DomainError, InfrastructureError, UserVisibleError
 from ..parser import clean_invisible_chars
 from ..plugins import get_plugin, load_plugin_configs, load_plugin_modules
+from ..plugins.download_attachments_paths import (
+    DEFAULT_FULL_PATH_BUDGET,
+    DEFAULT_JOB_FOLDER_MAX_LENGTH,
+    DEFAULT_MIN_STARTUP_STEM_LENGTH,
+    build_job_folder_key,
+    has_viable_startup_filename_budget,
+)
 from ..runtime import LoggerManagerProtocol
 from .dependency_guard import DependencyGuardService
 
 
 class JobExecutionService:
     """Orchestrate end-to-end execution for all enabled jobs."""
+
+    _STARTUP_CODE_OUTPUT_DIR_INVALID = "startup_output_dir_invalid"
+    _STARTUP_CODE_PATH_BUDGET_INVALID = "startup_path_budget_invalid"
 
     @staticmethod
     def _is_absolute_output_path(raw_path: str) -> bool:
@@ -47,6 +57,20 @@ class JobExecutionService:
             return Path(anchor)
 
         return None
+
+    @staticmethod
+    def _coerce_positive_int(value: object, *, default: int) -> int:
+        if isinstance(value, bool):
+            return default
+        if isinstance(value, int):
+            return value if value > 0 else default
+        if isinstance(value, str):
+            try:
+                parsed = int(value.strip())
+            except ValueError:
+                return default
+            return parsed if parsed > 0 else default
+        return default
 
     def __init__(
         self,
@@ -191,6 +215,10 @@ class JobExecutionService:
         plugin_configs: dict[str, dict[str, Any]],
     ) -> None:
         """Validate download_attachments startup path requirements for enabled jobs."""
+
+        def raise_startup_error(code: str, message: str) -> NoReturn:
+            raise DomainError(f"{code}: {message}")
+
         download_plugin_config = plugin_configs.get("download_attachments", {})
         if not isinstance(download_plugin_config, dict):
             return
@@ -214,40 +242,100 @@ class JobExecutionService:
             return
 
         raw_output_dir = download_plugin_config.get("output_dir")
-        if not isinstance(raw_output_dir, str) or not raw_output_dir.strip():
-            raise DomainError(
-                "download_attachments requires non-empty output_dir in plugin config"
+        if not isinstance(raw_output_dir, str):
+            raise_startup_error(
+                self._STARTUP_CODE_OUTPUT_DIR_INVALID,
+                "download_attachments requires non-empty output_dir in plugin config",
+            )
+        output_dir_text = raw_output_dir.strip()
+        if not output_dir_text:
+            raise_startup_error(
+                self._STARTUP_CODE_OUTPUT_DIR_INVALID,
+                "download_attachments requires non-empty output_dir in plugin config",
             )
 
-        output_dir = Path(raw_output_dir).expanduser()
+        output_dir = Path(output_dir_text).expanduser()
         if output_dir.exists() and not output_dir.is_dir():
-            raise DomainError(
-                "download_attachments output_dir must be a directory path"
+            raise_startup_error(
+                self._STARTUP_CODE_OUTPUT_DIR_INVALID,
+                "download_attachments output_dir must be a directory path",
             )
 
         probe_path = output_dir if output_dir.exists() else output_dir.parent
         if not str(probe_path).strip():
-            raise DomainError(
-                "download_attachments output_dir parent path is not resolvable"
+            raise_startup_error(
+                self._STARTUP_CODE_OUTPUT_DIR_INVALID,
+                "download_attachments output_dir parent path is not resolvable",
             )
 
         if probe_path.exists() and not probe_path.is_dir():
-            raise DomainError(
-                "download_attachments output_dir parent is not a directory"
+            raise_startup_error(
+                self._STARTUP_CODE_OUTPUT_DIR_INVALID,
+                "download_attachments output_dir parent is not a directory",
             )
 
-        windows_root = self._resolve_windows_root_path(raw_output_dir)
+        windows_root = self._resolve_windows_root_path(output_dir_text)
         if windows_root is not None and not windows_root.exists():
-            raise DomainError(
-                "download_attachments output_dir parent root is not available"
+            raise_startup_error(
+                self._STARTUP_CODE_OUTPUT_DIR_INVALID,
+                "download_attachments output_dir parent root is not available",
             )
 
         anchor = probe_path.anchor.strip()
         if anchor:
             anchor_path = Path(anchor)
             if not anchor_path.exists():
-                raise DomainError(
-                    "download_attachments output_dir parent root is not available"
+                raise_startup_error(
+                    self._STARTUP_CODE_OUTPUT_DIR_INVALID,
+                    "download_attachments output_dir parent root is not available",
+                )
+
+        full_path_budget = self._coerce_positive_int(
+            download_plugin_config.get("full_path_budget", DEFAULT_FULL_PATH_BUDGET),
+            default=DEFAULT_FULL_PATH_BUDGET,
+        )
+        job_folder_max_length = self._coerce_positive_int(
+            download_plugin_config.get(
+                "job_folder_max_length", DEFAULT_JOB_FOLDER_MAX_LENGTH
+            ),
+            default=DEFAULT_JOB_FOLDER_MAX_LENGTH,
+        )
+
+        for job in jobs:
+            if not isinstance(job, dict) or job.get("enable", True) is False:
+                continue
+            raw_plugins = job.get("plugins", [])
+            if (
+                not isinstance(raw_plugins, list)
+                or "download_attachments" not in raw_plugins
+            ):
+                continue
+
+            job_name = str(job.get("name", "job")).strip() or "job"
+            folder_key = build_job_folder_key(
+                job_name,
+                max_length=job_folder_max_length,
+            )
+            candidate_parent = output_dir / folder_key
+            extension_viable = has_viable_startup_filename_budget(
+                parent_dir=candidate_parent,
+                full_path_budget=full_path_budget,
+                min_stem_length=DEFAULT_MIN_STARTUP_STEM_LENGTH,
+                extension=".txt",
+            )
+            extensionless_viable = has_viable_startup_filename_budget(
+                parent_dir=candidate_parent,
+                full_path_budget=full_path_budget,
+                min_stem_length=DEFAULT_MIN_STARTUP_STEM_LENGTH,
+                extension="",
+            )
+            if not extension_viable or not extensionless_viable:
+                raise_startup_error(
+                    self._STARTUP_CODE_PATH_BUDGET_INVALID,
+                    (
+                        "download_attachments output path budget is not viable for "
+                        f"job '{job_name}'"
+                    ),
                 )
 
     async def process_config_file(

@@ -97,7 +97,7 @@ def _runtime_context(tmp_path: Path) -> RuntimeContext:
 
 
 def test_plugin_config_editor_collect_payload_success() -> None:
-    schema = {
+    schema: dict[str, Any] = {
         "fields": {
             "enabled": {"type": "bool", "required": True},
             "output_file": {"type": "path", "required": True},
@@ -133,7 +133,7 @@ def test_plugin_config_editor_collect_payload_success() -> None:
 def test_plugin_config_editor_path_field_resolves_to_absolute_with_base_dir(
     tmp_path: Path,
 ) -> None:
-    schema = {
+    schema: dict[str, Any] = {
         "fields": {
             "output_file": {"type": "path", "required": True},
         },
@@ -155,7 +155,7 @@ def test_plugin_config_editor_path_field_resolves_to_absolute_with_base_dir(
 
 
 def test_plugin_config_editor_path_field_keeps_relative_without_base_dir() -> None:
-    schema = {
+    schema: dict[str, Any] = {
         "fields": {
             "output_file": {"type": "path", "required": True},
         },
@@ -172,6 +172,28 @@ def test_plugin_config_editor_path_field_keeps_relative_without_base_dir() -> No
     )
 
     assert resolved == str(Path("output/events.xlsx"))
+
+
+def test_plugin_config_editor_output_dir_field_resolves_with_base_dir(
+    tmp_path: Path,
+) -> None:
+    schema: dict[str, Any] = {
+        "fields": {
+            "output_dir": {"type": "path", "required": True},
+        },
+        "validation_rules": [],
+    }
+    base_dir = tmp_path / "config"
+    modal = PluginConfigEditorModal(
+        "download_attachments",
+        schema,
+        {"output_dir": "output/attachments"},
+        base_dir=base_dir,
+    )
+
+    resolved = modal._resolve_initial_text("output_dir", schema["fields"]["output_dir"])
+
+    assert resolved == str((base_dir / "output" / "attachments").resolve())
 
 
 def test_plugin_config_editor_collect_payload_invalid_int() -> None:

@@ -44,7 +44,7 @@ _ui:
       label: "Filename max length"
       required: true
       default: 120
-      min: 10
+      min: 8
     full_path_budget:
       type: int
       label: "Full path budget"
@@ -60,3 +60,7 @@ _ui:
       level: error
       message: "full_path_budget must be greater than 0"
       check: "is_int(config.full_path_budget) && config.full_path_budget > 0"
+    - id: filename_max_length_floor
+      level: error
+      message: "filename_max_length must be at least 8"
+      check: "is_int(config.filename_max_length) && config.filename_max_length >= 8"

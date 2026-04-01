@@ -10,6 +10,9 @@ from outlook_mail_extractor.models import (
     DomainError,
     InfrastructureError,
 )
+from outlook_mail_extractor.plugins.download_attachments_paths import (
+    build_job_folder_key,
+)
 from outlook_mail_extractor.services.job_execution import JobExecutionService
 
 
@@ -551,9 +554,61 @@ def test_validate_download_attachments_accepts_nonexistent_leaf_path(
             "download_attachments": {
                 "enabled": True,
                 "output_dir": str(output_dir),
+                "full_path_budget": 240,
             }
         },
     )
+
+
+def test_validate_download_attachments_path_budget_exact_floor_passes(
+    tmp_path: Path,
+) -> None:
+    service = JobExecutionService()
+    output_dir = tmp_path / "exports"
+    folder_key = build_job_folder_key("job-1")
+    full_path_budget = len(str(output_dir / folder_key)) + 1 + 8 + len(".txt")
+
+    service._validate_download_attachment_startup_paths(
+        jobs=[
+            {
+                "name": "job-1",
+                "enable": True,
+                "plugins": ["download_attachments"],
+            }
+        ],
+        plugin_configs={
+            "download_attachments": {
+                "enabled": True,
+                "output_dir": str(output_dir),
+                "full_path_budget": full_path_budget,
+            }
+        },
+    )
+
+
+def test_validate_download_attachments_path_budget_invalid_maps_to_startup_code(
+    tmp_path: Path,
+) -> None:
+    service = JobExecutionService()
+    output_dir = tmp_path / "exports"
+
+    with pytest.raises(DomainError, match="startup_path_budget_invalid"):
+        service._validate_download_attachment_startup_paths(
+            jobs=[
+                {
+                    "name": "job-1",
+                    "enable": True,
+                    "plugins": ["download_attachments"],
+                }
+            ],
+            plugin_configs={
+                "download_attachments": {
+                    "enabled": True,
+                    "output_dir": str(output_dir),
+                    "full_path_budget": 10,
+                }
+            },
+        )
 
 
 def test_validate_download_attachments_rejects_missing_output_dir() -> None:
