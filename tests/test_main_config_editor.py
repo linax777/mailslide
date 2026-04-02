@@ -1,12 +1,16 @@
+import gettext
 from pathlib import Path
 from typing import Any
 
 import yaml
 from textual.widgets import Button
 
+from outlook_mail_extractor import i18n as i18n_module
+from outlook_mail_extractor.i18n import set_language
 from outlook_mail_extractor.runtime import RuntimeContext, RuntimePaths
 from outlook_mail_extractor.screens import MainConfigTab, PluginConfigEditorModal
 from outlook_mail_extractor.screens.modals.add_job import AddJobScreen
+from outlook_mail_extractor.ui_schema import schema_text
 
 
 class _FakeLoggerManager:
@@ -307,6 +311,115 @@ def test_main_config_general_settings_schema_uses_fixed_owned_keys(
     assert fields["plugin_modules"]["type"] == "list[str]"
 
 
+def test_main_config_general_settings_schema_overrides_schema_labels_with_owned_i18n(
+    tmp_path: Path,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._ui_schema = {
+        "fields": {
+            "body_max_length": {
+                "type": "int",
+                "label": "自訂長度",
+                "required": True,
+            },
+            "llm_mode": {
+                "type": "select",
+                "label": "Custom LLM",
+                "label_key": "custom.llm.key",
+            },
+            "plugin_modules": {
+                "type": "textarea",
+                "label": "自訂模組",
+            },
+        }
+    }
+
+    schema = tab._general_settings_schema()
+    fields = schema["fields"]
+
+    assert (
+        fields["body_max_length"]["label_key"]
+        == "ui.main.general.field.body_max_length"
+    )
+    assert fields["body_max_length"]["label"] == "Body Max Length"
+    assert fields["body_max_length"]["required"] is True
+
+    assert fields["llm_mode"]["label_key"] == "ui.main.general.field.llm_mode"
+    assert fields["llm_mode"]["label"] == "LLM Mode"
+
+    assert (
+        fields["plugin_modules"]["label_key"] == "ui.main.general.field.plugin_modules"
+    )
+    assert fields["plugin_modules"]["label"] == "Plugin Modules"
+    assert fields["plugin_modules"]["type"] == "list[str]"
+
+
+def test_main_config_general_settings_schema_falls_back_for_missing_or_invalid_specs(
+    tmp_path: Path,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._ui_schema = {
+        "fields": {
+            "body_max_length": "invalid",
+            "plugin_modules": {"required": True},
+        }
+    }
+
+    schema = tab._general_settings_schema()
+    fields = schema["fields"]
+
+    assert fields["body_max_length"]["label"] == "Body Max Length"
+    assert fields["llm_mode"]["label"] == "LLM Mode"
+    assert fields["plugin_modules"]["label"] == "Plugin Modules"
+    assert fields["plugin_modules"]["required"] is True
+
+
+def test_main_config_general_settings_schema_renders_labels_by_locale(
+    tmp_path: Path,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._ui_schema = {
+        "fields": {
+            "body_max_length": {"label": "schema-only"},
+        }
+    }
+    field = tab._general_settings_schema()["fields"]["body_max_length"]
+
+    try:
+        set_language("en-US")
+        assert schema_text(field, "label_key", "label", "") == "Body Max Length"
+
+        set_language("zh-TW")
+        assert schema_text(field, "label_key", "label", "") == "內文長度上限"
+    finally:
+        set_language("en-US")
+
+
+def test_main_config_general_settings_schema_uses_english_fallback_when_locale_missing(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    field = tab._general_settings_schema()["fields"]["body_max_length"]
+
+    monkeypatch.setattr(i18n_module, "_TRANSLATION", gettext.NullTranslations())
+    monkeypatch.setattr(
+        i18n_module,
+        "_load_yaml_translations",
+        lambda language: (
+            {}
+            if language == "zh-TW"
+            else {"ui.main.general.field.body_max_length": "Body Max Length"}
+        ),
+    )
+
+    try:
+        set_language("zh-TW")
+        assert schema_text(field, "label_key", "label", "") == "Body Max Length"
+    finally:
+        set_language("en-US")
+
+
 def test_main_config_open_general_settings_pushes_modal(
     tmp_path: Path,
     monkeypatch: Any,
@@ -326,6 +439,34 @@ def test_main_config_open_general_settings_pushes_modal(
     assert len(fake_app.pushed_screens) == 1
     screen = fake_app.pushed_screens[0][0]
     assert isinstance(screen, PluginConfigEditorModal)
+
+
+def test_main_config_open_general_settings_localizes_modal_title_and_entity(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._schema_errors = []
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(tab, "_load_general_settings_payload", lambda: {})
+
+    try:
+        set_language("en-US")
+        tab._open_general_settings()
+        screen_en = fake_app.pushed_screens[-1][0]
+        assert isinstance(screen_en, PluginConfigEditorModal)
+        assert screen_en._plugin_name == "Main Config"
+        assert screen_en._entity_label == "General"
+
+        set_language("zh-TW")
+        tab._open_general_settings()
+        screen_zh = fake_app.pushed_screens[-1][0]
+        assert isinstance(screen_zh, PluginConfigEditorModal)
+        assert screen_zh._plugin_name == "主設定"
+        assert screen_zh._entity_label == "一般設定"
+    finally:
+        set_language("en-US")
 
 
 def test_main_config_attempt_save_general_settings_preserves_unknown_keys(

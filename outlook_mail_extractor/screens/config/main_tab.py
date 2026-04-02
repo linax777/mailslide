@@ -331,15 +331,30 @@ class MainConfigTab(Static):
 
         modal_fields: dict[str, Any] = {}
         for key in MAIN_GENERAL_SETTING_KEYS:
-            spec = fields_map.get(key)
-            if not isinstance(spec, dict):
-                spec = fallback[key]
-            field_spec = dict(spec)
-            if key == "plugin_modules":
-                field_spec["type"] = "list[str]"
-            modal_fields[key] = field_spec
+            modal_fields[key] = self._normalize_general_settings_field_spec(
+                key,
+                fields_map.get(key),
+                fallback[key],
+            )
 
         return {"fields": modal_fields, "validation_rules": []}
+
+    def _normalize_general_settings_field_spec(
+        self,
+        key: str,
+        source_spec: Any,
+        fallback_spec: dict[str, Any],
+    ) -> dict[str, Any]:
+        field_spec = dict(fallback_spec)
+        if isinstance(source_spec, dict):
+            field_spec.update(source_spec)
+
+        field_spec["label_key"] = fallback_spec["label_key"]
+        field_spec["label"] = fallback_spec["label"]
+        if key == "plugin_modules":
+            field_spec["type"] = "list[str]"
+
+        return field_spec
 
     def _general_settings_fallback_fields(self) -> dict[str, dict[str, Any]]:
         return {
