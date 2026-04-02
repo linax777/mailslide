@@ -159,6 +159,20 @@ class OutlookMailExtractor(App):
     def action_show_tab(self, tab: str) -> None:
         self.get_child_by_type(TabbedContent).active = tab
 
+    def _request_home_auto_refresh(self) -> None:
+        try:
+            self.query_one(HomeScreen).request_auto_refresh_on_entry()
+        except Exception:
+            pass
+
+    def on_tabbed_content_tab_activated(
+        self,
+        event: TabbedContent.TabActivated,
+    ) -> None:
+        if event.pane.id != "home":
+            return
+        self._request_home_auto_refresh()
+
     def on_mount(self) -> None:
         runtime = get_runtime_context()
         set_terminal_title(resolve_terminal_title(runtime.paths.config_file))

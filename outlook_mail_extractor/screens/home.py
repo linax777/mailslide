@@ -1,12 +1,13 @@
 """Home tab screen."""
 
 import asyncio
+from typing import Literal
 
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.timer import Timer
-from textual.widgets import Button, DataTable, Log, Static
+from textual.widgets import Button, DataTable, Log, Static, TabbedContent
 from textual.worker import NoActiveWorker, Worker, get_current_worker
 
 from ..config import get_last_migration_result, load_config
@@ -59,6 +60,7 @@ class HomeScreen(Static):
         self._job_terminal_status: str | None = None
         self._animation_timer: Timer | None = None
         self._animation_frame_idx = 0
+        self._pending_auto_refresh = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="home-container"):
@@ -89,12 +91,12 @@ class HomeScreen(Static):
 
     def on_mount(self) -> None:
         self._update_preserve_reply_button()
-        self._load_jobs()
+        self._refresh_jobs_area(reason="manual")
 
     def on_unmount(self) -> None:
         self._stop_jobs_animation()
 
-    def _load_jobs(self) -> None:
+    def _refresh_jobs_area(self, reason: Literal["manual", "auto"]) -> bool:
         table = self.query_one("#jobs-table", DataTable)
         status = self.query_one("#home-status", Static)
         run_button = self.query_one("#run-jobs", Button)
@@ -111,12 +113,20 @@ class HomeScreen(Static):
                 t("ui.home.row.config_missing"),
             )
             run_button.disabled = True
-            return
+            if reason == "auto":
+                self.app.notify(
+                    t(
+                        "ui.home.warn.auto_refresh_failed",
+                        error=t("ui.home.row.config_missing"),
+                    ),
+                    severity="warning",
+                )
+            return False
 
         try:
             config = load_config(config_path)
             migration_result = get_last_migration_result()
-            if migration_result and migration_result.changed:
+            if migration_result and migration_result.changed and reason == "manual":
                 backup = (
                     str(migration_result.backup_path)
                     if migration_result.backup_path
@@ -155,6 +165,7 @@ class HomeScreen(Static):
                     truncate(job.get("destination")) or "-",
                     truncate(plugins),
                 )
+            return True
         except Exception as e:
             status.update(t("ui.home.status.config_invalid"))
             table.add_columns(
@@ -162,10 +173,40 @@ class HomeScreen(Static):
             )
             table.add_row(t("ui.home.row.load_failed"), str(e))
             run_button.disabled = True
+            if reason == "auto":
+                self.app.notify(
+                    t("ui.home.warn.auto_refresh_failed", error=e),
+                    severity="warning",
+                )
+            return False
+
+    def _is_job_running(self) -> bool:
+        return bool(self._job_worker and self._job_worker.is_running)
+
+    def _is_home_tab_active(self) -> bool:
+        try:
+            return self.app.get_child_by_type(TabbedContent).active == "home"
+        except Exception:
+            return False
+
+    def request_auto_refresh_on_entry(self) -> None:
+        if self._is_job_running():
+            self._pending_auto_refresh = True
+            return
+        self._pending_auto_refresh = False
+        self._refresh_jobs_area(reason="auto")
+
+    def _drain_pending_auto_refresh_if_ready(self) -> None:
+        if not self._pending_auto_refresh:
+            return
+        if not self._is_home_tab_active():
+            return
+        self._pending_auto_refresh = False
+        self._refresh_jobs_area(reason="auto")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "refresh-jobs":
-            self._load_jobs()
+            self._refresh_jobs_area(reason="manual")
         elif event.button.id == "run-jobs":
             self.run_jobs()
         elif event.button.id == "stop-jobs":
@@ -340,6 +381,12 @@ class HomeScreen(Static):
 
     def _set_job_running_state(self, is_running: bool) -> None:
         """Toggle Home action buttons based on execution state."""
+        self._apply_running_state_to_controls(is_running)
+        if not is_running:
+            self._drain_pending_auto_refresh_if_ready()
+
+    def _apply_running_state_to_controls(self, is_running: bool) -> None:
+        """Apply execution state to Home controls and animation."""
         run_button = self.query_one("#run-jobs", Button)
         stop_button = self.query_one("#stop-jobs", Button)
         run_button.disabled = is_running
