@@ -26,6 +26,11 @@ class _FakeStatic:
         self.content = content
 
 
+class _FakeButton:
+    def __init__(self) -> None:
+        self.disabled = False
+
+
 def test_add_job_modal_submit_includes_manual_review_destination() -> None:
     screen = AddJobScreen(plugin_options=["add_category", "move_to_folder"])
     widgets: dict[str, Any] = {
@@ -182,3 +187,77 @@ def test_add_job_modal_marks_unavailable_plugin_in_label() -> None:
 
     assert "legacy_plugin" in label
     assert "unavailable" in label or "不可用" in label
+
+
+def test_add_job_modal_save_attempt_failure_keeps_modal_open() -> None:
+    attempts: list[dict[str, object]] = []
+
+    def save_attempt(job: dict[str, object]) -> tuple[bool, str | None]:
+        attempts.append(job)
+        return False, "persist failed"
+
+    screen = AddJobScreen(
+        plugin_options=["add_category"],
+        save_attempt=save_attempt,
+    )
+    save_button = _FakeButton()
+    error = _FakeStatic()
+    widgets: dict[str, Any] = {
+        "add-job-name": _FakeInput("job-a"),
+        "add-job-account": _FakeInput("a@example.com"),
+        "add-job-source": _FakeInput("Inbox"),
+        "add-job-destination": _FakeInput(""),
+        "add-job-manual-review-destination": _FakeInput(""),
+        "add-job-limit": _FakeInput("10"),
+        "add-job-plugins": _FakeSelectionList(["add_category"]),
+        "add-job-plugin-profile-add_category": _FakeInput(""),
+        "add-job-enable": _FakeSwitch(True),
+        "add-job-error": error,
+        "add-job-save": save_button,
+    }
+    screen.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+    dismissed = {"called": False}
+    screen.dismiss = lambda _result: dismissed.__setitem__("called", True)  # type: ignore[assignment,misc,method-assign]
+
+    screen._submit()
+
+    assert dismissed["called"] is False
+    assert len(attempts) == 1
+    assert error.content == "persist failed"
+    assert save_button.disabled is False
+
+
+def test_add_job_modal_save_attempt_success_dismisses_modal() -> None:
+    attempts = {"count": 0}
+
+    def save_attempt(_job: dict[str, object]) -> tuple[bool, str | None]:
+        attempts["count"] += 1
+        return True, None
+
+    screen = AddJobScreen(
+        plugin_options=["add_category"],
+        save_attempt=save_attempt,
+    )
+    save_button = _FakeButton()
+    widgets: dict[str, Any] = {
+        "add-job-name": _FakeInput("job-a"),
+        "add-job-account": _FakeInput("a@example.com"),
+        "add-job-source": _FakeInput("Inbox"),
+        "add-job-destination": _FakeInput(""),
+        "add-job-manual-review-destination": _FakeInput(""),
+        "add-job-limit": _FakeInput("10"),
+        "add-job-plugins": _FakeSelectionList(["add_category"]),
+        "add-job-plugin-profile-add_category": _FakeInput(""),
+        "add-job-enable": _FakeSwitch(True),
+        "add-job-error": _FakeStatic(),
+        "add-job-save": save_button,
+    }
+    screen.query_one = lambda selector, _=None: widgets[str(selector).removeprefix("#")]  # type: ignore[method-assign]
+    dismissed: dict[str, object] = {}
+    screen.dismiss = lambda result: dismissed.setdefault("result", result)  # type: ignore[assignment,misc,method-assign]
+
+    screen._submit()
+
+    assert attempts["count"] == 1
+    assert dismissed["result"] is None
+    assert save_button.disabled is True

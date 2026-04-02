@@ -11,6 +11,25 @@ The format is based on Keep a Changelog, with entries grouped by release date
 
 
 
+
+
+## [v0.4.2rc1] - 2026-04-02
+
+### Changed
+
+- Changed Main Configuration Job actions (`Add`/`Edit`/`Remove`) to persist immediately to `config/config.yaml` using the same sanitize/validation/write pipeline as the main Save path.
+- Changed Add/Edit modal save flow to persist before dismissing; modal now stays open on save failure and allows retry.
+- Changed Job action behavior to block when YAML editor text has unsaved changes, with explicit guidance to Save or Reload first.
+
+### Added
+
+- Added saving-state guardrails to prevent duplicate submit during modal save and Job remove operations.
+- Added/updated regression coverage for immediate persistence, dirty-editor blocking, modal failure retry behavior, and remove failure state handling in `tests/test_main_config_editor.py` and `tests/test_add_job_modal.py`.
+- Added new i18n messages for dirty-editor Job-action blocking and modal save-failure fallback in `outlook_mail_extractor/locales/en-US.yaml` and `outlook_mail_extractor/locales/zh-TW.yaml`.
+
+### Fixed
+
+- Fixed the misleading "saved but not yet persisted" Job-edit experience where users had to click Save again in the main settings pane for changes to actually take effect.
 
 ## [v0.4.1] - 2026-04-02
 

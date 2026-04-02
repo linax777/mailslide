@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from textual.widgets import Button
 
 from outlook_mail_extractor.runtime import RuntimeContext, RuntimePaths
 from outlook_mail_extractor.screens import MainConfigTab
@@ -36,6 +37,11 @@ class _FakeApp:
 
     def notify(self, message: object, severity: str = "information") -> None:
         self.notifications.append((str(message), severity))
+
+
+class _FakeTextArea:
+    def __init__(self, text: str):
+        self.text = text
 
 
 def _runtime_context(tmp_path: Path) -> RuntimeContext:
@@ -352,3 +358,177 @@ def test_main_config_edit_job_ignores_malformed_existing_plugins(
     assert isinstance(screen, AddJobScreen)
     assert screen._plugin_options == ["download_attachments", "summary_file"]
     assert screen._unavailable_plugin_keys == set()
+
+
+def test_main_config_editor_has_unsaved_changes_when_text_differs(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._persisted_editor_text = "jobs: []\n"
+    monkeypatch.setattr(
+        tab,
+        "query_one",
+        lambda selector, _=None: (
+            _FakeTextArea("jobs: []\n\n")
+            if selector == "#main-config-content"
+            else None
+        ),
+    )
+
+    assert tab._editor_has_unsaved_changes() is True
+
+
+def test_main_config_add_job_blocks_when_editor_dirty(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._persisted_editor_text = "jobs: []\n"
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(
+        tab,
+        "query_one",
+        lambda selector, _=None: (
+            _FakeTextArea("jobs: []\n# dirty")
+            if selector == "#main-config-content"
+            else None
+        ),
+    )
+
+    tab._add_job()
+
+    assert fake_app.pushed_screens == []
+    assert fake_app.notifications[-1][1] == "warning"
+
+
+def test_main_config_edit_job_blocks_when_editor_dirty(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._persisted_editor_text = "jobs: []\n"
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(
+        tab,
+        "query_one",
+        lambda selector, _=None: (
+            _FakeTextArea("jobs: []\n# dirty")
+            if selector == "#main-config-content"
+            else None
+        ),
+    )
+
+    tab._edit_job()
+
+    assert fake_app.pushed_screens == []
+    assert fake_app.notifications[-1][1] == "warning"
+
+
+def test_main_config_remove_job_blocks_when_editor_dirty(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._persisted_editor_text = "jobs: []\n"
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(
+        tab,
+        "query_one",
+        lambda selector, _=None: (
+            _FakeTextArea("jobs: []\n# dirty")
+            if selector == "#main-config-content"
+            else None
+        ),
+    )
+
+    tab._remove_job(Button("Remove"))
+
+    assert fake_app.notifications[-1][1] == "warning"
+
+
+def test_main_config_persist_job_mutation_success(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    monkeypatch.setattr(
+        tab,
+        "_load_editor_config",
+        lambda: {
+            "jobs": [
+                {
+                    "name": "job-a",
+                    "account": "a@example.com",
+                    "source": "Inbox",
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        tab, "_validate_editor_payload", lambda config: (config, [], [])
+    )
+    wrote: dict[str, object] = {}
+    monkeypatch.setattr(
+        tab, "_write_config_file", lambda data: wrote.setdefault("data", data)
+    )
+    reloaded = {"count": 0}
+    monkeypatch.setattr(
+        tab,
+        "_load_config",
+        lambda: reloaded.__setitem__("count", reloaded["count"] + 1),
+    )
+
+    saved, error, warnings = tab._persist_job_mutation(
+        lambda config: config["jobs"].append(
+            {
+                "name": "job-b",
+                "account": "b@example.com",
+                "source": "Inbox",
+            }
+        )
+    )
+
+    assert saved is True
+    assert error is None
+    assert warnings == []
+    assert isinstance(wrote["data"], dict)
+    assert len(wrote["data"]["jobs"]) == 2
+    assert reloaded["count"] == 1
+
+
+def test_main_config_remove_job_failure_restores_button_state(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._selected_job_index = 0
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(tab, "_ensure_job_actions_allowed", lambda: True)
+    monkeypatch.setattr(
+        tab,
+        "_load_editor_config",
+        lambda: {
+            "jobs": [
+                {
+                    "name": "job-a",
+                    "account": "a@example.com",
+                    "source": "Inbox",
+                }
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        tab, "_persist_job_mutation", lambda _mutate: (False, "boom", [])
+    )
+    trigger_button = Button("Remove")
+
+    tab._remove_job(trigger_button)
+
+    assert trigger_button.disabled is False
+    assert tab._is_removing_job is False
+    assert tab._selected_job_index == 0
+    assert fake_app.notifications[-1][1] == "error"

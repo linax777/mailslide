@@ -1,5 +1,7 @@
 """Add-job modal screen."""
 
+from collections.abc import Callable
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
@@ -43,6 +45,8 @@ class AddJobScreen(ModalScreen[dict | None]):
         defaults: dict | None = None,
         title: str | None = None,
         save_button_label: str | None = None,
+        save_attempt: Callable[[dict[str, object]], tuple[bool, str | None]]
+        | None = None,
     ):
         super().__init__()
         self._plugin_options = plugin_options
@@ -53,6 +57,8 @@ class AddJobScreen(ModalScreen[dict | None]):
         self._defaults = defaults or {}
         self._title = title or t("ui.add_job.title")
         self._save_button_label = save_button_label or t("ui.add_job.button.save")
+        self._save_attempt = save_attempt
+        self._is_saving = False
 
     def _normalize_plugin_names(self, plugins: list[str] | None) -> list[str]:
         if not isinstance(plugins, list):
@@ -185,7 +191,15 @@ class AddJobScreen(ModalScreen[dict | None]):
     def _show_error(self, message: str) -> None:
         self.query_one("#add-job-error", Static).update(message)
 
+    def _set_saving_state(self, is_saving: bool) -> None:
+        self._is_saving = is_saving
+        save_button = self.query_one("#add-job-save", Button)
+        save_button.disabled = is_saving
+
     def _submit(self) -> None:
+        if self._is_saving:
+            return
+
         name = self.query_one("#add-job-name", Input).value.strip()
         account = self.query_one("#add-job-account", Input).value.strip()
         source = self.query_one("#add-job-source", Input).value.strip()
@@ -240,4 +254,21 @@ class AddJobScreen(ModalScreen[dict | None]):
         if plugin_prompt_profiles:
             job["plugin_prompt_profiles"] = plugin_prompt_profiles
 
-        self.dismiss(job)
+        if self._save_attempt is None:
+            self.dismiss(job)
+            return
+
+        self._set_saving_state(True)
+        error_message: str | None = None
+        try:
+            saved, error_message = self._save_attempt(job)
+        except Exception as e:
+            saved = False
+            error_message = str(e)
+
+        if saved:
+            self.dismiss(None)
+            return
+
+        self._set_saving_state(False)
+        self._show_error(error_message or t("ui.add_job.error.save_failed"))

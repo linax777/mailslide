@@ -1,5 +1,6 @@
 """Main config tab."""
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal
 
@@ -74,6 +75,8 @@ class MainConfigTab(Static):
         self._reset_armed = False
         self._rendered_job_indices: list[int] = []
         self._selected_job_index: int | None = None
+        self._persisted_editor_text = ""
+        self._is_removing_job = False
 
     def _ensure_reload_button_in_schema(self) -> None:
         buttons = self._ui_schema.get("buttons")
@@ -248,7 +251,7 @@ class MainConfigTab(Static):
             self._edit_job()
             return
         if action == "remove_job":
-            self._remove_job()
+            self._remove_job(event.button)
             return
         if action == "reset":
             self._reset_from_sample()
@@ -283,6 +286,50 @@ class MainConfigTab(Static):
 
     def _write_config_file(self, data: dict) -> Path:
         return write_yaml_with_backup(self._runtime.paths.config_file, data)
+
+    def _editor_has_unsaved_changes(self) -> bool:
+        try:
+            content_widget = self.query_one("#main-config-content", TextArea)
+        except Exception:
+            return False
+        return content_widget.text != self._persisted_editor_text
+
+    def _ensure_job_actions_allowed(self) -> bool:
+        if not self._editor_has_unsaved_changes():
+            return True
+        self.app.notify(
+            t("ui.main.warn.save_or_reload_before_job_action"),
+            severity="warning",
+        )
+        return False
+
+    def _persist_job_mutation(
+        self,
+        mutate: Callable[[dict[str, Any]], None],
+    ) -> tuple[bool, str | None, list[str]]:
+        try:
+            config = self._load_editor_config()
+            mutate(config)
+            sanitized, failed_errors, failed_warnings = self._validate_editor_payload(
+                config
+            )
+
+            if failed_errors:
+                preview = preview_messages(failed_errors)
+                return (
+                    False,
+                    t("ui.common.error.validation_failed", preview=preview),
+                    [],
+                )
+
+            self._write_config_file(sanitized)
+            self._load_config()
+            self._reset_armed = False
+            return True, None, failed_warnings
+        except ValueError as e:
+            return False, str(e), []
+        except Exception as e:
+            return False, t("ui.common.error.save_failed", error=e), []
 
     def _validate_editor_payload(
         self,
@@ -355,12 +402,10 @@ class MainConfigTab(Static):
     def _runtime_plugin_options(self) -> list[str]:
         return self._normalize_plugin_ids(list_plugins())
 
-    def _handle_add_job_result(self, result: dict | None) -> None:
-        if result is None:
-            return
-
-        try:
-            config = self._load_editor_config()
+    def _attempt_add_job_save(
+        self, result: dict[str, object]
+    ) -> tuple[bool, str | None]:
+        def mutate(config: dict[str, Any]) -> None:
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
                 raise ValueError(t("ui.main.error.jobs_must_list"))
@@ -374,19 +419,29 @@ class MainConfigTab(Static):
             if new_name in existing_names:
                 raise ValueError(t("ui.main.error.job_name_duplicate", name=new_name))
 
-            jobs.append(result)
+            jobs.append(dict(result))
             config["jobs"] = jobs
-            self._dump_editor_config(config)
-            self._run_schema_validation()
-            self._render_jobs_table(config)
-            self._reset_armed = False
-            self.app.notify(t("ui.main.notify.job_added"), severity="information")
-        except Exception as e:
+
+        saved, error, warnings = self._persist_job_mutation(mutate)
+        if not saved:
+            return False, t("ui.main.error.job_add_failed", error=error)
+
+        if warnings:
             self.app.notify(
-                t("ui.main.error.job_add_failed", error=e), severity="error"
+                t(
+                    "ui.common.warn.saved_with_warning",
+                    preview=preview_messages(warnings),
+                ),
+                severity="warning",
             )
+        else:
+            self.app.notify(t("ui.main.notify.job_added"), severity="information")
+        return True, None
 
     def _add_job(self) -> None:
+        if not self._ensure_job_actions_allowed():
+            return
+
         defaults = build_default_list_item(self._ui_schema, "jobs")
         plugin_options = self._runtime_plugin_options()
 
@@ -405,20 +460,17 @@ class MainConfigTab(Static):
             AddJobScreen(
                 plugin_options=plugin_options,
                 defaults=defaults,
+                save_attempt=self._attempt_add_job_save,
             ),
-            self._handle_add_job_result,
+            lambda _result: None,
         )
 
-    def _handle_edit_job_result(
+    def _attempt_edit_job_save(
         self,
         edit_index: int,
-        result: dict | None,
-    ) -> None:
-        if result is None:
-            return
-
-        try:
-            config = self._load_editor_config()
+        result: dict[str, object],
+    ) -> tuple[bool, str | None]:
+        def mutate(config: dict[str, Any]) -> None:
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
                 raise ValueError(t("ui.main.error.jobs_must_list"))
@@ -434,24 +486,34 @@ class MainConfigTab(Static):
                         t("ui.main.error.job_name_duplicate", name=updated_name)
                     )
 
-            jobs[edit_index] = result
+            jobs[edit_index] = dict(result)
             config["jobs"] = jobs
-            self._selected_job_index = edit_index
-            self._dump_editor_config(config)
-            self._run_schema_validation()
-            self._render_jobs_table(config)
-            self._reset_armed = False
+
+        saved, error, warnings = self._persist_job_mutation(mutate)
+        if not saved:
+            return False, t("ui.main.error.job_edit_failed", error=error)
+
+        self._selected_job_index = edit_index
+        if warnings:
+            self.app.notify(
+                t(
+                    "ui.common.warn.saved_with_warning",
+                    preview=preview_messages(warnings),
+                ),
+                severity="warning",
+            )
+        else:
             self.app.notify(
                 t("ui.main.notify.job_updated", index=edit_index + 1),
                 severity="information",
             )
-        except Exception as e:
-            self.app.notify(
-                t("ui.main.error.job_edit_failed", error=e), severity="error"
-            )
+        return True, None
 
     def _edit_job(self) -> None:
         try:
+            if not self._ensure_job_actions_allowed():
+                return
+
             config = self._load_editor_config()
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
@@ -492,16 +554,25 @@ class MainConfigTab(Static):
                     defaults=defaults,
                     title=t("ui.main.edit_modal.title", index=edit_index + 1),
                     save_button_label=t("ui.main.edit_modal.save"),
+                    save_attempt=lambda result: self._attempt_edit_job_save(
+                        edit_index, result
+                    ),
                 ),
-                lambda result: self._handle_edit_job_result(edit_index, result),
+                lambda _result: None,
             )
         except Exception as e:
             self.app.notify(
                 t("ui.main.error.open_edit_failed", error=e), severity="error"
             )
 
-    def _remove_job(self) -> None:
+    def _remove_job(self, trigger_button: Button | None = None) -> None:
+        if self._is_removing_job:
+            return
+
         try:
+            if not self._ensure_job_actions_allowed():
+                return
+
             config = self._load_editor_config()
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
@@ -511,26 +582,51 @@ class MainConfigTab(Static):
                 return
 
             remove_index = self._resolve_remove_job_index(jobs)
-            removed = jobs.pop(remove_index)
-            config["jobs"] = jobs
-            self._selected_job_index = None
-            self._dump_editor_config(config)
-            self._run_schema_validation()
-            self._render_jobs_table(config)
-            self._reset_armed = False
-            name = (
-                str(removed.get("name", t("ui.main.default.unnamed")))
-                if isinstance(removed, dict)
-                else t("ui.main.default.unknown")
-            )
-            self.app.notify(
-                t("ui.main.notify.job_removed", index=remove_index + 1, name=name),
-                severity="information",
-            )
+            removed = jobs[remove_index]
+
+            self._is_removing_job = True
+            if trigger_button is not None:
+                trigger_button.disabled = True
+
+            def mutate(payload: dict[str, Any]) -> None:
+                mutable_jobs = payload.get("jobs", [])
+                if not isinstance(mutable_jobs, list):
+                    raise ValueError(t("ui.main.error.jobs_must_list"))
+                if not (0 <= remove_index < len(mutable_jobs)):
+                    raise ValueError(t("ui.main.error.job_not_found"))
+                mutable_jobs.pop(remove_index)
+                payload["jobs"] = mutable_jobs
+
+            saved, error, warnings = self._persist_job_mutation(mutate)
+            if not saved:
+                raise ValueError(error)
+
+            if warnings:
+                self.app.notify(
+                    t(
+                        "ui.common.warn.saved_with_warning",
+                        preview=preview_messages(warnings),
+                    ),
+                    severity="warning",
+                )
+            else:
+                name = (
+                    str(removed.get("name", t("ui.main.default.unnamed")))
+                    if isinstance(removed, dict)
+                    else t("ui.main.default.unknown")
+                )
+                self.app.notify(
+                    t("ui.main.notify.job_removed", index=remove_index + 1, name=name),
+                    severity="information",
+                )
         except Exception as e:
             self.app.notify(
                 t("ui.main.error.job_remove_failed", error=e), severity="error"
             )
+        finally:
+            self._is_removing_job = False
+            if trigger_button is not None:
+                trigger_button.disabled = False
 
     def _reset_from_sample(self) -> None:
         if not self._reset_armed:
@@ -619,7 +715,9 @@ class MainConfigTab(Static):
 
         config_path = self._runtime.paths.config_file
         if not config_path.exists():
-            content_widget.load_text(t("ui.main.content.config_missing"))
+            message = t("ui.main.content.config_missing")
+            content_widget.load_text(message)
+            self._persisted_editor_text = message
             self.query_one("#main-config-title", Static).update(
                 t("ui.main.config.title.not_initialized")
             )
@@ -628,6 +726,7 @@ class MainConfigTab(Static):
         try:
             content = config_path.read_text(encoding="utf-8")
             content_widget.load_text(content)
+            self._persisted_editor_text = content
 
             config = load_config(config_path)
             self._render_jobs_table(config)
@@ -636,6 +735,7 @@ class MainConfigTab(Static):
                 t("ui.main.config.title.ok")
             )
         except Exception as e:
+            self._persisted_editor_text = content_widget.text
             self.query_one("#main-config-title", Static).update(
                 t("ui.main.config.title.error", error=e)
             )
