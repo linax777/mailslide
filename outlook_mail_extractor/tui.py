@@ -2,12 +2,14 @@
 
 import asyncio
 from pathlib import Path
+from typing import Protocol, cast
 
 import yaml
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Horizontal, Middle, Vertical
 from textual.screen import ModalScreen
+from textual.widgets._footer import FooterKey
 from textual.widgets import (
     Button,
     Footer,
@@ -33,6 +35,32 @@ from .screens import (
 )
 from .services.update_check import UpdateCheckResult, UpdateCheckService
 from .terminal_title import resolve_terminal_title, set_terminal_title
+
+
+class ContextualFooter(Footer):
+    """Footer that filters visible bindings by active context."""
+
+    def compose(self) -> ComposeResult:
+        if not self._bindings_ready:
+            return
+        app = cast("_FooterActionProvider", self.app)
+        visible_actions = app.get_footer_visible_actions()
+        bindings = self.screen.active_bindings
+        for _, binding, enabled, tooltip in bindings.values():
+            if not binding.show or binding.action not in visible_actions:
+                continue
+            yield FooterKey(
+                binding.key,
+                self.app.get_key_display(binding),
+                binding.description,
+                binding.action,
+                disabled=not enabled,
+                tooltip=tooltip,
+            ).data_bind(compact=self.compact)
+
+
+class _FooterActionProvider(Protocol):
+    def get_footer_visible_actions(self) -> set[str]: ...
 
 
 class ConfirmScreen(ModalScreen[bool]):
@@ -138,12 +166,14 @@ class OutlookMailExtractor(App):
         self._update_check_phase = "idle"
         self._update_check_result: UpdateCheckResult | None = None
         self._update_notified = False
+        self._last_top_tab = "home"
+        self._last_config_tab = "main"
 
     def compose(self) -> ComposeResult:
         runtime = get_runtime_context()
         set_language(resolve_language(runtime.paths.config_file))
         yield Header()
-        yield Footer()
+        yield ContextualFooter()
         with TabbedContent(initial="home"):
             with TabPane(t("app.tab.home"), id="home"):
                 yield HomeScreen(runtime_context=runtime)
@@ -157,7 +187,87 @@ class OutlookMailExtractor(App):
                 yield AboutScreen(runtime_context=runtime)
 
     def action_show_tab(self, tab: str) -> None:
+        self._last_top_tab = tab
         self.get_child_by_type(TabbedContent).active = tab
+        self._refresh_footer()
+
+    def _refresh_footer(self) -> None:
+        try:
+            footer = self.query_one(ContextualFooter)
+        except Exception:
+            return
+        if not hasattr(footer, "call_after_refresh") or not hasattr(
+            footer, "recompose"
+        ):
+            return
+        footer.call_after_refresh(footer.recompose)
+
+    def _resolve_footer_context(self) -> str:
+        try:
+            screen_name = type(self.screen).__name__
+        except Exception:
+            screen_name = ""
+        if screen_name == "PluginConfigEditorModal":
+            return "modal.plugin_editor"
+        if screen_name == "LanguageScreen":
+            return "modal.language"
+        if screen_name == "ConfirmScreen":
+            return "modal.confirm_quit"
+
+        active_top_tab = self._last_top_tab
+        try:
+            active_top_tab = self.get_child_by_type(TabbedContent).active
+        except Exception:
+            pass
+        else:
+            self._last_top_tab = active_top_tab
+
+        if active_top_tab != "config":
+            return active_top_tab
+
+        active_config_tab = self._last_config_tab
+        try:
+            config_tabbed = self.query_one(ConfigScreen).query_one(TabbedContent)
+            active_config_tab = config_tabbed.active
+        except Exception:
+            pass
+        else:
+            self._last_config_tab = active_config_tab
+
+        return f"config.{active_config_tab}"
+
+    def get_footer_visible_actions(self) -> set[str]:
+        context = self._resolve_footer_context()
+        global_actions = {
+            "open_language_modal",
+            "toggle_dark",
+            "confirm_quit",
+        }
+        context_actions = {
+            "home": {"show_tab('schedule')", "show_tab('config')", "show_tab('about')"},
+            "schedule": {"show_tab('home')", "show_tab('config')", "show_tab('about')"},
+            "usage": {"show_tab('home')", "show_tab('config')", "show_tab('about')"},
+            "about": {"show_tab('home')", "show_tab('config')"},
+            "config.main": {
+                "show_tab('home')",
+                "show_tab('schedule')",
+                "show_tab('about')",
+            },
+            "config.llm": {
+                "show_tab('home')",
+                "show_tab('schedule')",
+                "show_tab('about')",
+            },
+            "config.plugins": {
+                "show_tab('home')",
+                "show_tab('schedule')",
+                "show_tab('about')",
+            },
+            "modal.plugin_editor": set(),
+            "modal.language": set(),
+            "modal.confirm_quit": set(),
+        }
+        return global_actions | context_actions.get(context, set())
 
     def _request_home_auto_refresh(self) -> None:
         try:
@@ -169,9 +279,19 @@ class OutlookMailExtractor(App):
         self,
         event: TabbedContent.TabActivated,
     ) -> None:
-        if event.pane.id != "home":
+        pane_id = event.pane.id
+        if pane_id in {"home", "schedule", "usage", "config", "about"}:
+            self._last_top_tab = pane_id
+        if pane_id in {"main", "llm", "plugins"}:
+            self._last_config_tab = pane_id
+
+        self._refresh_footer()
+        if pane_id != "home":
             return
         self._request_home_auto_refresh()
+
+    def on_screen_resume(self) -> None:
+        self._refresh_footer()
 
     def on_mount(self) -> None:
         runtime = get_runtime_context()

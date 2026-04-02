@@ -36,6 +36,12 @@ uv run app.py
 
 > 💡 建議：優先在 TUI 完成設定；手動編輯 YAML 僅作為進階備援方式。
 
+## 近期流程說明
+
+- **Home → 停止**：執行中的 Job 會在下一個安全 checkpoint 停下。
+- **Configuration → 一般設定 → 重新載入**：如果你在 TUI 外修改了 `config/config.yaml`，先按重新載入再繼續編輯。
+- **Prompt profiles**：在 Plugin 設定中管理；TUI 是預設路徑，手動編輯 YAML 只作為進階備援。
+
 ## 安裝 uv（必備）
 
 本專案使用 [uv](https://github.com/astral-sh/uv) 管理 Python 依賴，請先安裝 uv：
@@ -368,7 +374,7 @@ CSV 欄位由程式固定，順序為：
 | `A` | About：系統狀態檢查、初始化設定 |
 | `L` | Language：切換介面語言（zh-TW / en-US） |
 
-- **Home**：執行 Jobs、查看日誌（`保留 RE/FW` 預設 `ON`，可在 Home 即時切換）
+- **Home**：執行 Jobs、查看日誌（`保留 RE/FW` 預設 `ON`，可在 Home 即時切換；`停止` 會在安全 checkpoint 暫停執行中的 Job）
 - **Schedule**：設定自動排程
 - **Guide**：使用說明
 - **Configuration**：查看/編輯設定檔
@@ -448,6 +454,8 @@ jobs:
 1. `job.plugin_prompt_profiles[plugin]` → 對應 profile 的 system_prompt
 2. `plugin.default_prompt_profile` → 若 job 未指定，使用預設 profile
 3. `plugin.system_prompt` → 完全無 profiles 時的 fallback
+
+若在 UI 中重新命名 profile key，儲存成功後系統會嘗試同步更新相關 Job 參照；如果同步失敗或新 key 已存在，請改成唯一名稱並手動檢查受影響的 Job。
 
 **命名規則**
 

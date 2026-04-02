@@ -34,6 +34,12 @@ uv run app.py
 3. If you need LLM features, open **Configuration -> LLM** and click **Test Connection**.
 4. If you need plugins, open **Configuration -> Plugins**, choose one, and click **Edit Config**.
 
+## Current workflow notes
+
+- **Home -> Stop** halts a running job at the next safe checkpoint.
+- **Configuration -> General -> Reload** rereads `config/config.yaml` after you edit it outside the app.
+- **Prompt profiles** are managed in Plugin settings; the UI is the default path, and YAML is the advanced fallback.
+
 ## Install `uv` (Required)
 
 This project uses [uv](https://github.com/astral-sh/uv) for Python dependency management.
@@ -293,6 +299,8 @@ Resolution order:
 2. `plugin.default_prompt_profile`
 3. `plugin.system_prompt` fallback
 
+If you rename a profile key in the UI, the editor tries to update related job references when the save succeeds. If sync fails or the new key already exists, choose a unique key and update affected jobs manually.
+
 ## TUI Tabs
 
 Run `uv run app.py` to open the TUI.
@@ -306,7 +314,7 @@ Run `uv run app.py` to open the TUI.
 | `A` | About |
 | `L` | Language |
 
-Home tab note: `Preserve RE/FW` is `ON` by default and can be toggled directly on the Home screen.
+Home tab note: `Preserve RE/FW` is `ON` by default and can be toggled directly on the Home screen. `Stop` halts a running job at the next safe checkpoint.
 
 ## Requirements
 

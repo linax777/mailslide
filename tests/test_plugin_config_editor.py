@@ -743,3 +743,14 @@ def test_plugin_config_editor_save_shows_error_when_payload_invalid() -> None:
     modal.on_button_pressed(cast(Any, event))
 
     assert errors == ["invalid payload"]
+
+
+def test_plugin_config_editor_schema_actions_include_validate_and_save() -> None:
+    schema: dict[str, Any] = {
+        "fields": {},
+        "buttons": ["cancel", "validate", "save"],
+        "validation_rules": [],
+    }
+    modal = PluginConfigEditorModal("demo", schema, {})
+
+    assert modal._schema_actions() == {"save", "validate"}

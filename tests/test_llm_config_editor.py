@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -294,3 +295,52 @@ def test_llm_config_tab_load_uses_table_without_yaml_text_area(
 
     assert len(fake_table.rows) == 4
     assert fake_title.value
+
+
+def test_llm_config_tab_inline_status_renders_success_metadata(tmp_path: Path) -> None:
+    tab = LLMConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._last_test_outcome = "success"
+    tab._last_success_at = datetime(2026, 4, 2, 10, 30, 0)
+    tab._last_success_latency_ms = 321
+    tab._latest_test_error = None
+
+    content = tab._render_inline_test_status()
+
+    assert "2026-04-02" in content
+    assert "321" in content
+
+
+def test_llm_config_tab_inline_status_keeps_last_success_when_latest_test_fails(
+    tmp_path: Path,
+) -> None:
+    tab = LLMConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._last_success_at = datetime(2026, 4, 2, 10, 30, 0)
+    tab._last_success_latency_ms = 500
+    tab._last_test_outcome = "failed"
+    tab._latest_test_error = "network down"
+
+    content = tab._render_inline_test_status()
+
+    assert "2026-04-02" in content
+    assert "500" in content
+    assert "network down" in content
+
+
+def test_llm_config_tab_update_inline_status_updates_widget(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    tab = LLMConfigTab(runtime_context=_runtime_context(tmp_path))
+    widget = _FakeStatic()
+    tab._last_test_outcome = "failed"
+    tab._latest_test_error = "timeout"
+
+    monkeypatch.setattr(
+        tab,
+        "query_one",
+        lambda selector, _=None: widget if selector == "#llm-test-status" else None,
+    )
+
+    tab._update_inline_test_status()
+
+    assert "timeout" in widget.value

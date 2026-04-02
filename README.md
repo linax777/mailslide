@@ -22,6 +22,12 @@ Language: [English](README.md) | [Traditional Chinese](README.zh-TW.md)
 - PMs and sales: convert email streams into trackable events and summaries.
 - Engineering and support: auto-tag and prioritize incoming threads.
 
+## Recent workflow updates
+
+- Home -> Stop now halts a running job from the Home tab.
+- Configuration -> General -> Reload rereads `config/config.yaml` from disk.
+- Plugin settings now support prompt profiles, and renaming a profile key tries to keep related job references in sync.
+
 ## 30-second start (End users)
 
 ```bash

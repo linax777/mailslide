@@ -45,6 +45,14 @@ class HomeScreen(Static):
     #toggle-preserve-reply-thread {
         margin: 0 0 0 2;
     }
+    #jobs-table:focus {
+        border: tall $accent;
+    }
+    #jobs-table > .datatable--cursor {
+        background: $accent 35%;
+        color: $text;
+        text-style: bold;
+    }
     """
 
     def __init__(self, runtime_context: RuntimeContext | None = None):
@@ -74,7 +82,7 @@ class HomeScreen(Static):
                 yield Button(
                     t("ui.home.button.stop"),
                     id="stop-jobs",
-                    variant="error",
+                    variant="default",
                     disabled=True,
                 )
                 yield Button(t("ui.home.button.refresh"), id="refresh-jobs")
@@ -389,8 +397,12 @@ class HomeScreen(Static):
         """Apply execution state to Home controls and animation."""
         run_button = self.query_one("#run-jobs", Button)
         stop_button = self.query_one("#stop-jobs", Button)
+        refresh_button = self.query_one("#refresh-jobs", Button)
         run_button.disabled = is_running
         stop_button.disabled = not is_running
+        run_button.variant = "default" if is_running else "primary"
+        stop_button.variant = "error" if is_running else "default"
+        refresh_button.variant = "default"
         if is_running:
             self._start_jobs_animation()
         else:

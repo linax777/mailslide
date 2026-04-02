@@ -1,6 +1,8 @@
 """LLM config tab."""
 
+from datetime import datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import yaml
@@ -39,6 +41,12 @@ class LLMConfigTab(Static):
     #llm-disclaimer {
         width: 100%;
     }
+    #llm-test-status {
+        width: 100%;
+        min-height: 4;
+        border: round $accent;
+        padding: 0 1;
+    }
     """
 
     def __init__(self, runtime_context: RuntimeContext | None = None):
@@ -50,6 +58,10 @@ class LLMConfigTab(Static):
         )
         self._ui_schema = load_ui_schema(self._sample_path)
         self._schema_errors = validate_ui_schema(self._ui_schema)
+        self._last_test_outcome: str | None = None
+        self._last_success_at: datetime | None = None
+        self._last_success_latency_ms: int | None = None
+        self._latest_test_error: str | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="llm-main"):
@@ -73,6 +85,7 @@ class LLMConfigTab(Static):
                     variant="primary",
                 )
                 yield Button(t("ui.llm.button.edit"), id="edit-llm-config")
+            yield Static(t("ui.llm.test.inline.idle"), id="llm-test-status")
             yield Static(
                 t("ui.llm.privacy_warning.title"), id="llm-privacy-warning-title"
             )
@@ -82,6 +95,47 @@ class LLMConfigTab(Static):
 
     def on_mount(self) -> None:
         self._load_llm_config()
+        self._update_inline_test_status()
+
+    def _format_timestamp(self, timestamp: datetime) -> str:
+        return timestamp.strftime(t("ui.llm.test.time_format"))
+
+    def _render_inline_test_status(self) -> str:
+        outcome = t("ui.llm.test.inline.outcome.none")
+        if self._last_test_outcome == "running":
+            outcome = t("ui.llm.test.inline.outcome.running")
+        elif self._last_test_outcome == "success":
+            outcome = t("ui.llm.test.inline.outcome.success")
+        elif self._last_test_outcome == "warning":
+            outcome = t("ui.llm.test.inline.outcome.warning")
+        elif self._last_test_outcome == "failed":
+            outcome = t("ui.llm.test.inline.outcome.failed")
+
+        success_at = (
+            self._format_timestamp(self._last_success_at)
+            if self._last_success_at
+            else t("ui.llm.test.inline.never")
+        )
+        latency = (
+            t("ui.llm.test.inline.latency.value", ms=self._last_success_latency_ms)
+            if self._last_success_latency_ms is not None
+            else t("ui.llm.test.inline.latency.unknown")
+        )
+        latest_error = self._latest_test_error or t("ui.llm.test.inline.none")
+        return t(
+            "ui.llm.test.inline.template",
+            outcome=outcome,
+            success_at=success_at,
+            latency=latency,
+            latest_error=latest_error,
+        )
+
+    def _update_inline_test_status(self) -> None:
+        try:
+            status = self.query_one("#llm-test-status", Static)
+        except Exception:
+            return
+        status.update(self._render_inline_test_status())
 
     def _load_llm_config(self) -> None:
         table = self.query_one("#llm-table", DataTable)
@@ -233,12 +287,16 @@ class LLMConfigTab(Static):
 
         test_button = self.query_one("#test-llm-connection", Button)
         test_button.disabled = True
+        self._last_test_outcome = "running"
+        self._latest_test_error = None
+        self._update_inline_test_status()
 
         self.app.notify(t("ui.llm.notify.test_started"))
 
         self.run_worker(self._execute_test(), exclusive=True)
 
     async def _execute_test(self) -> None:
+        started = perf_counter()
         try:
             llm_config = load_llm_config(str(self._runtime.paths.llm_config_file))
             from ...llm import LLMClient
@@ -252,18 +310,32 @@ class LLMConfigTab(Static):
             client.close()
 
             if "ok" in response.lower():
+                self._last_test_outcome = "success"
+                self._last_success_at = datetime.now()
+                self._last_success_latency_ms = int((perf_counter() - started) * 1000)
+                self._latest_test_error = None
+                self.call_later(self._update_inline_test_status)
                 self.call_later(
                     self.app.notify,
                     t("ui.llm.notify.test_success"),
                     severity="information",
                 )
             else:
+                self._last_test_outcome = "warning"
+                self._latest_test_error = t(
+                    "ui.llm.test.inline.unexpected_response",
+                    response=response[:50],
+                )
+                self.call_later(self._update_inline_test_status)
                 self.call_later(
                     self.app.notify,
                     t("ui.llm.warn.test_unexpected", response=response[:50]),
                     severity="warning",
                 )
         except Exception as e:
+            self._last_test_outcome = "failed"
+            self._latest_test_error = str(e)
+            self.call_later(self._update_inline_test_status)
             self.call_later(
                 self.app.notify,
                 t("ui.llm.error.test_failed", error=e),

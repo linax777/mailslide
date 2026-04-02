@@ -52,6 +52,7 @@ class _FakeStatic:
 class _FakeButton:
     def __init__(self) -> None:
         self.disabled = False
+        self.variant = "default"
 
 
 class _FakeApp:
@@ -194,3 +195,47 @@ def test_home_deferred_auto_refresh_failure_clears_pending(
 
     assert screen.refresh_reasons == ["auto"]
     assert screen._pending_auto_refresh is False
+
+
+def test_home_running_state_updates_dominant_actions(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    runtime = _runtime(tmp_path)
+    screen = HomeScreen(runtime_context=runtime)
+    run_button = _FakeButton()
+    stop_button = _FakeButton()
+    refresh_button = _FakeButton()
+    widgets: dict[str, object] = {
+        "#run-jobs": run_button,
+        "#stop-jobs": stop_button,
+        "#refresh-jobs": refresh_button,
+    }
+    started: list[bool] = []
+    stopped: list[bool] = []
+
+    monkeypatch.setattr(
+        screen,
+        "query_one",
+        lambda selector, _=None: widgets[str(selector)],
+    )
+    monkeypatch.setattr(screen, "_start_jobs_animation", lambda: started.append(True))
+    monkeypatch.setattr(screen, "_stop_jobs_animation", lambda: stopped.append(True))
+
+    screen._apply_running_state_to_controls(is_running=True)
+
+    assert run_button.disabled is True
+    assert run_button.variant == "default"
+    assert stop_button.disabled is False
+    assert stop_button.variant == "error"
+    assert refresh_button.variant == "default"
+    assert started == [True]
+
+    screen._apply_running_state_to_controls(is_running=False)
+
+    assert run_button.disabled is False
+    assert run_button.variant == "primary"
+    assert stop_button.disabled is True
+    assert stop_button.variant == "default"
+    assert refresh_button.variant == "default"
+    assert stopped == [True]

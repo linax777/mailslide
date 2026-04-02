@@ -124,10 +124,11 @@ def test_usage_reads_packaged_english_guide_when_local_docs_missing(
 
     screen = UsageScreen(runtime_context=runtime)
 
-    assert (
-        "Extract, analyze, and automate Outlook emails on Windows"
-        in screen._get_usage_content()
-    )
+    content = screen._get_usage_content()
+
+    assert "Extract, analyze, and automate Outlook emails on Windows" in content
+    assert "Current workflow notes" in content
+    assert "Configuration -> General -> Reload" in content
 
 
 def test_usage_reads_packaged_zh_tw_guide_when_local_docs_missing(
@@ -138,4 +139,19 @@ def test_usage_reads_packaged_zh_tw_guide_when_local_docs_missing(
 
     screen = UsageScreen(runtime_context=runtime)
 
-    assert "從 Outlook 提取郵件工具" in screen._get_usage_content()
+    content = screen._get_usage_content()
+
+    assert "從 Outlook 提取郵件工具" in content
+    assert "近期流程說明" in content
+    assert "重新載入" in content
+
+
+def test_packaged_guides_match_root_guides() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+
+    assert (repo_root / "GUIDE.en.md").read_text(encoding="utf-8") == (
+        repo_root / "outlook_mail_extractor" / "resources" / "docs" / "GUIDE.en.md"
+    ).read_text(encoding="utf-8")
+    assert (repo_root / "GUIDE.md").read_text(encoding="utf-8") == (
+        repo_root / "outlook_mail_extractor" / "resources" / "docs" / "GUIDE.md"
+    ).read_text(encoding="utf-8")

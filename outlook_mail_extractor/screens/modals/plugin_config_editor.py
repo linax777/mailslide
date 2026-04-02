@@ -42,6 +42,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         max-width: 120;
         height: 90%;
         min-height: 24;
+        layout: vertical;
         border: round $accent;
         background: $surface;
         padding: 1 2;
@@ -61,6 +62,15 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
     #plugin-editor-actions {
         height: auto;
         margin-top: 1;
+        dock: bottom;
+    }
+    #plugin-editor-dialog Input:focus,
+    #plugin-editor-dialog TextArea:focus,
+    #plugin-editor-dialog SelectionList:focus,
+    #plugin-editor-dialog OptionList:focus,
+    #plugin-editor-dialog Switch:focus {
+        border: tall $accent;
+        background: $accent 20%;
     }
     .plugin-select-field {
         height: 6;
@@ -151,7 +161,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                     yield Button(
                         t("ui.plugin_editor.button.validate"),
                         id="plugin-editor-validate",
-                        variant="warning",
+                        variant="default",
                     )
                 if "save" in actions:
                     yield Button(

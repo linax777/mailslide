@@ -26,6 +26,11 @@ The format is based on Keep a Changelog, with entries grouped by release date
 - Changed Main tab action model to remove YAML-oriented `Validate`/`Save`/`Reload` flow and expose a dedicated `General Settings` modal path instead.
 - Changed Main reset confirmation copy to explicitly warn that reset is a full overwrite and may remove custom unknown keys.
 - Changed Main `General Settings` schema mapping to enforce app-owned i18n metadata for fixed fields (`body_max_length`, `llm_mode`, `plugin_modules`), keeping key-driven rendering and English baseline labels even when `_ui.fields` supplies custom plain labels.
+- Changed Home execution controls to enforce a single dominant action by state (`Run` primary when idle; `Stop` emphasized when running) while keeping `Refresh` secondary.
+- Changed plugin config editor modal layout so action controls remain visible during long-form scrolling, and standardized action semantics (`Save` primary, `Validate` neutral-secondary, `Cancel` neutral).
+- Changed LLM connection test UX to show session-scoped inline diagnostics near `Test Connection` (latest outcome, last success timestamp, latency, and latest issue).
+- Changed footer shortcut hints to context-filtered rendering by active tab/modal while preserving existing keybinding behavior.
+- Changed dark-theme focus styling for Home table focus/cursor state, plugin-editor input focus, and Config tab active/focus states for clearer keyboard navigation.
 
 ### Added
 
@@ -40,6 +45,9 @@ The format is based on Keep a Changelog, with entries grouped by release date
 - Added save-attempt callback support to `PluginConfigEditorModal` so modal saves can stay open/retry on persistence failure.
 - Added/updated regression coverage for modal-only Main/LLM editing behavior in `tests/test_main_config_editor.py` and `tests/test_llm_config_editor.py`.
 - Added regression coverage for General Settings locale rendering (`en-US`/`zh-TW`) and missing-locale English fallback behavior in `tests/test_main_config_editor.py`.
+- Added LLM inline-status i18n keys in both locale files for outcome state, timestamp formatting, latency display, and unexpected-response details.
+- Added regression coverage for Home dominant-action state transitions, footer visible-action filtering by context, and inline LLM status rendering updates in `tests/test_home_auto_refresh.py`, `tests/test_app_home_tab_sync.py`, and `tests/test_llm_config_editor.py`.
+- Added a plugin-editor schema-action regression test for validate/save action availability in `tests/test_plugin_config_editor.py`.
 
 ### Fixed
 
@@ -47,6 +55,8 @@ The format is based on Keep a Changelog, with entries grouped by release date
 - Fixed stale Home Jobs state after Config job mutations by auto-syncing on Home tab entry and catch-up after deferred refresh conditions.
 - Fixed Main modal save behavior to preserve unknown/unmanaged config keys while mutating only modal-owned fields.
 - Fixed mixed-language General Settings modal labels when schema entries omitted `label_key` or used hardcoded labels, by ensuring fixed keys render through stable translation keys with `en-US` fallback.
+- Fixed a `ContextualFooter` runtime crash on app startup (`ReactiveError: Footer is not defined on OutlookMailExtractor`) by correcting footer key compact-state binding.
+- Fixed footer-context resolution during modal screens (for example quit confirmation) to avoid `NoMatches` crashes when top-level `TabbedContent` is temporarily unavailable.
 
 ## [v0.4.1] - 2026-04-02
 

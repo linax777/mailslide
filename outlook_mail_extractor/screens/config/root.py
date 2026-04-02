@@ -13,6 +13,19 @@ from .plugins_tab import PluginsConfigTab
 class ConfigScreen(Static):
     """Configuration 標籤頁 - 設定檔檢視"""
 
+    CSS = """
+    ConfigScreen TabbedContent > ContentTabs > Tab:focus {
+        background: $accent 30%;
+        color: $text;
+        text-style: bold;
+    }
+    ConfigScreen TabbedContent > ContentTabs > Tab.-active {
+        background: $accent 20%;
+        color: $text;
+        text-style: bold;
+    }
+    """
+
     def __init__(self, runtime_context: RuntimeContext | None = None):
         super().__init__()
         self._runtime = runtime_context or get_runtime_context()

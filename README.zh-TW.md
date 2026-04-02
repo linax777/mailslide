@@ -22,6 +22,12 @@ Language: [Traditional Chinese](README.zh-TW.md) | [English](README.md)
 - PM/業務：把客戶往來轉成可追蹤事件與摘要。
 - 研發/客服：依主題或優先度自動分類，降低 inbox 噪音。
 
+## 最近更新的操作流程
+
+- Home → 停止：可在 Home 分頁停止正在執行的 Job。
+- Configuration → 一般設定 → 重新載入：可重新讀取磁碟上的 `config/config.yaml`。
+- Plugin 設定現在支援 prompt profiles，重新命名 profile key 時會嘗試同步更新相關 Job 參照。
+
 ## 30 秒開始（一般使用者）
 
 ```bash
