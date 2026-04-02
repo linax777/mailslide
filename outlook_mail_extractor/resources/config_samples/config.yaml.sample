@@ -92,21 +92,11 @@ _ui:
       action: remove_list_item
       target: jobs
       variant: warning
-    - id: validate
-      label: "驗證設定"
-      label_key: "ui.main.button.validate"
-      action: validate
+    - id: general_settings
+      label: "一般設定"
+      label_key: "ui.main.button.general_settings"
+      action: edit_general_settings
       variant: default
-    - id: reload
-      label: "重新載入"
-      label_key: "ui.main.button.reload"
-      action: reload
-      variant: default
-    - id: save
-      label: "儲存"
-      label_key: "ui.main.button.save"
-      action: save
-      variant: success
     - id: reset
       label: "回復範本"
       label_key: "ui.main.button.reset"

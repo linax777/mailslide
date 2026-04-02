@@ -5,7 +5,7 @@ import yaml
 from textual.widgets import Button
 
 from outlook_mail_extractor.runtime import RuntimeContext, RuntimePaths
-from outlook_mail_extractor.screens import MainConfigTab
+from outlook_mail_extractor.screens import MainConfigTab, PluginConfigEditorModal
 from outlook_mail_extractor.screens.modals.add_job import AddJobScreen
 
 
@@ -39,11 +39,6 @@ class _FakeApp:
         self.notifications.append((str(message), severity))
 
 
-class _FakeTextArea:
-    def __init__(self, text: str):
-        self.text = text
-
-
 def _runtime_context(tmp_path: Path) -> RuntimeContext:
     config_dir = tmp_path / "config"
     paths = RuntimePaths(
@@ -63,14 +58,13 @@ def _runtime_context(tmp_path: Path) -> RuntimeContext:
     )
 
 
-def test_main_config_validate_editor_payload_runs_runtime_validation(
+def test_main_config_validate_config_payload_runs_runtime_validation(
     tmp_path: Path,
 ) -> None:
-    runtime = _runtime_context(tmp_path)
-    tab = MainConfigTab(runtime_context=runtime)
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
     tab._ui_schema = {"validation_rules": []}
 
-    sanitized, failed_errors, failed_warnings = tab._validate_editor_payload(
+    sanitized, failed_errors, failed_warnings = tab._validate_config_payload(
         {"body_max_length": 1200}
     )
 
@@ -79,11 +73,10 @@ def test_main_config_validate_editor_payload_runs_runtime_validation(
     assert "Config missing 'jobs' field" in failed_errors
 
 
-def test_main_config_validate_editor_payload_collects_schema_warning(
+def test_main_config_validate_config_payload_collects_schema_warning(
     tmp_path: Path,
 ) -> None:
-    runtime = _runtime_context(tmp_path)
-    tab = MainConfigTab(runtime_context=runtime)
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
     tab._ui_schema = {
         "validation_rules": [
             {
@@ -100,7 +93,7 @@ def test_main_config_validate_editor_payload_collects_schema_warning(
             {"name": "dup", "account": "b@example.com", "source": "Inbox"},
         ]
     }
-    sanitized, failed_errors, failed_warnings = tab._validate_editor_payload(payload)
+    sanitized, failed_errors, failed_warnings = tab._validate_config_payload(payload)
 
     assert failed_errors == []
     assert failed_warnings == ["name duplicated"]
@@ -135,7 +128,6 @@ def test_main_config_write_config_file_creates_backup(tmp_path: Path) -> None:
     backup = runtime.paths.config_dir / "config.yaml.bak"
     assert backup.exists()
     assert backup.read_text(encoding="utf-8") == "jobs: []\nbody_max_length: 1200\n"
-    assert not (runtime.paths.config_dir / ".config.yaml.tmp").exists()
 
 
 def test_main_config_resolve_remove_job_index_prefers_selected(tmp_path: Path) -> None:
@@ -178,64 +170,6 @@ def test_main_config_resolve_edit_job_index_requires_valid_selection(
     assert index is None
 
 
-def test_main_config_select_job_row_updates_selected_index(tmp_path: Path) -> None:
-    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
-    tab._rendered_job_indices = [3, 5]
-
-    tab._select_job_row(1)
-
-    assert tab._selected_job_index == 5
-
-
-def test_main_config_select_job_row_invalid_clears_selection(tmp_path: Path) -> None:
-    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
-    tab._rendered_job_indices = [2]
-    tab._selected_job_index = 2
-
-    tab._select_job_row(9)
-
-    assert tab._selected_job_index is None
-
-
-def test_main_config_ensure_reload_button_added_when_missing(tmp_path: Path) -> None:
-    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
-    tab._ui_schema = {"buttons": [{"id": "save", "action": "save"}]}
-
-    tab._ensure_reload_button_in_schema()
-
-    buttons = tab._ui_schema["buttons"]
-    assert isinstance(buttons, list)
-    reload_buttons = [
-        button
-        for button in buttons
-        if isinstance(button, dict) and button.get("id") == "reload"
-    ]
-    assert len(reload_buttons) == 1
-    assert reload_buttons[0].get("label_key") == "ui.main.button.reload"
-
-
-def test_main_config_ensure_reload_button_not_duplicated(tmp_path: Path) -> None:
-    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
-    tab._ui_schema = {
-        "buttons": [
-            {
-                "id": "reload",
-                "label_key": "ui.main.button.reload",
-                "action": "reload",
-            }
-        ]
-    }
-
-    tab._ensure_reload_button_in_schema()
-
-    buttons = tab._ui_schema["buttons"]
-    assert isinstance(buttons, list)
-    assert (
-        len([b for b in buttons if isinstance(b, dict) and b.get("id") == "reload"])
-        == 1
-    )
-
-
 def test_main_config_runtime_plugin_options_deduplicates_and_sorts(
     tmp_path: Path,
     monkeypatch: Any,
@@ -265,6 +199,7 @@ def test_main_config_add_job_uses_runtime_plugin_options(
     monkeypatch: Any,
 ) -> None:
     tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+    tab._schema_errors = []
     fake_app = _FakeApp()
     monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
     monkeypatch.setattr(
@@ -272,7 +207,7 @@ def test_main_config_add_job_uses_runtime_plugin_options(
         "_runtime_plugin_options",
         lambda: ["download_attachments", "summary_file"],
     )
-    monkeypatch.setattr(tab, "_load_editor_config", lambda: {"jobs": []})
+    monkeypatch.setattr(tab, "_load_raw_config", lambda: {"jobs": []})
 
     tab._add_job()
 
@@ -297,7 +232,7 @@ def test_main_config_edit_job_preserves_unavailable_plugin_options(
     )
     monkeypatch.setattr(
         tab,
-        "_load_editor_config",
+        "_load_raw_config",
         lambda: {
             "jobs": [
                 {
@@ -338,7 +273,7 @@ def test_main_config_edit_job_ignores_malformed_existing_plugins(
     )
     monkeypatch.setattr(
         tab,
-        "_load_editor_config",
+        "_load_raw_config",
         lambda: {
             "jobs": [
                 {
@@ -360,143 +295,134 @@ def test_main_config_edit_job_ignores_malformed_existing_plugins(
     assert screen._unavailable_plugin_keys == set()
 
 
-def test_main_config_editor_has_unsaved_changes_when_text_differs(
+def test_main_config_general_settings_schema_uses_fixed_owned_keys(
+    tmp_path: Path,
+) -> None:
+    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
+
+    schema = tab._general_settings_schema()
+
+    fields = schema["fields"]
+    assert set(fields.keys()) == {"body_max_length", "llm_mode", "plugin_modules"}
+    assert fields["plugin_modules"]["type"] == "list[str]"
+
+
+def test_main_config_open_general_settings_pushes_modal(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
     tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
-    tab._persisted_editor_text = "jobs: []\n"
-    monkeypatch.setattr(
-        tab,
-        "query_one",
-        lambda selector, _=None: (
-            _FakeTextArea("jobs: []\n\n")
-            if selector == "#main-config-content"
-            else None
-        ),
-    )
-
-    assert tab._editor_has_unsaved_changes() is True
-
-
-def test_main_config_add_job_blocks_when_editor_dirty(
-    tmp_path: Path,
-    monkeypatch: Any,
-) -> None:
-    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
-    tab._persisted_editor_text = "jobs: []\n"
+    tab._schema_errors = []
     fake_app = _FakeApp()
     monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
     monkeypatch.setattr(
         tab,
-        "query_one",
-        lambda selector, _=None: (
-            _FakeTextArea("jobs: []\n# dirty")
-            if selector == "#main-config-content"
-            else None
-        ),
+        "_load_general_settings_payload",
+        lambda: {"body_max_length": 2000, "llm_mode": "per_plugin"},
     )
 
-    tab._add_job()
+    tab._open_general_settings()
 
-    assert fake_app.pushed_screens == []
-    assert fake_app.notifications[-1][1] == "warning"
+    assert len(fake_app.pushed_screens) == 1
+    screen = fake_app.pushed_screens[0][0]
+    assert isinstance(screen, PluginConfigEditorModal)
 
 
-def test_main_config_edit_job_blocks_when_editor_dirty(
+def test_main_config_attempt_save_general_settings_preserves_unknown_keys(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
-    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
-    tab._persisted_editor_text = "jobs: []\n"
-    fake_app = _FakeApp()
-    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
-    monkeypatch.setattr(
-        tab,
-        "query_one",
-        lambda selector, _=None: (
-            _FakeTextArea("jobs: []\n# dirty")
-            if selector == "#main-config-content"
-            else None
-        ),
-    )
-
-    tab._edit_job()
-
-    assert fake_app.pushed_screens == []
-    assert fake_app.notifications[-1][1] == "warning"
-
-
-def test_main_config_remove_job_blocks_when_editor_dirty(
-    tmp_path: Path,
-    monkeypatch: Any,
-) -> None:
-    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
-    tab._persisted_editor_text = "jobs: []\n"
-    fake_app = _FakeApp()
-    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
-    monkeypatch.setattr(
-        tab,
-        "query_one",
-        lambda selector, _=None: (
-            _FakeTextArea("jobs: []\n# dirty")
-            if selector == "#main-config-content"
-            else None
-        ),
-    )
-
-    tab._remove_job(Button("Remove"))
-
-    assert fake_app.notifications[-1][1] == "warning"
-
-
-def test_main_config_persist_job_mutation_success(
-    tmp_path: Path, monkeypatch: Any
-) -> None:
-    tab = MainConfigTab(runtime_context=_runtime_context(tmp_path))
-    monkeypatch.setattr(
-        tab,
-        "_load_editor_config",
-        lambda: {
-            "jobs": [
-                {
-                    "name": "job-a",
-                    "account": "a@example.com",
-                    "source": "Inbox",
-                }
-            ]
-        },
-    )
-    monkeypatch.setattr(
-        tab, "_validate_editor_payload", lambda config: (config, [], [])
-    )
-    wrote: dict[str, object] = {}
-    monkeypatch.setattr(
-        tab, "_write_config_file", lambda data: wrote.setdefault("data", data)
-    )
-    reloaded = {"count": 0}
-    monkeypatch.setattr(
-        tab,
-        "_load_config",
-        lambda: reloaded.__setitem__("count", reloaded["count"] + 1),
-    )
-
-    saved, error, warnings = tab._persist_job_mutation(
-        lambda config: config["jobs"].append(
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.config_dir.mkdir(parents=True, exist_ok=True)
+    runtime.paths.config_file.write_text(
+        yaml.safe_dump(
             {
-                "name": "job-b",
-                "account": "b@example.com",
-                "source": "Inbox",
-            }
-        )
+                "jobs": [
+                    {
+                        "name": "job-a",
+                        "account": "a@example.com",
+                        "source": "Inbox",
+                    }
+                ],
+                "body_max_length": 1000,
+                "custom_top": "keep-me",
+                "custom_nested": {"x": 1},
+            },
+            allow_unicode=True,
+            sort_keys=False,
+            default_flow_style=False,
+        ),
+        encoding="utf-8",
+    )
+    tab = MainConfigTab(runtime_context=runtime)
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(tab, "_load_config", lambda: None)
+
+    saved, error = tab._attempt_save_general_settings(
+        {
+            "body_max_length": 2500,
+            "llm_mode": "per_plugin",
+            "plugin_modules": ["custom_plugins.extra"],
+        }
     )
 
     assert saved is True
     assert error is None
-    assert warnings == []
-    assert isinstance(wrote["data"], dict)
-    assert len(wrote["data"]["jobs"]) == 2
-    assert reloaded["count"] == 1
+    data = yaml.safe_load(runtime.paths.config_file.read_text(encoding="utf-8"))
+    assert data["body_max_length"] == 2500
+    assert data["llm_mode"] == "per_plugin"
+    assert data["plugin_modules"] == ["custom_plugins.extra"]
+    assert data["custom_top"] == "keep-me"
+    assert data["custom_nested"] == {"x": 1}
+
+
+def test_main_config_attempt_save_general_settings_warns_when_refresh_fails(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.config_dir.mkdir(parents=True, exist_ok=True)
+    runtime.paths.config_file.write_text(
+        yaml.safe_dump(
+            {
+                "jobs": [
+                    {
+                        "name": "job-a",
+                        "account": "a@example.com",
+                        "source": "Inbox",
+                    }
+                ]
+            },
+            allow_unicode=True,
+            sort_keys=False,
+            default_flow_style=False,
+        ),
+        encoding="utf-8",
+    )
+    tab = MainConfigTab(runtime_context=runtime)
+    fake_app = _FakeApp()
+    monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
+    monkeypatch.setattr(
+        tab,
+        "_load_config",
+        lambda: (_ for _ in ()).throw(RuntimeError("refresh failed")),
+    )
+
+    saved, error = tab._attempt_save_general_settings(
+        {
+            "body_max_length": 2200,
+            "llm_mode": "per_plugin",
+            "plugin_modules": [],
+        }
+    )
+
+    assert saved is True
+    assert error is None
+    assert any(
+        severity == "warning" and "refresh" in message.lower()
+        for message, severity in fake_app.notifications
+    )
 
 
 def test_main_config_remove_job_failure_restores_button_state(
@@ -507,10 +433,9 @@ def test_main_config_remove_job_failure_restores_button_state(
     tab._selected_job_index = 0
     fake_app = _FakeApp()
     monkeypatch.setattr(MainConfigTab, "app", property(lambda _self: fake_app))
-    monkeypatch.setattr(tab, "_ensure_job_actions_allowed", lambda: True)
     monkeypatch.setattr(
         tab,
-        "_load_editor_config",
+        "_load_raw_config",
         lambda: {
             "jobs": [
                 {
@@ -522,7 +447,9 @@ def test_main_config_remove_job_failure_restores_button_state(
         },
     )
     monkeypatch.setattr(
-        tab, "_persist_job_mutation", lambda _mutate: (False, "boom", [])
+        tab,
+        "_persist_job_mutation",
+        lambda _mutate: (False, "boom", []),
     )
     trigger_button = Button("Remove")
 

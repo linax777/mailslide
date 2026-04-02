@@ -22,6 +22,9 @@ The format is based on Keep a Changelog, with entries grouped by release date
 - Changed Job action behavior to block when YAML editor text has unsaved changes, with explicit guidance to Save or Reload first.
 - Changed Home-tab synchronization behavior so entering `Home` now auto-refreshes the Jobs area from persisted `config.yaml`, removing the need for manual Refresh after Config job edits.
 - Changed refresh orchestration to use one shared Home reload path for both manual and automatic refresh triggers, keeping render semantics consistent.
+- Changed Main/LLM config tabs to modal-only editing surfaces by removing raw YAML text-area display from both pages.
+- Changed Main tab action model to remove YAML-oriented `Validate`/`Save`/`Reload` flow and expose a dedicated `General Settings` modal path instead.
+- Changed Main reset confirmation copy to explicitly warn that reset is a full overwrite and may remove custom unknown keys.
 
 ### Added
 
@@ -32,11 +35,15 @@ The format is based on Keep a Changelog, with entries grouped by release date
 - Added app-level Home tab activation wiring plus regression coverage for keyboard and tab-switch trigger paths in `tests/test_app_home_tab_sync.py`.
 - Added dedicated Home auto-refresh regression coverage (idle, running defer, inactive catch-up, and failure warning paths) in `tests/test_home_auto_refresh.py`.
 - Added new Home auto-refresh failure i18n warning keys in both locale files with manual Refresh retry guidance.
+- Added Main `General Settings` modal flow for top-level keys (`body_max_length`, `llm_mode`, `plugin_modules`) with validation-first immediate persistence.
+- Added save-attempt callback support to `PluginConfigEditorModal` so modal saves can stay open/retry on persistence failure.
+- Added/updated regression coverage for modal-only Main/LLM editing behavior in `tests/test_main_config_editor.py` and `tests/test_llm_config_editor.py`.
 
 ### Fixed
 
 - Fixed the misleading "saved but not yet persisted" Job-edit experience where users had to click Save again in the main settings pane for changes to actually take effect.
 - Fixed stale Home Jobs state after Config job mutations by auto-syncing on Home tab entry and catch-up after deferred refresh conditions.
+- Fixed Main modal save behavior to preserve unknown/unmanaged config keys while mutating only modal-owned fields.
 
 ## [v0.4.1] - 2026-04-02
 

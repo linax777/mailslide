@@ -7,10 +7,10 @@ from typing import Any, Literal
 import yaml
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, Static, TextArea
+from textual.widgets import Button, DataTable, Static
 
-from ...i18n import t
 from ...config import load_config, validate_config
+from ...i18n import t
 from ...plugins import list_plugins
 from ...runtime import RuntimeContext, get_runtime_context
 from ...ui_schema import (
@@ -22,9 +22,13 @@ from ...ui_schema import (
     validate_ui_schema,
 )
 from ..common import truncate
-from .io_helpers import dump_yaml_text, write_yaml_with_backup
 from ..modals.add_job import AddJobScreen
+from ..modals.plugin_config_editor import PluginConfigEditorModal
+from .io_helpers import write_yaml_with_backup
 from .validation_helpers import collect_rule_failures, preview_messages
+
+
+MAIN_GENERAL_SETTING_KEYS = ("body_max_length", "llm_mode", "plugin_modules")
 
 
 class MainConfigTab(Static):
@@ -60,9 +64,6 @@ class MainConfigTab(Static):
     #main-config-title {
         margin-top: 0;
     }
-    #main-config-content {
-        height: 1fr;
-    }
     """
 
     def __init__(self, runtime_context: RuntimeContext | None = None):
@@ -70,36 +71,11 @@ class MainConfigTab(Static):
         self._runtime = runtime_context or get_runtime_context()
         self._sample_path = self._runtime.paths.config_dir / "config.yaml.sample"
         self._ui_schema = load_ui_schema(self._sample_path)
-        self._ensure_reload_button_in_schema()
         self._schema_errors = validate_ui_schema(self._ui_schema)
         self._reset_armed = False
         self._rendered_job_indices: list[int] = []
         self._selected_job_index: int | None = None
-        self._persisted_editor_text = ""
         self._is_removing_job = False
-
-    def _ensure_reload_button_in_schema(self) -> None:
-        buttons = self._ui_schema.get("buttons")
-        if not isinstance(buttons, list):
-            self._ui_schema["buttons"] = []
-            buttons = self._ui_schema["buttons"]
-
-        for button in buttons:
-            if (
-                isinstance(button, dict)
-                and str(button.get("id", "")).strip() == "reload"
-            ):
-                return
-
-        buttons.append(
-            {
-                "id": "reload",
-                "label": "重新載入",
-                "label_key": "ui.main.button.reload",
-                "action": "reload",
-                "variant": "default",
-            }
-        )
 
     def compose(self) -> ComposeResult:
         with Vertical(id="main-config-split"):
@@ -113,8 +89,9 @@ class MainConfigTab(Static):
 
             with Vertical(id="main-schema-pane"):
                 with Horizontal(id="main-schema-actions"):
-                    for button in self._ui_schema.get("buttons", []):
-                        if not isinstance(button, dict):
+                    for button_id in self._visible_button_order():
+                        button = self._resolve_button_spec(button_id)
+                        if button is None:
                             continue
                         btn = Button(
                             schema_text(
@@ -123,7 +100,7 @@ class MainConfigTab(Static):
                                 fallback_field="label",
                                 default="未命名按鈕",
                             ),
-                            id=f"schema-btn-{button.get('id', 'unknown')}",
+                            id=f"schema-btn-{button_id}",
                             variant=self._resolve_button_variant(
                                 str(button.get("variant", "default"))
                             ),
@@ -132,13 +109,40 @@ class MainConfigTab(Static):
                         btn.styles.height = "auto"
                         yield btn
                 yield Static(t("ui.main.config.title"), id="main-config-title")
-                yield TextArea("", id="main-config-content", read_only=False)
 
     def on_mount(self) -> None:
         actions = self.query_one("#main-schema-actions", Horizontal)
         actions.styles.min_height = 6
         actions.styles.height = "auto"
         self._load_config()
+
+    def _visible_button_order(self) -> tuple[str, ...]:
+        return (
+            "add_job",
+            "edit_job",
+            "remove_job",
+            "general_settings",
+            "reset",
+        )
+
+    def _resolve_button_spec(self, button_id: str) -> dict[str, Any] | None:
+        buttons = self._ui_schema.get("buttons", [])
+        if isinstance(buttons, list):
+            for button in buttons:
+                if (
+                    isinstance(button, dict)
+                    and str(button.get("id", "")).strip() == button_id
+                ):
+                    return button
+
+        if button_id == "general_settings":
+            return {
+                "id": "general_settings",
+                "label": "一般設定",
+                "label_key": "ui.main.button.general_settings",
+                "variant": "default",
+            }
+        return None
 
     def _resolve_button_variant(
         self,
@@ -156,7 +160,7 @@ class MainConfigTab(Static):
         }
         return mapping.get(variant, "default")
 
-    def _render_jobs_table(self, config: dict) -> None:
+    def _render_jobs_table(self, config: dict[str, Any]) -> None:
         jobs_pane = self.query_one("#main-jobs-pane", Vertical)
         table = self.query_one("#main-jobs-table", DataTable)
         table.clear(columns=True)
@@ -238,12 +242,6 @@ class MainConfigTab(Static):
             return
 
         action = event.button.id.removeprefix("schema-btn-")
-        if action == "validate":
-            self._run_schema_validation()
-            return
-        if action == "save":
-            self._save_from_editor()
-            return
         if action == "add_job":
             self._add_job()
             return
@@ -253,11 +251,11 @@ class MainConfigTab(Static):
         if action == "remove_job":
             self._remove_job(event.button)
             return
+        if action == "general_settings":
+            self._open_general_settings()
+            return
         if action == "reset":
             self._reset_from_sample()
-            return
-        if action == "reload":
-            self._reload_from_disk()
             return
 
         self.app.notify(
@@ -265,52 +263,47 @@ class MainConfigTab(Static):
             severity="warning",
         )
 
-    def _load_raw_config(self) -> dict:
+    def _load_raw_config(self) -> dict[str, Any]:
         config_path = self._runtime.paths.config_file
+        if not config_path.exists():
+            raise FileNotFoundError(t("ui.main.error.config_missing"))
+
         with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         if not isinstance(data, dict):
             raise ValueError(t("ui.main.error.config_object_required"))
         return data
 
-    def _load_editor_config(self) -> dict:
-        content_widget = self.query_one("#main-config-content", TextArea)
-        data = yaml.safe_load(content_widget.text) or {}
-        if not isinstance(data, dict):
-            raise ValueError(t("ui.main.error.yaml_object_required"))
-        return data
-
-    def _dump_editor_config(self, data: dict) -> None:
-        content_widget = self.query_one("#main-config-content", TextArea)
-        content_widget.load_text(dump_yaml_text(data))
-
-    def _write_config_file(self, data: dict) -> Path:
+    def _write_config_file(self, data: dict[str, Any]) -> Path:
         return write_yaml_with_backup(self._runtime.paths.config_file, data)
 
-    def _editor_has_unsaved_changes(self) -> bool:
-        try:
-            content_widget = self.query_one("#main-config-content", TextArea)
-        except Exception:
-            return False
-        return content_widget.text != self._persisted_editor_text
+    def _validate_config_payload(
+        self,
+        config: dict[str, Any],
+    ) -> tuple[dict[str, Any], list[str], list[str]]:
+        sanitized = strip_reserved_metadata(config)
 
-    def _ensure_job_actions_allowed(self) -> bool:
-        if not self._editor_has_unsaved_changes():
-            return True
-        self.app.notify(
-            t("ui.main.warn.save_or_reload_before_job_action"),
-            severity="warning",
+        results = evaluate_rules(
+            sanitized,
+            self._ui_schema.get("validation_rules", []),
         )
-        return False
+        failed_errors, failed_warnings = collect_rule_failures(results)
+
+        try:
+            validate_config(sanitized)
+        except ValueError as e:
+            failed_errors.append(str(e))
+
+        return sanitized, failed_errors, failed_warnings
 
     def _persist_job_mutation(
         self,
         mutate: Callable[[dict[str, Any]], None],
     ) -> tuple[bool, str | None, list[str]]:
         try:
-            config = self._load_editor_config()
+            config = self._load_raw_config()
             mutate(config)
-            sanitized, failed_errors, failed_warnings = self._validate_editor_payload(
+            sanitized, failed_errors, failed_warnings = self._validate_config_payload(
                 config
             )
 
@@ -331,57 +324,160 @@ class MainConfigTab(Static):
         except Exception as e:
             return False, t("ui.common.error.save_failed", error=e), []
 
-    def _validate_editor_payload(
+    def _general_settings_schema(self) -> dict[str, Any]:
+        fields = self._ui_schema.get("fields", {})
+        fields_map = fields if isinstance(fields, dict) else {}
+        fallback = self._general_settings_fallback_fields()
+
+        modal_fields: dict[str, Any] = {}
+        for key in MAIN_GENERAL_SETTING_KEYS:
+            spec = fields_map.get(key)
+            if not isinstance(spec, dict):
+                spec = fallback[key]
+            field_spec = dict(spec)
+            if key == "plugin_modules":
+                field_spec["type"] = "list[str]"
+            modal_fields[key] = field_spec
+
+        return {"fields": modal_fields, "validation_rules": []}
+
+    def _general_settings_fallback_fields(self) -> dict[str, dict[str, Any]]:
+        return {
+            "body_max_length": {
+                "type": "int",
+                "label": "Body Max Length",
+                "label_key": "ui.main.general.field.body_max_length",
+                "required": False,
+                "min": 1,
+            },
+            "llm_mode": {
+                "type": "select",
+                "label": "LLM Mode",
+                "label_key": "ui.main.general.field.llm_mode",
+                "required": False,
+                "options": ["per_plugin", "share_deprecated"],
+            },
+            "plugin_modules": {
+                "type": "list[str]",
+                "label": "Plugin Modules",
+                "label_key": "ui.main.general.field.plugin_modules",
+                "required": False,
+            },
+        }
+
+    def _load_general_settings_payload(self) -> dict[str, Any]:
+        config = self._load_raw_config()
+        return {key: config[key] for key in MAIN_GENERAL_SETTING_KEYS if key in config}
+
+    def _normalize_general_settings_patch(
         self,
-        config: dict[str, Any],
-    ) -> tuple[dict[str, Any], list[str], list[str]]:
-        sanitized = strip_reserved_metadata(config)
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        normalized: dict[str, Any] = {}
 
-        results = evaluate_rules(
-            sanitized,
-            self._ui_schema.get("validation_rules", []),
-        )
-        failed_errors, failed_warnings = collect_rule_failures(results)
+        if "body_max_length" in payload and payload["body_max_length"] is not None:
+            normalized["body_max_length"] = int(payload["body_max_length"])
 
+        if "llm_mode" in payload:
+            llm_mode = str(payload["llm_mode"]).strip()
+            if llm_mode:
+                normalized["llm_mode"] = llm_mode
+
+        if "plugin_modules" in payload:
+            raw_modules = payload["plugin_modules"]
+            if isinstance(raw_modules, list):
+                modules = [str(item).strip() for item in raw_modules]
+            else:
+                modules = [line.strip() for line in str(raw_modules).splitlines()]
+            modules = [module for module in modules if module]
+            if modules:
+                normalized["plugin_modules"] = modules
+
+        return normalized
+
+    def _attempt_save_general_settings(
+        self,
+        payload: dict[str, Any],
+    ) -> tuple[bool, str | None]:
         try:
-            validate_config(sanitized)
-        except ValueError as e:
-            failed_errors.append(str(e))
+            config = self._load_raw_config()
+            normalized = self._normalize_general_settings_patch(payload)
 
-        return sanitized, failed_errors, failed_warnings
+            for key in MAIN_GENERAL_SETTING_KEYS:
+                if key in normalized:
+                    config[key] = normalized[key]
+                else:
+                    config.pop(key, None)
 
-    def _save_from_editor(self) -> None:
-        try:
-            config = self._load_editor_config()
-            sanitized, failed_errors, failed_warnings = self._validate_editor_payload(
+            sanitized, failed_errors, failed_warnings = self._validate_config_payload(
                 config
             )
-
             if failed_errors:
                 preview = preview_messages(failed_errors)
-                self.app.notify(
-                    t("ui.common.error.validation_failed", preview=preview),
-                    severity="error",
-                )
-                return
+                return False, t("ui.common.error.validation_failed", preview=preview)
 
             self._write_config_file(sanitized)
-            self._dump_editor_config(sanitized)
-            self._load_config()
-            self._reset_armed = False
 
+            refresh_error: Exception | None = None
+            try:
+                self._load_config()
+            except Exception as e:  # pragma: no cover - defensive UI fallback
+                refresh_error = e
+
+            self._reset_armed = False
             if failed_warnings:
-                preview = preview_messages(failed_warnings)
                 self.app.notify(
-                    t("ui.common.warn.saved_with_warning", preview=preview),
+                    t(
+                        "ui.common.warn.saved_with_warning",
+                        preview=preview_messages(failed_warnings),
+                    ),
                     severity="warning",
                 )
             else:
-                self.app.notify(t("ui.main.notify.saved"), severity="information")
-        except Exception as e:
-            self.app.notify(t("ui.common.error.save_failed", error=e), severity="error")
+                self.app.notify(
+                    t("ui.main.notify.general_saved"),
+                    severity="information",
+                )
 
-    def _next_job_name(self, jobs: list[dict]) -> str:
+            if refresh_error is not None:
+                self.app.notify(
+                    t("ui.main.warn.refresh_failed_after_save", error=refresh_error),
+                    severity="warning",
+                )
+
+            return True, None
+        except ValueError as e:
+            return False, str(e)
+        except Exception as e:
+            return False, t("ui.common.error.save_failed", error=e)
+
+    def _open_general_settings(self) -> None:
+        if self._schema_errors:
+            preview = " | ".join(self._schema_errors[:2])
+            self.app.notify(
+                t("ui.main.error.schema_invalid", preview=preview),
+                severity="error",
+            )
+            return
+
+        try:
+            self.app.push_screen(
+                PluginConfigEditorModal(
+                    plugin_name=t("ui.main.general.modal_name"),
+                    schema=self._general_settings_schema(),
+                    current_config=self._load_general_settings_payload(),
+                    entity_label=t("ui.main.general.modal_entity"),
+                    save_attempt=self._attempt_save_general_settings,
+                ),
+                lambda _result: None,
+            )
+        except Exception as e:
+            self.app.notify(
+                t("ui.main.error.open_general_settings_failed", error=e),
+                severity="error",
+            )
+
+    def _next_job_name(self, jobs: list[dict[str, Any]]) -> str:
         existing = {str(job.get("name", "")).strip() for job in jobs}
         index = 1
         while True:
@@ -403,7 +499,8 @@ class MainConfigTab(Static):
         return self._normalize_plugin_ids(list_plugins())
 
     def _attempt_add_job_save(
-        self, result: dict[str, object]
+        self,
+        result: dict[str, object],
     ) -> tuple[bool, str | None]:
         def mutate(config: dict[str, Any]) -> None:
             jobs = config.get("jobs", [])
@@ -439,19 +536,16 @@ class MainConfigTab(Static):
         return True, None
 
     def _add_job(self) -> None:
-        if not self._ensure_job_actions_allowed():
-            return
-
         defaults = build_default_list_item(self._ui_schema, "jobs")
         plugin_options = self._runtime_plugin_options()
 
         try:
-            config = self._load_editor_config()
+            config = self._load_raw_config()
             jobs = config.get("jobs", [])
             if isinstance(jobs, list) and jobs:
                 if not str(defaults.get("name", "")).strip():
                     defaults["name"] = self._next_job_name(
-                        [j for j in jobs if isinstance(j, dict)]
+                        [job for job in jobs if isinstance(job, dict)]
                     )
         except Exception:
             defaults.setdefault("name", t("ui.main.default.job_name", index=1))
@@ -511,10 +605,7 @@ class MainConfigTab(Static):
 
     def _edit_job(self) -> None:
         try:
-            if not self._ensure_job_actions_allowed():
-                return
-
-            config = self._load_editor_config()
+            config = self._load_raw_config()
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
                 raise ValueError(t("ui.main.error.jobs_must_list"))
@@ -525,7 +616,8 @@ class MainConfigTab(Static):
             edit_index = self._resolve_edit_job_index(jobs)
             if edit_index is None:
                 self.app.notify(
-                    t("ui.main.warn.select_job_to_edit"), severity="warning"
+                    t("ui.main.warn.select_job_to_edit"),
+                    severity="warning",
                 )
                 return
 
@@ -555,14 +647,16 @@ class MainConfigTab(Static):
                     title=t("ui.main.edit_modal.title", index=edit_index + 1),
                     save_button_label=t("ui.main.edit_modal.save"),
                     save_attempt=lambda result: self._attempt_edit_job_save(
-                        edit_index, result
+                        edit_index,
+                        result,
                     ),
                 ),
                 lambda _result: None,
             )
         except Exception as e:
             self.app.notify(
-                t("ui.main.error.open_edit_failed", error=e), severity="error"
+                t("ui.main.error.open_edit_failed", error=e),
+                severity="error",
             )
 
     def _remove_job(self, trigger_button: Button | None = None) -> None:
@@ -570,10 +664,7 @@ class MainConfigTab(Static):
             return
 
         try:
-            if not self._ensure_job_actions_allowed():
-                return
-
-            config = self._load_editor_config()
+            config = self._load_raw_config()
             jobs = config.get("jobs", [])
             if not isinstance(jobs, list):
                 raise ValueError(t("ui.main.error.jobs_must_list"))
@@ -621,7 +712,8 @@ class MainConfigTab(Static):
                 )
         except Exception as e:
             self.app.notify(
-                t("ui.main.error.job_remove_failed", error=e), severity="error"
+                t("ui.main.error.job_remove_failed", error=e),
+                severity="error",
             )
         finally:
             self._is_removing_job = False
@@ -644,98 +736,34 @@ class MainConfigTab(Static):
                 raise ValueError(t("ui.main.error.sample_invalid"))
 
             sanitized = strip_reserved_metadata(sample)
-            self._dump_editor_config(sanitized)
             self._write_config_file(sanitized)
             self._load_config()
-            self._run_schema_validation()
             self.app.notify(t("ui.main.notify.reset_done"), severity="information")
         except Exception as e:
             self.app.notify(t("ui.main.error.reset_failed", error=e), severity="error")
         finally:
             self._reset_armed = False
 
-    def _run_schema_validation(self, use_editor: bool = True) -> None:
-        if self._schema_errors:
-            preview = " | ".join(self._schema_errors[:2])
-            self.app.notify(
-                t("ui.main.error.schema_invalid", preview=preview),
-                severity="error",
-            )
-            return
-
-        try:
-            if use_editor:
-                config = self._load_editor_config()
-            else:
-                config_path = self._runtime.paths.config_file
-                if not config_path.exists():
-                    self.app.notify(t("ui.main.error.config_missing"), severity="error")
-                    return
-                config = self._load_raw_config()
-            results = evaluate_rules(
-                config,
-                self._ui_schema.get("validation_rules", []),
-            )
-        except Exception as e:
-            self.app.notify(
-                t("ui.main.error.yaml_parse_failed", error=e), severity="error"
-            )
-            return
-
-        failed_errors, failed_warnings = collect_rule_failures(results)
-        has_error = bool(failed_errors)
-        has_warning = bool(failed_warnings)
-
-        if has_error:
-            detail = preview_messages(failed_errors)
-            self.app.notify(
-                t("ui.common.error.validation_failed", preview=detail),
-                severity="error",
-            )
-        elif has_warning:
-            detail = preview_messages(failed_warnings)
-            self.app.notify(
-                t("ui.main.warn.validation_done", detail=detail),
-                severity="warning",
-            )
-        else:
-            self.app.notify(
-                t("ui.main.notify.validation_passed"), severity="information"
-            )
-
-    def _reload_from_disk(self) -> None:
-        self._load_config()
-        self._reset_armed = False
-        self.app.notify(t("ui.main.notify.reloaded"), severity="information")
-
     def _load_config(self) -> None:
-        content_widget = self.query_one("#main-config-content", TextArea)
         table = self.query_one("#main-jobs-table", DataTable)
         table.clear(columns=True)
 
         config_path = self._runtime.paths.config_file
         if not config_path.exists():
-            message = t("ui.main.content.config_missing")
-            content_widget.load_text(message)
-            self._persisted_editor_text = message
+            self._render_jobs_table({"jobs": []})
             self.query_one("#main-config-title", Static).update(
                 t("ui.main.config.title.not_initialized")
             )
             return
 
         try:
-            content = config_path.read_text(encoding="utf-8")
-            content_widget.load_text(content)
-            self._persisted_editor_text = content
-
             config = load_config(config_path)
             self._render_jobs_table(config)
-
             self.query_one("#main-config-title", Static).update(
                 t("ui.main.config.title.ok")
             )
         except Exception as e:
-            self._persisted_editor_text = content_widget.text
+            self._render_jobs_table({"jobs": []})
             self.query_one("#main-config-title", Static).update(
                 t("ui.main.config.title.error", error=e)
             )

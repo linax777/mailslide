@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import yaml
@@ -29,6 +30,30 @@ class _FakeLoggerManager:
 
     def set_display_level(self, level: str) -> None:
         del level
+
+
+class _FakeTable:
+    def __init__(self) -> None:
+        self.columns: list[str] = []
+        self.rows: list[tuple[str, str]] = []
+
+    def clear(self) -> None:
+        self.columns = []
+        self.rows = []
+
+    def add_columns(self, *columns: str) -> None:
+        self.columns.extend(columns)
+
+    def add_row(self, item: str, value: str) -> None:
+        self.rows.append((item, value))
+
+
+class _FakeStatic:
+    def __init__(self) -> None:
+        self.value = ""
+
+    def update(self, value: str) -> None:
+        self.value = value
 
 
 def _runtime_context(tmp_path: Path) -> RuntimeContext:
@@ -230,3 +255,42 @@ def test_llm_config_tab_scrubs_plaintext_api_key_before_backup(
     backup = runtime.paths.config_dir / "llm-config.yaml.bak"
     backup_payload = yaml.safe_load(backup.read_text(encoding="utf-8"))
     assert backup_payload["api_key"] == ""
+
+
+def test_llm_config_tab_load_uses_table_without_yaml_text_area(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    runtime = _runtime_context(tmp_path)
+    runtime.paths.config_dir.mkdir(parents=True, exist_ok=True)
+    runtime.paths.llm_config_file.write_text(
+        "api_base: http://localhost:11434/v1\nmodel: llama3\ntimeout: 30\n",
+        encoding="utf-8",
+    )
+
+    tab = LLMConfigTab(runtime_context=runtime)
+    fake_table = _FakeTable()
+    fake_title = _FakeStatic()
+
+    def _query_one(selector: str, _=None):
+        if selector == "#llm-table":
+            return fake_table
+        if selector == "#llm-config-title":
+            return fake_title
+        raise AssertionError(f"unexpected selector: {selector}")
+
+    monkeypatch.setattr(tab, "query_one", _query_one)
+    monkeypatch.setattr(
+        "outlook_mail_extractor.screens.config.llm_tab.load_llm_config",
+        lambda _path: SimpleNamespace(
+            api_base="http://localhost:11434/v1",
+            api_key="",
+            model="llama3",
+            timeout=30,
+        ),
+    )
+
+    tab._load_llm_config()
+
+    assert len(fake_table.rows) == 4
+    assert fake_title.value

@@ -1,13 +1,12 @@
 """LLM config tab."""
 
-import re
 from pathlib import Path
 from typing import Any
 
 import yaml
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, DataTable, Static, TextArea
+from textual.widgets import Button, DataTable, Static
 
 from ...i18n import resolve_language, set_language, t
 from ...llm import load_llm_config
@@ -55,7 +54,6 @@ class LLMConfigTab(Static):
     def compose(self) -> ComposeResult:
         with Vertical(id="llm-main"):
             yield Static(t("ui.llm.title"), id="llm-config-title")
-            yield TextArea("", id="llm-config-content", read_only=True)
             yield Static(t("ui.llm.values.title"), id="llm-values-title")
             yield DataTable(id="llm-table")
             yield Static(t("ui.llm.help.title"), id="llm-help-title")
@@ -86,15 +84,10 @@ class LLMConfigTab(Static):
         self._load_llm_config()
 
     def _load_llm_config(self) -> None:
-        content_widget = self.query_one("#llm-config-content", TextArea)
         table = self.query_one("#llm-table", DataTable)
 
         try:
             llm_config_path = self._runtime.paths.llm_config_file
-            content = llm_config_path.read_text(encoding="utf-8")
-            masked_content = re.sub(r"(api_key:\s*).+", r"\1***", content)
-            content_widget.load_text(masked_content)
-
             llm_config = load_llm_config(str(llm_config_path))
             table.clear()
             table.add_columns(t("ui.common.column.item"), t("ui.common.column.value"))

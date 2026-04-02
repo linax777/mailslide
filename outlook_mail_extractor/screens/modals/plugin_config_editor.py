@@ -2,6 +2,7 @@
 
 import json
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,7 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
         current_config: dict[str, Any],
         entity_label: str = "Plugin",
         base_dir: Path | None = None,
+        save_attempt: Callable[[dict[str, Any]], tuple[bool, str | None]] | None = None,
     ):
         super().__init__()
         self._plugin_name = plugin_name
@@ -122,6 +124,8 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             self._prompt_profile_order[0] if self._prompt_profile_order else ""
         )
         self._prompt_profile_renames: dict[str, str] = {}
+        self._save_attempt = save_attempt
+        self._is_saving = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="plugin-editor-dialog"):
@@ -206,6 +210,8 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
             return
 
         if event.button.id == "plugin-editor-save":
+            if self._is_saving:
+                return
             if has_error:
                 self._show_error(preview)
                 return
@@ -214,7 +220,35 @@ class PluginConfigEditorModal(ModalScreen[dict[str, Any] | None]):
                     t("ui.common.warn.saved_with_warning", preview=preview),
                     severity="warning",
                 )
-            self.dismiss(payload)
+
+            if self._save_attempt is None:
+                self.dismiss(payload)
+                return
+
+            self._set_saving_state(True)
+            error_message: str | None = None
+            try:
+                saved, error_message = self._save_attempt(payload)
+            except Exception as e:
+                saved = False
+                error_message = str(e)
+
+            if saved:
+                self.dismiss(None)
+                return
+
+            self._set_saving_state(False)
+            self._show_error(
+                error_message or t("ui.common.error.save_failed", error="unknown")
+            )
+
+    def _set_saving_state(self, is_saving: bool) -> None:
+        self._is_saving = is_saving
+        try:
+            save_button = self.query_one("#plugin-editor-save", Button)
+            save_button.disabled = is_saving
+        except Exception:
+            pass
 
     def _add_prompt_profile(self) -> None:
         if not self._use_prompt_profile_editor:
