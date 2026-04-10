@@ -42,7 +42,7 @@ jobs:
           pyproject_version = pyproject_data["project"]["version"]
 
           init_text = pathlib.Path("outlook_mail_extractor/__init__.py").read_text(encoding="utf-8")
-          init_match = re.search(r'^__version__\s*=\s*"([^"]+)"', init_text, re.MULTILINE)
+          init_match = re.search(r'^\s*__version__\s*=\s*"([^"]+)"', init_text, re.MULTILINE)
           if not init_match:
               print("Cannot parse __version__ from outlook_mail_extractor/__init__.py")
               sys.exit(1)
