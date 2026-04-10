@@ -174,6 +174,12 @@ print(f"jobs: {len(config.get('jobs', []))}")
 
 相容期內舊路徑 `outlook_mail_extractor` 仍可使用，但後續 major 版本將移除。
 
+| 舊寫法 (Legacy) | 新寫法 (New) |
+|---|---|
+| `from outlook_mail_extractor import load_config` | `from mailslide import load_config` |
+| `python -m outlook_mail_extractor` | `python -m mailslide` |
+| `uv run outlook_mail_extractor` | `uv run mailslide` |
+
 ## 如何設定 config.yaml
 
 可在 **Configuration → 一般設定** 直接修改（推薦）；也可手動編輯 `config/config.yaml`。

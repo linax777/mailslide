@@ -117,7 +117,7 @@ $lockPath = Join-Path $repoRoot 'uv.lock'
 $changelogPath = Join-Path $repoRoot 'CHANGELOG.md'
 
 Update-VersionLine -Path $pyprojectPath -Pattern '(?m)^version = "[^"]+"(?=\r?$)' -Template 'version = "{0}"' -Label 'pyproject.toml [project].version'
-Update-VersionLine -Path $initPath -Pattern '(?m)^__version__ = "[^"]+"(?=\r?$)' -Template '__version__ = "{0}"' -Label '__init__.__version__'
+Update-VersionLine -Path $initPath -Pattern '(?m)^\s*__version__ = "[^"]+"(?=\r?$)' -Template '    __version__ = "{0}"' -Label '__init__.__version__'
 Update-VersionLine -Path $aboutPath -Pattern '(?m)^\s*VERSION = "[^"]+"(?=\r?$)' -Template '    VERSION = "{0}"' -Label 'AboutScreen.VERSION'
 
 $lockText = Read-Text $lockPath

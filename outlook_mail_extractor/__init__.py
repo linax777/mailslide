@@ -44,7 +44,7 @@ from .runtime import (
 try:
     __version__ = dist_version("mailslide")
 except PackageNotFoundError:
-    __version__ = "0.4.2"
+    __version__ = "0.5.0"
 
 __all__ = [
     # Exceptions
