@@ -20,9 +20,7 @@ opencode.jsonc
 .ruff_cache
 scripts/release_pypi.ps1
 scripts/sync_guides.ps1
-docs/plans
-docs/solutions
-docs/brainstorms
+docs/superpowers
 .context/
 
 # config
@@ -36,6 +34,4 @@ logs/
 output/
 
 # local planning notes
-task/
-tasks/
 ARCHITECTURE_IMPROVEMENTS.md
