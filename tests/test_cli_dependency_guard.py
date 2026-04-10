@@ -2,7 +2,8 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-import outlook_mail_extractor.__main__ as cli_main
+import mailslide.cli_app as cli_main
+from mailslide.cli_exit_map import map_exception_to_exit_code
 from outlook_mail_extractor.contracts.dependency_guard import (
     DEPENDENCY_GUARD_EXIT_CODE,
     DEPENDENCY_GUARD_REASON,
@@ -76,13 +77,10 @@ def test_cli_dependency_guard_maps_to_contract_exit_and_reason(
     monkeypatch.setattr(cli_main, "JobExecutionService", _GuardFailingService)
     monkeypatch.setattr(cli_main, "resolve_terminal_title", lambda _path: "Mailslide")
     monkeypatch.setattr(cli_main, "set_terminal_title", lambda _title: None)
-    monkeypatch.setattr(
-        cli_main.sys,
-        "argv",
-        ["mailslide", "--config", str(config_file), "--skip-preflight"],
-    )
 
-    exit_code = asyncio.run(cli_main.async_main())
+    exit_code = asyncio.run(
+        cli_main.run_cli_async(["--config", str(config_file), "--skip-preflight"])
+    )
     stderr = capsys.readouterr().err
 
     assert exit_code == DEPENDENCY_GUARD_EXIT_CODE
@@ -106,15 +104,17 @@ def test_cli_non_guard_failure_keeps_generic_exit_code(
     monkeypatch.setattr(cli_main, "JobExecutionService", _UnexpectedFailingService)
     monkeypatch.setattr(cli_main, "resolve_terminal_title", lambda _path: "Mailslide")
     monkeypatch.setattr(cli_main, "set_terminal_title", lambda _title: None)
-    monkeypatch.setattr(
-        cli_main.sys,
-        "argv",
-        ["mailslide", "--config", str(config_file), "--skip-preflight"],
-    )
 
-    exit_code = asyncio.run(cli_main.async_main())
+    exit_code = asyncio.run(
+        cli_main.run_cli_async(["--config", str(config_file), "--skip-preflight"])
+    )
     stderr = capsys.readouterr().err
 
     assert exit_code == 1
     assert DEPENDENCY_GUARD_REASON not in stderr
     assert "boom" in stderr
+
+
+def test_cli_exit_map_dependency_guard_code() -> None:
+    code = map_exception_to_exit_code(DependencyGuardError("blocked"))
+    assert code == DEPENDENCY_GUARD_EXIT_CODE

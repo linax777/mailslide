@@ -1,5 +1,6 @@
 import importlib
 from contextlib import contextmanager
+from pathlib import Path
 import sys
 import warnings
 
@@ -92,3 +93,9 @@ def test_mailslide_version_source_is_canonical(monkeypatch) -> None:
     reloaded = importlib.reload(current)
 
     assert reloaded.__version__ == canonical_version
+
+
+def test_readme_mentions_legacy_import_deprecation() -> None:
+    text = Path("README.md").read_text(encoding="utf-8")
+    assert "outlook_mail_extractor" in text
+    assert "deprecated" in text.lower()

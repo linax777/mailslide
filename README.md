@@ -64,6 +64,17 @@ Then in TUI:
 2. Open **Configuration** and set Jobs / LLM / Plugins.
 3. Return to **Home** and run a job (`Preserve RE/FW` is `ON` by default and can be toggled on Home).
 
+## Import Path Migration
+
+- Canonical path: `mailslide`
+- Legacy path: `outlook_mail_extractor` (**deprecated**, planned removal in the next major release)
+
+| Legacy | New |
+|---|---|
+| `from outlook_mail_extractor import load_config` | `from mailslide import load_config` |
+| `python -m outlook_mail_extractor` | `python -m mailslide` |
+| `uv run outlook_mail_extractor` | `uv run mailslide` |
+
 ## Screenshots
 
 ![Home Run](docs/assets/home-run.png)

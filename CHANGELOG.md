@@ -9,8 +9,10 @@ The format is based on Keep a Changelog, with entries grouped by release date
 ### Changed
 
 - Refactored import-path migration scaffolding so `mailslide` is the canonical package surface while `outlook_mail_extractor` remains a warning-gated compatibility path.
+- Added deprecation schedule note: legacy `outlook_mail_extractor` import path is planned for removal in the next major release.
 - Refactored configuration validation/loading flow to use typed models (`AppConfig`/`JobConfig`) and a repository-based migration+backup write path.
 - Refactored plugin execution contract to require structured `PluginExecutionResult` returns and reject legacy boolean plugin results.
+- Added migration mapping notes for strict plugin-result contracts and modularized CLI boundaries.
 
 ### Added
 

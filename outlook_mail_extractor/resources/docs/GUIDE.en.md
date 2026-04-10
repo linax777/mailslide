@@ -144,6 +144,12 @@ print(f"jobs: {len(config.get('jobs', []))}")
 
 The legacy path `outlook_mail_extractor` is still supported during the compatibility window and will be removed in a future major release.
 
+| Legacy | New |
+|---|---|
+| `from outlook_mail_extractor import load_config` | `from mailslide import load_config` |
+| `python -m outlook_mail_extractor` | `python -m mailslide` |
+| `uv run outlook_mail_extractor` | `uv run mailslide` |
+
 ## Core `config.yaml` Example
 
 ```yaml

@@ -8,13 +8,18 @@ from time import perf_counter
 from typing import Any, NoReturn
 
 from ..config import load_config
-from ..core import EmailProcessor, OutlookClient, _resolve_plugin_prompt
+from ..core import (
+    EmailProcessor,
+    OutlookClient,
+    _resolve_plugin_prompt,
+)
 from ..i18n import t
 from ..llm import LLMClient, load_llm_config
 from ..logger import get_default_logger_manager, get_logger
 from ..models import DomainError, InfrastructureError, UserVisibleError
 from ..parser import clean_invisible_chars
-from ..plugins import get_plugin, load_plugin_configs, load_plugin_modules
+from ..plugins import get_plugin, load_plugin_configs
+from ..plugins.loader import load_external_plugin_modules
 from ..plugins.download_attachments_paths import (
     DEFAULT_FULL_PATH_BUDGET,
     DEFAULT_JOB_FOLDER_MAX_LENGTH,
@@ -387,7 +392,12 @@ class JobExecutionService:
             default_llm_mode = config.get("llm_mode", "per_plugin")
             configured_plugin_modules = config.get("plugin_modules", [])
             if isinstance(configured_plugin_modules, list):
-                loaded_modules = load_plugin_modules(configured_plugin_modules)
+                module_names = [
+                    str(module_path).strip()
+                    for module_path in configured_plugin_modules
+                    if str(module_path).strip()
+                ]
+                loaded_modules = load_external_plugin_modules(module_names)
                 if loaded_modules:
                     logger.info(
                         t(
