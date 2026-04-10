@@ -224,7 +224,7 @@ class BasePlugin(ABC):
         email_data: EmailDTO,
         llm_response: str,
         action_port: MailActionPort,
-    ) -> bool | PluginExecutionResult:
+    ) -> PluginExecutionResult:
         """
         Execute the plugin action.
 
@@ -234,7 +234,7 @@ class BasePlugin(ABC):
             action_port: Side-effect action port for mail operations
 
         Returns:
-            bool (legacy) or PluginExecutionResult
+            PluginExecutionResult
         """
         pass
 

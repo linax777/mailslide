@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, with entries grouped by release date
 
+## [Unreleased]
+
+### Changed
+
+- Refactored import-path migration scaffolding so `mailslide` is the canonical package surface while `outlook_mail_extractor` remains a warning-gated compatibility path.
+- Refactored configuration validation/loading flow to use typed models (`AppConfig`/`JobConfig`) and a repository-based migration+backup write path.
+- Refactored plugin execution contract to require structured `PluginExecutionResult` returns and reject legacy boolean plugin results.
+
+### Added
+
+- Added compatibility and regression coverage for import migration behavior in `tests/test_import_compat.py`.
+- Added typed config model and repository regression coverage in `tests/test_config_models.py` and `tests/test_config_repository.py`.
+- Added plugin-runner regression coverage for strict result-type enforcement and contract error mapping in `tests/test_plugin_runner.py`.
+
 ## [v0.4.2] - 2026-04-03
 
 ### Changed

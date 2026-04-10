@@ -1,8 +1,9 @@
 """mailslide - Organize emails in Outlook Classic."""
 
 import os
-import warnings
+from importlib.metadata import PackageNotFoundError, version as dist_version
 
+from mailslide._compat import warn_legacy_import
 from .config import load_config, validate_config
 from .core import (
     EmailProcessor,
@@ -40,14 +41,10 @@ from .runtime import (
     get_runtime_context,
 )
 
-__version__ = "0.4.2"
-
-if os.environ.get("MAILSLIDE_IMPORT_WARNING") == "1":
-    warnings.warn(
-        "Import path 'outlook_mail_extractor' is deprecated; prefer 'mailslide'.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
+try:
+    __version__ = dist_version("mailslide")
+except PackageNotFoundError:
+    __version__ = "0.4.2"
 
 __all__ = [
     # Exceptions
@@ -97,3 +94,6 @@ __all__ = [
     "build_runtime_paths",
     "get_runtime_context",
 ]
+
+if os.environ.get("MAILSLIDE_IMPORT_WARNING") == "1":
+    warn_legacy_import()

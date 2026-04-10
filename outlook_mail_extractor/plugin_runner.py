@@ -15,30 +15,23 @@ from .plugins import PluginCapability
 
 def normalize_plugin_execution_result(
     plugin_name: str,
-    execute_result: bool | PluginExecutionResult,
+    execute_result: PluginExecutionResult,
 ) -> PluginExecutionResult:
-    """Normalize legacy bool plugin returns into structured results."""
+    """Validate and return structured plugin execution results."""
     if isinstance(execute_result, PluginExecutionResult):
         return execute_result
 
-    if execute_result:
-        return PluginExecutionResult(
-            status=PluginExecutionStatus.SUCCESS,
-            message="Success",
-        )
-
-    return PluginExecutionResult(
-        status=PluginExecutionStatus.FAILED,
-        code="legacy_false",
-        message=f"Plugin {plugin_name} returned False",
+    raise TypeError(
+        f"Plugin {plugin_name} execute() must return PluginExecutionResult, "
+        f"got {type(execute_result).__name__}"
     )
 
 
 def build_plugin_result(
     plugin_name: str,
-    execute_result: bool | PluginExecutionResult,
+    execute_result: PluginExecutionResult,
 ) -> PluginResult:
-    """Build PluginResult from legacy/new plugin result types."""
+    """Build PluginResult from structured plugin result."""
     normalized = normalize_plugin_execution_result(plugin_name, execute_result)
     return PluginResult(
         plugin_name=plugin_name,
@@ -76,7 +69,6 @@ async def execute_plugin(
         plugin_execute_result = await plugin.execute(
             email_data, llm_response, action_port
         )
-        plugin_result = build_plugin_result(plugin.name, plugin_execute_result)
     except (DomainError, InfrastructureError, UserVisibleError) as error:
         logger.exception(f"Plugin {plugin.name} error: {error}")
         plugin_result = PluginResult(
@@ -98,6 +90,18 @@ async def execute_plugin(
             code="unhandled_error",
             message=f"Error: {wrapped}",
         )
+    else:
+        try:
+            plugin_result = build_plugin_result(plugin.name, plugin_execute_result)
+        except TypeError as error:
+            logger.exception(f"Plugin {plugin.name} contract error: {error}")
+            plugin_result = PluginResult(
+                plugin_name=plugin.name,
+                success=False,
+                status=PluginExecutionStatus.FAILED,
+                code="invalid_plugin_result_type",
+                message=f"Error: {error}",
+            )
 
     moved_by_plugin = (
         plugin.supports(PluginCapability.MOVES_MESSAGE) and plugin_result.success

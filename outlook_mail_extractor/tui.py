@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Protocol, cast
 
 import yaml
+
+from mailslide.config_models import AppConfig, ConfigValidationError
+from mailslide.config_repository import ConfigRepository
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Horizontal, Middle, Vertical
@@ -425,22 +428,24 @@ class OutlookMailExtractor(App):
         self.call_after_refresh(restore_after_recompose)
 
     def _save_ui_language(self, config_path: Path, language: str) -> None:
-        payload: dict[str, object]
+        repository = ConfigRepository(config_path)
+        config = AppConfig(jobs=[])
         if config_path.exists():
-            with open(config_path, encoding="utf-8") as f:
-                loaded = yaml.safe_load(f) or {}
-            if not isinstance(loaded, dict):
-                raise ValueError("config/config.yaml 內容必須是 YAML 物件")
-            payload = dict(loaded)
-        else:
-            payload = {"jobs": []}
-
-        payload["ui_language"] = language
-        write_yaml_with_backup(
-            config_path,
-            payload,
-            backup_path=config_path.with_suffix(".yaml.bak"),
-        )
+            raw_payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+            if not isinstance(raw_payload, dict):
+                raise ValueError("YAML 物件")
+            try:
+                config = repository.load()
+            except (ConfigValidationError, ValueError):
+                raw_payload["ui_language"] = language
+                write_yaml_with_backup(
+                    config_path,
+                    raw_payload,
+                    backup_path=config_path.with_suffix(".yaml.bak"),
+                )
+                return
+        config.ui_language = language
+        repository.save(config)
 
 
 def main() -> int:

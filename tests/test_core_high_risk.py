@@ -35,7 +35,7 @@ class DummyPlugin:
         self,
         name: str,
         prompt: str,
-        execute_result: bool = True,
+        execute_result: PluginExecutionResult | bool = True,
         move_message: bool = False,
         capabilities: set[PluginCapability] | None = None,
     ) -> None:
@@ -62,13 +62,24 @@ class DummyPlugin:
 
     async def execute(
         self, email_data: EmailDTO, llm_response: str, action_port
-    ) -> bool:
+    ) -> PluginExecutionResult:
         del email_data
         del llm_response
         self.execute_calls += 1
         if self._move_message:
             action_port.move_to_folder("plugin-folder")
-        return self._execute_result
+        if isinstance(self._execute_result, PluginExecutionResult):
+            return self._execute_result
+        if self._execute_result:
+            return PluginExecutionResult(
+                status=PluginExecutionStatus.SUCCESS,
+                message="ok",
+            )
+        return PluginExecutionResult(
+            status=PluginExecutionStatus.FAILED,
+            code="dummy_failed",
+            message="failed",
+        )
 
 
 class ActionAwarePlugin:
